@@ -19,8 +19,6 @@ export default function VideoDisplay({
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [captureFlash, setCaptureFlash] = useState(false);
   const [videoAspectRatio, setVideoAspectRatio] = useState<number>(16/9);
-  const [containerDimensions, setContainerDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
-  const [isInspectorLandscape, setIsInspectorLandscape] = useState(false);
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -38,13 +36,6 @@ export default function VideoDisplay({
         if (video.videoWidth && video.videoHeight) {
           const aspectRatio = video.videoWidth / video.videoHeight;
           setVideoAspectRatio(aspectRatio);
-          
-          // Track if inspector is in landscape mode
-          if (isCoordinator) {
-            const isLandscape = aspectRatio > 1;
-            console.log("Video metadata check:", video.videoWidth, "x", video.videoHeight, "landscape:", isLandscape);
-            setIsInspectorLandscape(isLandscape);
-          }
         }
       };
       
@@ -56,39 +47,6 @@ export default function VideoDisplay({
     }
   }, [remoteStream]);
 
-  // Monitor for track setting changes for orientation detection
-  useEffect(() => {
-    if (remoteStream && isCoordinator) {
-      const videoTrack = remoteStream.getVideoTracks()[0];
-      if (videoTrack) {
-        const checkOrientation = () => {
-          const settings = videoTrack.getSettings();
-          if (settings.width && settings.height) {
-            const aspectRatio = settings.width / settings.height;
-            const isLandscape = aspectRatio > 1;
-            console.log("Track settings check:", settings.width, "x", settings.height, "landscape:", isLandscape);
-            setVideoAspectRatio(aspectRatio);
-            setIsInspectorLandscape(isLandscape);
-          }
-        };
-        
-        // Check immediately and periodically
-        checkOrientation();
-        const interval = setInterval(checkOrientation, 1000);
-        return () => clearInterval(interval);
-      }
-    }
-  }, [remoteStream, isCoordinator]);
-
-  // Handle window resize for responsive video
-  useEffect(() => {
-    const handleResize = () => {
-      setContainerDimensions({ width: window.innerWidth, height: window.innerHeight });
-    };
-    
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   const handleCaptureImage = () => {
     setCaptureFlash(true);
@@ -106,50 +64,21 @@ export default function VideoDisplay({
     }
   };
 
-  // Calculate container style based on video aspect ratio
-  const getVideoContainerStyle = () => {
-    if (!isCoordinator) {
-      // Inspector shows their own video full screen
-      return { width: '100%', height: '100%' };
-    }
-    
-    // Coordinator adapts to inspector's video aspect ratio
-    const containerAspectRatio = containerDimensions.width / containerDimensions.height;
-    
-    if (videoAspectRatio > containerAspectRatio) {
-      // Video is wider than container - fit by width
-      return {
-        width: '100%',
-        height: `${100 / videoAspectRatio * containerAspectRatio}%`,
-        top: '50%',
-        transform: 'translateY(-50%)'
-      };
-    } else {
-      // Video is taller than container - fit by height
-      return {
-        height: '100%',
-        width: `${videoAspectRatio * 100 / containerAspectRatio}%`,
-        left: '50%',
-        transform: 'translateX(-50%)'
-      };
-    }
-  };
 
   return (
-    <div className="relative h-full bg-slate-900 overflow-hidden flex items-center justify-center">
+    <div className="relative h-full bg-slate-900 overflow-hidden">
       {/* Remote Video Feed (Main) */}
       <div 
-        className={`relative video-container transition-transform duration-500 ${
-          isCoordinator && isInspectorLandscape ? 'rotate-90' : ''
+        className={`absolute inset-0 video-container transition-transform duration-500 ${
+          isCoordinator && videoAspectRatio > 1 ? 'rotate-90' : ''
         }`}
-        style={getVideoContainerStyle()}
       >
         <video
           ref={remoteVideoRef}
           autoPlay
           playsInline
           muted={isCoordinator} // Coordinator doesn't hear their own audio
-          className="w-full h-full object-contain"
+          className="w-full h-full object-cover"
           data-testid="video-remote-stream"
         />
         
@@ -181,18 +110,10 @@ export default function VideoDisplay({
           </div>
           <div className="text-xs opacity-80">
             {isCoordinator 
-              ? `${isInspectorLandscape ? 'Landscape' : 'Portrait'} • ${Math.round(videoAspectRatio * 100) / 100}:1`
+              ? `${videoAspectRatio > 1 ? 'Landscape' : 'Portrait'} • ${Math.round(videoAspectRatio * 100) / 100}:1`
               : "Broadcasting to Coordinator"
             }
           </div>
-          {isCoordinator && (
-            <button 
-              onClick={() => setIsInspectorLandscape(!isInspectorLandscape)}
-              className="mt-1 text-xs bg-blue-600 px-2 py-1 rounded"
-            >
-              Test Rotate: {isInspectorLandscape ? 'Go Portrait' : 'Go Landscape'}
-            </button>
-          )}
         </div>
       </div>
 
