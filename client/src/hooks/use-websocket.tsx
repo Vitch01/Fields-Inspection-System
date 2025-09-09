@@ -35,7 +35,7 @@ export function useWebSocket(callId: string, options: UseWebSocketOptions = {}) 
         sendMessage({
           type: "join-call",
           callId,
-          userId: "current-user", // TODO: Get from auth context
+          userId: `user-${Date.now()}`, // Generate a unique user ID
         });
       };
 

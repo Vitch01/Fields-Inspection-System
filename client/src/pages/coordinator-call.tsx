@@ -6,13 +6,16 @@ import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import { useWebRTC } from "@/hooks/use-webrtc";
 import { useState } from "react";
-import { Clock, Signal, Users } from "lucide-react";
+import { Clock, Signal, Users, Copy, ExternalLink } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 
 export default function CoordinatorCall() {
   const { callId } = useParams();
   const [showSettings, setShowSettings] = useState(false);
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [callDuration, setCallDuration] = useState(942); // seconds
+  const { toast } = useToast();
 
   const { data: call } = useQuery({
     queryKey: ["/api/calls", callId],
@@ -50,6 +53,20 @@ export default function CoordinatorCall() {
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const generateInspectorLink = () => {
+    const inspectorUrl = `${window.location.origin}/inspector/${callId}`;
+    navigator.clipboard.writeText(inspectorUrl);
+    toast({
+      title: "Inspector Link Copied",
+      description: "Share this link with the inspector to join the call",
+    });
+  };
+
+  const openInspectorLink = () => {
+    const inspectorUrl = `${window.location.origin}/inspector/${callId}`;
+    window.open(inspectorUrl, '_blank');
+  };
+
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header with Call Status */}
@@ -70,6 +87,26 @@ export default function CoordinatorCall() {
         <div className="flex items-center space-x-4">
           <div className="text-sm font-medium">
             Inspector: <span className="text-primary" data-testid="text-inspector-name">John Martinez</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={generateInspectorLink}
+              data-testid="button-copy-inspector-link"
+            >
+              <Copy className="w-3 h-3 mr-1" />
+              Copy Inspector Link
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={openInspectorLink}
+              data-testid="button-open-inspector-link"
+            >
+              <ExternalLink className="w-3 h-3 mr-1" />
+              Open Link
+            </Button>
           </div>
           <div className="flex items-center space-x-1">
             <Signal className="w-4 h-4 text-green-500" />

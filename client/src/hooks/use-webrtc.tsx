@@ -135,37 +135,48 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     const pc = peerConnectionRef.current;
     if (!pc) return;
 
-    switch (message.type) {
-      case "offer":
-        if (userRole === "inspector") {
-          await createAnswer(message.data);
-        }
-        break;
+    try {
+      switch (message.type) {
+        case "offer":
+          if (userRole === "inspector") {
+            await createAnswer(message.data);
+          }
+          break;
 
-      case "answer":
-        if (userRole === "coordinator") {
-          await pc.setRemoteDescription(message.data);
-        }
-        break;
+        case "answer":
+          if (userRole === "coordinator") {
+            await pc.setRemoteDescription(message.data);
+          }
+          break;
 
-      case "ice-candidate":
-        await pc.addIceCandidate(message.data);
-        break;
+        case "ice-candidate":
+          // Only add ICE candidate if we have remote description set
+          if (pc.remoteDescription) {
+            await pc.addIceCandidate(message.data);
+          }
+          break;
 
-      case "user-joined":
-        console.log("User joined:", message.userId);
-        break;
+        case "user-joined":
+          console.log("User joined:", message.userId);
+          // Initiate offer when someone joins (for coordinator)
+          if (userRole === "coordinator") {
+            setTimeout(() => createOffer(), 1000);
+          }
+          break;
 
-      case "user-left":
-        console.log("User left:", message.userId);
-        break;
+        case "user-left":
+          console.log("User left:", message.userId);
+          break;
 
-      case "image-captured":
-        toast({
-          title: "Image Captured",
-          description: "A new inspection image has been captured",
-        });
-        break;
+        case "image-captured":
+          toast({
+            title: "Image Captured",
+            description: "A new inspection image has been captured",
+          });
+          break;
+      }
+    } catch (error) {
+      console.error("Error handling signaling message:", error);
     }
   }
 
