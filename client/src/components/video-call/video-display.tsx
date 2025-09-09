@@ -7,13 +7,15 @@ interface VideoDisplayProps {
   remoteStream: MediaStream | null;
   isCoordinator: boolean;
   onCaptureImage: () => void;
+  onOrientationChange?: (isLandscape: boolean) => void;
 }
 
 export default function VideoDisplay({ 
   localStream, 
   remoteStream, 
   isCoordinator, 
-  onCaptureImage 
+  onCaptureImage,
+  onOrientationChange
 }: VideoDisplayProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -37,6 +39,11 @@ export default function VideoDisplay({
         if (video.videoWidth && video.videoHeight) {
           const aspectRatio = video.videoWidth / video.videoHeight;
           setVideoAspectRatio(aspectRatio);
+          
+          // Notify parent about orientation change if coordinator
+          if (isCoordinator && onOrientationChange) {
+            onOrientationChange(aspectRatio > 1);
+          }
         }
       };
       
