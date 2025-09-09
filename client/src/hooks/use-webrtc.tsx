@@ -233,7 +233,14 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     try {
       const streamToCapture = userRole === "coordinator" ? remoteStream : localStream;
       if (!streamToCapture) {
-        throw new Error("No video stream available for capture");
+        toast({
+          title: "Capture Failed",
+          description: userRole === "coordinator" 
+            ? "No inspector video feed available for capture" 
+            : "No camera feed available",
+          variant: "destructive",
+        });
+        return;
       }
 
       const imageBlob = await captureImageFromStream(streamToCapture);
@@ -254,7 +261,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
       toast({
         title: "Image Captured",
-        description: "Inspection image saved successfully",
+        description: userRole === "coordinator" 
+          ? "Inspector's camera view captured successfully"
+          : "Inspection image saved successfully",
       });
     } catch (error) {
       console.error("Failed to capture image:", error);
