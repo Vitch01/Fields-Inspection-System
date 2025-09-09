@@ -115,55 +115,65 @@ export default function InspectorCall() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      {/* Header */}
-      <header className="bg-card border-b border-border px-4 py-3 flex items-center justify-between">
+    <div className="flex flex-col h-screen bg-black relative">
+      {/* Full Screen Camera View for Inspector */}
+      <div className="absolute inset-0 z-0">
+        {localStream && (
+          <video
+            autoPlay
+            muted
+            playsInline
+            ref={(video) => {
+              if (video && localStream) {
+                video.srcObject = localStream;
+              }
+            }}
+            className="w-full h-full object-cover"
+            data-testid="video-local-fullscreen"
+          />
+        )}
+      </div>
+
+      {/* Header Overlay */}
+      <header className="relative z-10 bg-black/50 backdrop-blur-sm border-b border-white/20 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2">
             <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 connection-indicator' : 'bg-red-500'}`}></div>
-            <span className="text-sm font-medium text-muted-foreground">
+            <span className="text-sm font-medium text-white">
               {isConnected ? 'Connected' : 'Connecting...'}
             </span>
           </div>
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-white/80">
             <Clock className="w-4 h-4 inline mr-1" />
             <span data-testid="text-call-duration">{formatDuration(callDuration)}</span>
           </div>
         </div>
         
         <div className="flex items-center space-x-4">
-          <div className="text-sm font-medium">
-            Coordinator: <span className="text-primary" data-testid="text-coordinator-name">Sarah Johnson</span>
+          <div className="text-sm font-medium text-white">
+            Coordinator: <span className="text-blue-300" data-testid="text-coordinator-name">Sarah Johnson</span>
           </div>
           <div className="flex items-center space-x-1">
-            <Signal className="w-4 h-4 text-green-500" />
-            <span className="text-xs text-muted-foreground">Excellent</span>
+            <Signal className="w-4 h-4 text-green-400" />
+            <span className="text-xs text-white/80">Excellent</span>
           </div>
         </div>
       </header>
 
-      {/* Main Video Area */}
-      <main className="flex-1">
-        <VideoDisplay
-          localStream={localStream}
-          remoteStream={remoteStream}
+      {/* Bottom Control Bar Overlay */}
+      <div className="relative z-10 mt-auto bg-black/50 backdrop-blur-sm">
+        <CallControls
+          isMuted={isMuted}
+          isVideoEnabled={isVideoEnabled}
+          capturedImages={capturedImages}
+          onToggleMute={toggleMute}
+          onToggleVideo={toggleVideo}
+          onOpenSettings={() => setShowSettings(true)}
+          onEndCall={endCall}
+          onImageClick={setSelectedImage}
           isCoordinator={false}
-          onCaptureImage={captureImage}
         />
-      </main>
-
-      {/* Bottom Control Bar */}
-      <CallControls
-        isMuted={isMuted}
-        isVideoEnabled={isVideoEnabled}
-        capturedImages={capturedImages}
-        onToggleMute={toggleMute}
-        onToggleVideo={toggleVideo}
-        onOpenSettings={() => setShowSettings(true)}
-        onEndCall={endCall}
-        onImageClick={setSelectedImage}
-        isCoordinator={false}
-      />
+      </div>
 
       {/* Modals */}
       <SettingsModal
