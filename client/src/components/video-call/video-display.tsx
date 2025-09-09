@@ -41,7 +41,9 @@ export default function VideoDisplay({
           
           // Track if inspector is in landscape mode
           if (isCoordinator) {
-            setIsInspectorLandscape(aspectRatio > 1);
+            const isLandscape = aspectRatio > 1;
+            console.log("Video metadata check:", video.videoWidth, "x", video.videoHeight, "landscape:", isLandscape);
+            setIsInspectorLandscape(isLandscape);
           }
         }
       };
@@ -63,8 +65,10 @@ export default function VideoDisplay({
           const settings = videoTrack.getSettings();
           if (settings.width && settings.height) {
             const aspectRatio = settings.width / settings.height;
+            const isLandscape = aspectRatio > 1;
+            console.log("Track settings check:", settings.width, "x", settings.height, "landscape:", isLandscape);
             setVideoAspectRatio(aspectRatio);
-            setIsInspectorLandscape(aspectRatio > 1);
+            setIsInspectorLandscape(isLandscape);
           }
         };
         
@@ -181,6 +185,14 @@ export default function VideoDisplay({
               : "Broadcasting to Coordinator"
             }
           </div>
+          {isCoordinator && (
+            <button 
+              onClick={() => setIsInspectorLandscape(!isInspectorLandscape)}
+              className="mt-1 text-xs bg-blue-600 px-2 py-1 rounded"
+            >
+              Test Rotate: {isInspectorLandscape ? 'Go Portrait' : 'Go Landscape'}
+            </button>
+          )}
         </div>
       </div>
 
