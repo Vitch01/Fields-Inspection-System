@@ -54,7 +54,7 @@ export default function CoordinatorCall() {
   };
 
   const generateInspectorLink = () => {
-    const inspectorUrl = `${window.location.origin}/inspector/${callId}`;
+    const inspectorUrl = `${window.location.origin}/join/${callId}`;
     navigator.clipboard.writeText(inspectorUrl);
     toast({
       title: "Inspector Link Copied",
@@ -63,7 +63,7 @@ export default function CoordinatorCall() {
   };
 
   const openInspectorLink = () => {
-    const inspectorUrl = `${window.location.origin}/inspector/${callId}`;
+    const inspectorUrl = `${window.location.origin}/join/${callId}`;
     window.open(inspectorUrl, '_blank');
   };
 

@@ -81,7 +81,7 @@ export default function Home() {
   const handleJoinCall = () => {
     // For demo purposes, join as inspector
     const callId = "demo-call-id";
-    setLocation(`/inspector/${callId}`);
+    setLocation(`/join/${callId}`);
   };
 
   if (!user) {

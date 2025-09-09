@@ -14,6 +14,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/coordinator/:callId" component={CoordinatorCall} />
       <Route path="/inspector/:callId" component={InspectorCall} />
+      <Route path="/join/:callId" component={InspectorCall} />
       <Route component={NotFound} />
     </Switch>
   );

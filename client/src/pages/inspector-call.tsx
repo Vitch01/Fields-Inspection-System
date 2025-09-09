@@ -5,14 +5,18 @@ import CallControls from "@/components/video-call/call-controls";
 import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import { useWebRTC } from "@/hooks/use-webrtc";
-import { useState } from "react";
-import { Clock, Signal } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Clock, Signal, Video, UserCheck } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 export default function InspectorCall() {
   const { callId } = useParams();
   const [showSettings, setShowSettings] = useState(false);
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [callDuration, setCallDuration] = useState(942);
+  const [hasJoined, setHasJoined] = useState(false);
+  const [inspectorName, setInspectorName] = useState("");
 
   const { data: call } = useQuery({
     queryKey: ["/api/calls", callId],
@@ -48,6 +52,67 @@ export default function InspectorCall() {
     const secs = seconds % 60;
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
+
+  const handleJoinCall = () => {
+    if (inspectorName.trim()) {
+      setHasJoined(true);
+    }
+  };
+
+  // Show join screen if not yet joined
+  if (!hasJoined) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center">
+                <Video className="w-8 h-8 text-primary-foreground" />
+              </div>
+            </div>
+            <CardTitle className="text-2xl" data-testid="title-join-call">Join Inspection Call</CardTitle>
+            <p className="text-muted-foreground">
+              You've been invited to join an inspection video call
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="inspector-name" className="text-sm font-medium">Your Name</label>
+              <input
+                id="inspector-name"
+                type="text"
+                className="w-full px-3 py-2 border border-border rounded-md bg-background"
+                value={inspectorName}
+                onChange={(e) => setInspectorName(e.target.value)}
+                placeholder="Enter your name"
+                data-testid="input-inspector-name"
+              />
+            </div>
+            
+            <div className="bg-muted p-3 rounded-md text-sm">
+              <div className="flex items-center space-x-2 mb-2">
+                <UserCheck className="w-4 h-4 text-primary" />
+                <span className="font-medium">Call Information</span>
+              </div>
+              <p className="text-muted-foreground">
+                Site: Building A - Floor 3<br />
+                Coordinator: Sarah Johnson
+              </p>
+            </div>
+
+            <Button 
+              onClick={handleJoinCall} 
+              className="w-full" 
+              disabled={!inspectorName.trim()}
+              data-testid="button-join-inspection-call"
+            >
+              Join Inspection Call
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-background">
