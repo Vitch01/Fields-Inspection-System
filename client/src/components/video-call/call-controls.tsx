@@ -20,6 +20,7 @@ interface CallControlsProps {
   onOpenSettings: () => void;
   onEndCall: () => void;
   onImageClick: (image: any) => void;
+  onCaptureImage?: () => void;
   isCoordinator: boolean;
 }
 
@@ -32,6 +33,7 @@ export default function CallControls({
   onOpenSettings,
   onEndCall,
   onImageClick,
+  onCaptureImage,
   isCoordinator,
 }: CallControlsProps) {
   return (
@@ -79,6 +81,17 @@ export default function CallControls({
 
         {/* Right Controls */}
         <div className="flex items-center space-x-3">
+          {isCoordinator && onCaptureImage && (
+            <Button 
+              variant="default"
+              onClick={onCaptureImage}
+              data-testid="button-capture-image"
+            >
+              <Camera className="w-4 h-4 mr-2" />
+              Capture Photo
+            </Button>
+          )}
+          
           <Button 
             variant="secondary"
             data-testid="button-open-chat"

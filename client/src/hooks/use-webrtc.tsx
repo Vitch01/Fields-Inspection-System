@@ -36,8 +36,21 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
   async function initializeLocalStream() {
     try {
+      // Use rear camera for inspector, front camera for coordinator
+      const videoConstraints = userRole === "inspector" 
+        ? { 
+            width: { ideal: 1920 }, 
+            height: { ideal: 1080 },
+            facingMode: { exact: "environment" } // Rear camera
+          }
+        : { 
+            width: 1280, 
+            height: 720,
+            facingMode: "user" // Front camera
+          };
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720 },
+        video: videoConstraints,
         audio: { echoCancellation: true, noiseSuppression: true },
       });
       
@@ -45,6 +58,22 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       localStreamRef.current = stream;
     } catch (error) {
       console.error("Failed to get local stream:", error);
+      
+      // Fallback for inspector if rear camera fails
+      if (userRole === "inspector") {
+        try {
+          const fallbackStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+            audio: { echoCancellation: true, noiseSuppression: true },
+          });
+          setLocalStream(fallbackStream);
+          localStreamRef.current = fallbackStream;
+          return;
+        } catch (fallbackError) {
+          console.error("Fallback camera failed:", fallbackError);
+        }
+      }
+      
       toast({
         title: "Camera/Microphone Access Denied",
         description: "Please allow camera and microphone access to join the call",

@@ -135,6 +135,7 @@ export default function CoordinatorCall() {
         onOpenSettings={() => setShowSettings(true)}
         onEndCall={endCall}
         onImageClick={setSelectedImage}
+        onCaptureImage={captureImage}
         isCoordinator={true}
       />
 
