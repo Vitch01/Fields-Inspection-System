@@ -66,10 +66,10 @@ export default function VideoDisplay({
 
 
   return (
-    <div className="relative h-full bg-slate-900 overflow-hidden flex items-center justify-center">
+    <div className="relative h-full bg-slate-900 overflow-hidden">
       {/* Remote Video Feed (Main) */}
       <div 
-        className={`relative w-full h-full transition-transform duration-500 ${
+        className={`absolute inset-0 video-container transition-transform duration-500 ${
           isCoordinator && videoAspectRatio > 1 ? 'rotate-90' : ''
         }`}
       >
