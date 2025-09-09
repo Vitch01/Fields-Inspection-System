@@ -7,21 +7,20 @@ interface VideoDisplayProps {
   remoteStream: MediaStream | null;
   isCoordinator: boolean;
   onCaptureImage: () => void;
-  onOrientationChange?: (isLandscape: boolean) => void;
 }
 
 export default function VideoDisplay({ 
   localStream, 
   remoteStream, 
   isCoordinator, 
-  onCaptureImage,
-  onOrientationChange
+  onCaptureImage
 }: VideoDisplayProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [captureFlash, setCaptureFlash] = useState(false);
   const [videoAspectRatio, setVideoAspectRatio] = useState<number>(16/9);
   const [containerDimensions, setContainerDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
+  const [isInspectorLandscape, setIsInspectorLandscape] = useState(false);
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -38,44 +37,24 @@ export default function VideoDisplay({
       const handleLoadedMetadata = () => {
         if (video.videoWidth && video.videoHeight) {
           const aspectRatio = video.videoWidth / video.videoHeight;
-          console.log("Video dimensions:", video.videoWidth, "x", video.videoHeight, "aspect ratio:", aspectRatio);
           setVideoAspectRatio(aspectRatio);
           
-          // Notify parent about orientation change if coordinator
-          if (isCoordinator && onOrientationChange) {
-            const isLandscape = aspectRatio > 1;
-            console.log("Orientation change detected:", isLandscape ? "landscape" : "portrait");
-            onOrientationChange(isLandscape);
-          }
-        }
-      };
-
-      // Also listen for resize events on the video element
-      const handleResize = () => {
-        if (video.videoWidth && video.videoHeight) {
-          const aspectRatio = video.videoWidth / video.videoHeight;
-          console.log("Video resize:", video.videoWidth, "x", video.videoHeight, "aspect ratio:", aspectRatio);
-          setVideoAspectRatio(aspectRatio);
-          
-          if (isCoordinator && onOrientationChange) {
-            const isLandscape = aspectRatio > 1;
-            console.log("Orientation change on resize:", isLandscape ? "landscape" : "portrait");
-            onOrientationChange(isLandscape);
+          // Track if inspector is in landscape mode
+          if (isCoordinator) {
+            setIsInspectorLandscape(aspectRatio > 1);
           }
         }
       };
       
       video.addEventListener('loadedmetadata', handleLoadedMetadata);
-      video.addEventListener('resize', handleResize);
       
       return () => {
         video.removeEventListener('loadedmetadata', handleLoadedMetadata);
-        video.removeEventListener('resize', handleResize);
       };
     }
   }, [remoteStream]);
 
-  // Also monitor for track setting changes which might indicate orientation changes
+  // Monitor for track setting changes for orientation detection
   useEffect(() => {
     if (remoteStream && isCoordinator) {
       const videoTrack = remoteStream.getVideoTracks()[0];
@@ -84,26 +63,18 @@ export default function VideoDisplay({
           const settings = videoTrack.getSettings();
           if (settings.width && settings.height) {
             const aspectRatio = settings.width / settings.height;
-            console.log("Track settings:", settings.width, "x", settings.height, "aspect ratio:", aspectRatio);
             setVideoAspectRatio(aspectRatio);
-            
-            if (onOrientationChange) {
-              const isLandscape = aspectRatio > 1;
-              console.log("Track orientation change:", isLandscape ? "landscape" : "portrait");
-              onOrientationChange(isLandscape);
-            }
+            setIsInspectorLandscape(aspectRatio > 1);
           }
         };
         
-        // Check immediately
+        // Check immediately and periodically
         checkOrientation();
-        
-        // Monitor for changes
         const interval = setInterval(checkOrientation, 1000);
         return () => clearInterval(interval);
       }
     }
-  }, [remoteStream, isCoordinator, onOrientationChange]);
+  }, [remoteStream, isCoordinator]);
 
   // Handle window resize for responsive video
   useEffect(() => {
@@ -164,7 +135,9 @@ export default function VideoDisplay({
     <div className="relative h-full bg-slate-900 overflow-hidden flex items-center justify-center">
       {/* Remote Video Feed (Main) */}
       <div 
-        className="relative video-container"
+        className={`relative video-container transition-transform duration-500 ${
+          isCoordinator && isInspectorLandscape ? 'rotate-90' : ''
+        }`}
         style={getVideoContainerStyle()}
       >
         <video
@@ -204,7 +177,7 @@ export default function VideoDisplay({
           </div>
           <div className="text-xs opacity-80">
             {isCoordinator 
-              ? `${videoAspectRatio > 1 ? 'Landscape' : 'Portrait'} • ${Math.round(videoAspectRatio * 100) / 100}:1`
+              ? `${isInspectorLandscape ? 'Landscape' : 'Portrait'} • ${Math.round(videoAspectRatio * 100) / 100}:1`
               : "Broadcasting to Coordinator"
             }
           </div>
