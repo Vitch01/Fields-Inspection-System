@@ -75,6 +75,36 @@ export default function VideoDisplay({
     }
   }, [remoteStream]);
 
+  // Also monitor for track setting changes which might indicate orientation changes
+  useEffect(() => {
+    if (remoteStream && isCoordinator) {
+      const videoTrack = remoteStream.getVideoTracks()[0];
+      if (videoTrack) {
+        const checkOrientation = () => {
+          const settings = videoTrack.getSettings();
+          if (settings.width && settings.height) {
+            const aspectRatio = settings.width / settings.height;
+            console.log("Track settings:", settings.width, "x", settings.height, "aspect ratio:", aspectRatio);
+            setVideoAspectRatio(aspectRatio);
+            
+            if (onOrientationChange) {
+              const isLandscape = aspectRatio > 1;
+              console.log("Track orientation change:", isLandscape ? "landscape" : "portrait");
+              onOrientationChange(isLandscape);
+            }
+          }
+        };
+        
+        // Check immediately
+        checkOrientation();
+        
+        // Monitor for changes
+        const interval = setInterval(checkOrientation, 1000);
+        return () => clearInterval(interval);
+      }
+    }
+  }, [remoteStream, isCoordinator, onOrientationChange]);
+
   // Handle window resize for responsive video
   useEffect(() => {
     const handleResize = () => {
