@@ -18,6 +18,8 @@ export default function VideoDisplay({
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [captureFlash, setCaptureFlash] = useState(false);
+  const [videoAspectRatio, setVideoAspectRatio] = useState<number>(16/9);
+  const [containerDimensions, setContainerDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -28,8 +30,33 @@ export default function VideoDisplay({
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
+      
+      // Listen for video metadata to get actual dimensions
+      const video = remoteVideoRef.current;
+      const handleLoadedMetadata = () => {
+        if (video.videoWidth && video.videoHeight) {
+          const aspectRatio = video.videoWidth / video.videoHeight;
+          setVideoAspectRatio(aspectRatio);
+        }
+      };
+      
+      video.addEventListener('loadedmetadata', handleLoadedMetadata);
+      
+      return () => {
+        video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      };
     }
   }, [remoteStream]);
+
+  // Handle window resize for responsive video
+  useEffect(() => {
+    const handleResize = () => {
+      setContainerDimensions({ width: window.innerWidth, height: window.innerHeight });
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleCaptureImage = () => {
     setCaptureFlash(true);
@@ -47,16 +74,48 @@ export default function VideoDisplay({
     }
   };
 
+  // Calculate container style based on video aspect ratio
+  const getVideoContainerStyle = () => {
+    if (!isCoordinator) {
+      // Inspector shows their own video full screen
+      return { width: '100%', height: '100%' };
+    }
+    
+    // Coordinator adapts to inspector's video aspect ratio
+    const containerAspectRatio = containerDimensions.width / containerDimensions.height;
+    
+    if (videoAspectRatio > containerAspectRatio) {
+      // Video is wider than container - fit by width
+      return {
+        width: '100%',
+        height: `${100 / videoAspectRatio * containerAspectRatio}%`,
+        top: '50%',
+        transform: 'translateY(-50%)'
+      };
+    } else {
+      // Video is taller than container - fit by height
+      return {
+        height: '100%',
+        width: `${videoAspectRatio * 100 / containerAspectRatio}%`,
+        left: '50%',
+        transform: 'translateX(-50%)'
+      };
+    }
+  };
+
   return (
-    <div className="relative h-full bg-slate-900 overflow-hidden">
+    <div className="relative h-full bg-slate-900 overflow-hidden flex items-center justify-center">
       {/* Remote Video Feed (Main) */}
-      <div className="absolute inset-0 video-container">
+      <div 
+        className="relative video-container"
+        style={getVideoContainerStyle()}
+      >
         <video
           ref={remoteVideoRef}
           autoPlay
           playsInline
           muted={isCoordinator} // Coordinator doesn't hear their own audio
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain"
           data-testid="video-remote-stream"
         />
         
@@ -87,7 +146,10 @@ export default function VideoDisplay({
             {isCoordinator ? "Field Inspector" : "Your View"}
           </div>
           <div className="text-xs opacity-80">
-            {isCoordinator ? "Site: Building A - Floor 3" : "Broadcasting to Coordinator"}
+            {isCoordinator 
+              ? `${videoAspectRatio > 1 ? 'Landscape' : 'Portrait'} • ${Math.round(videoAspectRatio * 100) / 100}:1`
+              : "Broadcasting to Coordinator"
+            }
           </div>
         </div>
       </div>
