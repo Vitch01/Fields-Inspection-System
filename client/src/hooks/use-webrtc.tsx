@@ -248,8 +248,18 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       // Upload image to server
       const formData = new FormData();
       formData.append('image', imageBlob, `inspection-${Date.now()}.jpg`);
+      formData.append('filename', `inspection-${Date.now()}.jpg`);
       
-      await apiRequest("POST", `/api/calls/${callId}/images`, formData);
+      const response = await fetch(`/api/calls/${callId}/images`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
       
       // Notify other participants
       sendMessage({
