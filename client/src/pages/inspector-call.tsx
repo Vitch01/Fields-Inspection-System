@@ -1,0 +1,115 @@
+import { useParams } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import VideoDisplay from "@/components/video-call/video-display";
+import CallControls from "@/components/video-call/call-controls";
+import SettingsModal from "@/components/video-call/settings-modal";
+import ImageViewerModal from "@/components/video-call/image-viewer-modal";
+import { useWebRTC } from "@/hooks/use-webrtc";
+import { useState } from "react";
+import { Clock, Signal } from "lucide-react";
+
+export default function InspectorCall() {
+  const { callId } = useParams();
+  const [showSettings, setShowSettings] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<any>(null);
+  const [callDuration, setCallDuration] = useState(942);
+
+  const { data: call } = useQuery({
+    queryKey: ["/api/calls", callId],
+    enabled: !!callId,
+  });
+
+  const {
+    localStream,
+    remoteStream,
+    isConnected,
+    isMuted,
+    isVideoEnabled,
+    toggleMute,
+    toggleVideo,
+    captureImage,
+    endCall,
+  } = useWebRTC(callId!, "inspector");
+
+  const { data: capturedImages = [] } = useQuery<any[]>({
+    queryKey: ["/api/calls", callId, "images"],
+    enabled: !!callId,
+  });
+
+  useState(() => {
+    const interval = setInterval(() => {
+      setCallDuration(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  });
+
+  const formatDuration = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="flex flex-col h-screen bg-background">
+      {/* Header */}
+      <header className="bg-card border-b border-border px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2">
+            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 connection-indicator' : 'bg-red-500'}`}></div>
+            <span className="text-sm font-medium text-muted-foreground">
+              {isConnected ? 'Connected' : 'Connecting...'}
+            </span>
+          </div>
+          <div className="text-sm text-muted-foreground">
+            <Clock className="w-4 h-4 inline mr-1" />
+            <span data-testid="text-call-duration">{formatDuration(callDuration)}</span>
+          </div>
+        </div>
+        
+        <div className="flex items-center space-x-4">
+          <div className="text-sm font-medium">
+            Coordinator: <span className="text-primary" data-testid="text-coordinator-name">Sarah Johnson</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <Signal className="w-4 h-4 text-green-500" />
+            <span className="text-xs text-muted-foreground">Excellent</span>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Video Area */}
+      <main className="flex-1">
+        <VideoDisplay
+          localStream={localStream}
+          remoteStream={remoteStream}
+          isCoordinator={false}
+          onCaptureImage={captureImage}
+        />
+      </main>
+
+      {/* Bottom Control Bar */}
+      <CallControls
+        isMuted={isMuted}
+        isVideoEnabled={isVideoEnabled}
+        capturedImages={capturedImages}
+        onToggleMute={toggleMute}
+        onToggleVideo={toggleVideo}
+        onOpenSettings={() => setShowSettings(true)}
+        onEndCall={endCall}
+        onImageClick={setSelectedImage}
+        isCoordinator={false}
+      />
+
+      {/* Modals */}
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
+
+      <ImageViewerModal
+        image={selectedImage}
+        onClose={() => setSelectedImage(null)}
+      />
+    </div>
+  );
+}
