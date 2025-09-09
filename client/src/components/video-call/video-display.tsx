@@ -66,10 +66,10 @@ export default function VideoDisplay({
 
 
   return (
-    <div className="relative h-full bg-slate-900 overflow-hidden">
+    <div className="relative h-full bg-slate-900 overflow-hidden flex items-center justify-center">
       {/* Remote Video Feed (Main) */}
       <div 
-        className={`absolute inset-0 video-container transition-transform duration-500 ${
+        className={`relative w-full h-full transition-transform duration-500 ${
           isCoordinator && videoAspectRatio > 1 ? 'rotate-90' : ''
         }`}
       >
@@ -78,7 +78,7 @@ export default function VideoDisplay({
           autoPlay
           playsInline
           muted={isCoordinator} // Coordinator doesn't hear their own audio
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain"
           data-testid="video-remote-stream"
         />
         
