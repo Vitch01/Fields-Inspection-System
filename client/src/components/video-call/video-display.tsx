@@ -38,19 +38,39 @@ export default function VideoDisplay({
       const handleLoadedMetadata = () => {
         if (video.videoWidth && video.videoHeight) {
           const aspectRatio = video.videoWidth / video.videoHeight;
+          console.log("Video dimensions:", video.videoWidth, "x", video.videoHeight, "aspect ratio:", aspectRatio);
           setVideoAspectRatio(aspectRatio);
           
           // Notify parent about orientation change if coordinator
           if (isCoordinator && onOrientationChange) {
-            onOrientationChange(aspectRatio > 1);
+            const isLandscape = aspectRatio > 1;
+            console.log("Orientation change detected:", isLandscape ? "landscape" : "portrait");
+            onOrientationChange(isLandscape);
+          }
+        }
+      };
+
+      // Also listen for resize events on the video element
+      const handleResize = () => {
+        if (video.videoWidth && video.videoHeight) {
+          const aspectRatio = video.videoWidth / video.videoHeight;
+          console.log("Video resize:", video.videoWidth, "x", video.videoHeight, "aspect ratio:", aspectRatio);
+          setVideoAspectRatio(aspectRatio);
+          
+          if (isCoordinator && onOrientationChange) {
+            const isLandscape = aspectRatio > 1;
+            console.log("Orientation change on resize:", isLandscape ? "landscape" : "portrait");
+            onOrientationChange(isLandscape);
           }
         }
       };
       
       video.addEventListener('loadedmetadata', handleLoadedMetadata);
+      video.addEventListener('resize', handleResize);
       
       return () => {
         video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        video.removeEventListener('resize', handleResize);
       };
     }
   }, [remoteStream]);

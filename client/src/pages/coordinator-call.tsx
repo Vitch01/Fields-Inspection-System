@@ -16,6 +16,12 @@ export default function CoordinatorCall() {
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [callDuration, setCallDuration] = useState(942); // seconds
   const [shouldRotateScreen, setShouldRotateScreen] = useState(false);
+
+  // Debug orientation changes
+  const handleOrientationChange = (isLandscape: boolean) => {
+    console.log("Coordinator screen rotation:", isLandscape ? "landscape" : "portrait");
+    setShouldRotateScreen(isLandscape);
+  };
   const { toast } = useToast();
 
   const { data: call } = useQuery({
@@ -81,16 +87,19 @@ export default function CoordinatorCall() {
 
   return (
     <div 
-      className={`flex flex-col h-screen bg-background transition-transform duration-500 ${
-        shouldRotateScreen ? 'rotate-90 origin-center' : ''
+      className={`flex flex-col h-screen bg-background transition-transform duration-700 ${
+        shouldRotateScreen ? 'fixed inset-0' : ''
       }`}
       style={shouldRotateScreen ? {
+        transformOrigin: 'center center',
+        transform: 'rotate(90deg)',
         width: '100vh',
         height: '100vw',
         position: 'fixed',
         top: '50%',
         left: '50%',
-        transform: 'translate(-50%, -50%) rotate(90deg)'
+        marginTop: '-50vw',
+        marginLeft: '-50vh'
       } : {}}
     >
       {/* Header with Call Status */}
@@ -112,6 +121,14 @@ export default function CoordinatorCall() {
           <div className="text-sm font-medium">
             Inspector: <span className="text-primary" data-testid="text-inspector-name">John Martinez</span>
           </div>
+          <Button 
+            size="sm" 
+            variant={shouldRotateScreen ? "destructive" : "outline"}
+            onClick={() => setShouldRotateScreen(!shouldRotateScreen)}
+            data-testid="button-test-rotation"
+          >
+            {shouldRotateScreen ? "Portrait" : "Landscape"} Test
+          </Button>
           <div className="flex items-center space-x-2">
             <Button 
               size="sm" 
@@ -146,7 +163,7 @@ export default function CoordinatorCall() {
           remoteStream={remoteStream}
           isCoordinator={true}
           onCaptureImage={captureImage}
-          onOrientationChange={setShouldRotateScreen}
+          onOrientationChange={handleOrientationChange}
         />
       </main>
 
