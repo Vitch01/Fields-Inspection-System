@@ -35,10 +35,8 @@ export default function InspectorCall() {
     endCall,
   } = useWebRTC(callId!, "inspector");
 
-  const { data: capturedImages = [] } = useQuery<any[]>({
-    queryKey: ["/api/calls", callId, "images"],
-    enabled: !!callId,
-  });
+  // Inspector doesn't need to fetch captured images
+  const capturedImages: any[] = [];
 
   useState(() => {
     const interval = setInterval(() => {

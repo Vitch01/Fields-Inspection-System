@@ -30,14 +30,25 @@ export default function CoordinatorCall() {
     isVideoEnabled,
     toggleMute,
     toggleVideo,
-    captureImage,
+    captureImage: originalCaptureImage,
     endCall,
   } = useWebRTC(callId!, "coordinator");
 
-  const { data: capturedImages = [] } = useQuery<any[]>({
+  const { data: capturedImages = [], refetch: refetchImages } = useQuery<any[]>({
     queryKey: ["/api/calls", callId, "images"],
     enabled: !!callId,
   });
+
+  // Enhanced capture function that refreshes images immediately
+  const captureImage = async () => {
+    try {
+      await originalCaptureImage();
+      // Immediately refresh the images to show the new capture
+      await refetchImages();
+    } catch (error) {
+      console.error("Failed to capture and refresh:", error);
+    }
+  };
 
   // Mock call timer
   useState(() => {

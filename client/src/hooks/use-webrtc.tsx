@@ -266,7 +266,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         type: "capture-image",
         callId,
         userId: userRole,
-        data: { timestamp: Date.now() },
+        data: { timestamp: Date.now(), imageId: result.id },
       });
 
       toast({
@@ -275,6 +275,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           ? "Inspector's camera view captured successfully"
           : "Inspection image saved successfully",
       });
+
+      // Return the captured image data for immediate display
+      return result;
     } catch (error) {
       console.error("Failed to capture image:", error);
       toast({

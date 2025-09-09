@@ -111,11 +111,13 @@ export default function CallControls({
         </div>
       </div>
 
-      {/* Captured Images Gallery */}
-      <CapturedImagesGallery
-        images={capturedImages}
-        onImageClick={onImageClick}
-      />
+      {/* Captured Images Gallery - Only for Coordinators */}
+      {isCoordinator && (
+        <CapturedImagesGallery
+          images={capturedImages}
+          onImageClick={onImageClick}
+        />
+      )}
     </div>
   );
 }
