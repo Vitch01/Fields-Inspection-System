@@ -7,13 +7,15 @@ interface VideoDisplayProps {
   remoteStream: MediaStream | null;
   isCoordinator: boolean;
   onCaptureImage: () => void;
+  onOrientationChange?: (isLandscape: boolean) => void;
 }
 
 export default function VideoDisplay({ 
   localStream, 
   remoteStream, 
   isCoordinator, 
-  onCaptureImage
+  onCaptureImage,
+  onOrientationChange
 }: VideoDisplayProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -36,6 +38,12 @@ export default function VideoDisplay({
         if (video.videoWidth && video.videoHeight) {
           const aspectRatio = video.videoWidth / video.videoHeight;
           setVideoAspectRatio(aspectRatio);
+          
+          // Notify coordinator about orientation change
+          if (isCoordinator && onOrientationChange) {
+            const isLandscape = aspectRatio > 1;
+            onOrientationChange(isLandscape);
+          }
         }
       };
       
@@ -68,11 +76,7 @@ export default function VideoDisplay({
   return (
     <div className="relative h-full bg-slate-900 overflow-hidden">
       {/* Remote Video Feed (Main) */}
-      <div 
-        className={`absolute inset-0 video-container transition-transform duration-500 ${
-          isCoordinator && videoAspectRatio > 1 ? 'rotate-90' : ''
-        }`}
-      >
+      <div className="absolute inset-0 video-container">
         <video
           ref={remoteVideoRef}
           autoPlay

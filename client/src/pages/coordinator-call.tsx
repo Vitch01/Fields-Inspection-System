@@ -15,6 +15,7 @@ export default function CoordinatorCall() {
   const [showSettings, setShowSettings] = useState(false);
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [callDuration, setCallDuration] = useState(942); // seconds
+  const [isInspectorLandscape, setIsInspectorLandscape] = useState(false);
   const { toast } = useToast();
 
   const { data: call } = useQuery({
@@ -79,7 +80,11 @@ export default function CoordinatorCall() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div 
+      className={`flex flex-col h-screen bg-background transition-transform duration-500 ${
+        isInspectorLandscape ? 'rotate-90' : ''
+      }`}
+    >
       {/* Header with Call Status */}
       <header className="bg-card border-b border-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-3">
@@ -133,6 +138,7 @@ export default function CoordinatorCall() {
           remoteStream={remoteStream}
           isCoordinator={true}
           onCaptureImage={captureImage}
+          onOrientationChange={setIsInspectorLandscape}
         />
       </main>
 
