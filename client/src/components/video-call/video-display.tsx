@@ -7,13 +7,15 @@ interface VideoDisplayProps {
   remoteStream: MediaStream | null;
   isCoordinator: boolean;
   onCaptureImage: () => void;
+  onRotationChange?: (rotation: number) => void;
 }
 
 export default function VideoDisplay({ 
   localStream, 
   remoteStream, 
   isCoordinator, 
-  onCaptureImage
+  onCaptureImage,
+  onRotationChange
 }: VideoDisplayProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -39,27 +41,42 @@ export default function VideoDisplay({
     }
   };
 
+  // Notify parent of initial rotation state and when video aspect ratio changes
+  useEffect(() => {
+    const currentRotationClass = getRotationClass(videoAspectRatio, manualRotation);
+    const isRotated = currentRotationClass !== '';
+    onRotationChange?.(isRotated ? manualRotation || 90 : 0);
+  }, [videoAspectRatio, manualRotation, onRotationChange]);
+
   const rotateClockwise = () => {
     setManualRotation(prev => {
-      switch (prev) {
-        case 0: return 90;
-        case 90: return 180;
-        case 180: return -90;
-        case -90: return 0;
-        default: return 90;
-      }
+      const newRotation = (() => {
+        switch (prev) {
+          case 0: return 90;
+          case 90: return 180;
+          case 180: return -90;
+          case -90: return 0;
+          default: return 90;
+        }
+      })();
+      onRotationChange?.(newRotation);
+      return newRotation;
     });
   };
 
   const rotateCounterclockwise = () => {
     setManualRotation(prev => {
-      switch (prev) {
-        case 0: return -90;
-        case -90: return 180;
-        case 180: return 90;
-        case 90: return 0;
-        default: return -90;
-      }
+      const newRotation = (() => {
+        switch (prev) {
+          case 0: return -90;
+          case -90: return 180;
+          case 180: return 90;
+          case 90: return 0;
+          default: return -90;
+        }
+      })();
+      onRotationChange?.(newRotation);
+      return newRotation;
     });
   };
 

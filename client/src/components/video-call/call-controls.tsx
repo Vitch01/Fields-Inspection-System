@@ -22,6 +22,7 @@ interface CallControlsProps {
   onImageClick: (image: any) => void;
   onCaptureImage?: () => void;
   isCoordinator: boolean;
+  videoRotation?: number;
 }
 
 export default function CallControls({
@@ -35,6 +36,7 @@ export default function CallControls({
   onImageClick,
   onCaptureImage,
   isCoordinator,
+  videoRotation = 0,
 }: CallControlsProps) {
   return (
     <div className="bg-card border-t border-border p-4">
@@ -116,6 +118,7 @@ export default function CallControls({
         <CapturedImagesGallery
           images={capturedImages}
           onImageClick={onImageClick}
+          videoRotation={videoRotation}
         />
       )}
     </div>

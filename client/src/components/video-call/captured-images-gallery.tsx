@@ -1,12 +1,14 @@
 import { Button } from "@/components/ui/button";
 import { Download, Share, Plus } from "lucide-react";
+import { getImageRotationClass } from "@/lib/webrtc-utils";
 
 interface CapturedImagesGalleryProps {
   images: any[];
   onImageClick: (image: any) => void;
+  videoRotation?: number;
 }
 
-export default function CapturedImagesGallery({ images, onImageClick }: CapturedImagesGalleryProps) {
+export default function CapturedImagesGallery({ images, onImageClick, videoRotation = 0 }: CapturedImagesGalleryProps) {
   return (
     <div className="border-t border-border pt-4">
       <div className="flex items-center justify-between mb-3">
@@ -27,7 +29,7 @@ export default function CapturedImagesGallery({ images, onImageClick }: Captured
             <img 
               src={image.thumbnailUrl || image.originalUrl}
               alt={`Captured inspection image ${index + 1}`}
-              className="w-20 h-16 object-cover rounded border-2 border-border group-hover:border-primary transition-colors"
+              className={`w-20 h-16 object-cover rounded border-2 border-border group-hover:border-primary transition-all duration-500 ${getImageRotationClass(videoRotation)}`}
             />
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 rounded transition-colors"></div>
             <div className="absolute bottom-1 right-1 bg-primary text-primary-foreground text-xs px-1 rounded">

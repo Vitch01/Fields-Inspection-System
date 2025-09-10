@@ -15,6 +15,7 @@ export default function CoordinatorCall() {
   const [showSettings, setShowSettings] = useState(false);
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [callDuration, setCallDuration] = useState(942); // seconds
+  const [videoRotation, setVideoRotation] = useState(0); // Track video rotation state
   const { toast } = useToast();
 
   const { data: call } = useQuery({
@@ -133,6 +134,7 @@ export default function CoordinatorCall() {
           remoteStream={remoteStream}
           isCoordinator={true}
           onCaptureImage={captureImage}
+          onRotationChange={setVideoRotation}
         />
       </main>
 
@@ -148,6 +150,7 @@ export default function CoordinatorCall() {
         onImageClick={setSelectedImage}
         onCaptureImage={captureImage}
         isCoordinator={true}
+        videoRotation={videoRotation}
       />
 
       {/* Modals */}
@@ -159,6 +162,7 @@ export default function CoordinatorCall() {
       <ImageViewerModal
         image={selectedImage}
         onClose={() => setSelectedImage(null)}
+        videoRotation={videoRotation}
       />
     </div>
   );

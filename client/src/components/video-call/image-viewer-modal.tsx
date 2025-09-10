@@ -1,13 +1,15 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Download, Edit, X } from "lucide-react";
+import { getImageRotationClass } from "@/lib/webrtc-utils";
 
 interface ImageViewerModalProps {
   image: any;
   onClose: () => void;
+  videoRotation?: number;
 }
 
-export default function ImageViewerModal({ image, onClose }: ImageViewerModalProps) {
+export default function ImageViewerModal({ image, onClose, videoRotation = 0 }: ImageViewerModalProps) {
   if (!image) return null;
 
   const handleDownload = () => {
@@ -38,7 +40,7 @@ export default function ImageViewerModal({ image, onClose }: ImageViewerModalPro
             <img 
               src={image.originalUrl}
               alt={`Inspection image - ${image.filename}`}
-              className="max-w-full max-h-full object-contain"
+              className={`max-w-full max-h-full object-contain transition-transform duration-500 ${getImageRotationClass(videoRotation)}`}
               data-testid="image-full-size"
             />
           </div>

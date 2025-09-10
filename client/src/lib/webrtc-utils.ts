@@ -123,3 +123,13 @@ export function getMediaConstraints(quality: 'low' | 'medium' | 'high') {
 
   return constraints;
 }
+
+// Utility function to get rotation class for images based on video rotation
+export function getImageRotationClass(videoRotation: number): string {
+  switch (videoRotation) {
+    case 90: return 'rotate-90';
+    case -90: return '-rotate-90';
+    case 180: return 'rotate-180';
+    default: return '';
+  }
+}
