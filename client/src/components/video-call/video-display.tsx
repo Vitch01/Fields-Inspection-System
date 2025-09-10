@@ -198,7 +198,9 @@ export default function VideoDisplay({
           className={`${
             isFullscreen 
               ? getFullscreenVideoClass()
-              : 'w-full h-full'
+              : isCoordinator
+                ? 'w-[120%] h-[120%]' // Larger size for coordinator
+                : 'w-full h-full'
           } object-contain transition-transform duration-500 ${
             isCoordinator ? getRotationClass(videoAspectRatio, manualRotation) : ''
           }`}
