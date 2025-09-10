@@ -9,6 +9,7 @@ export interface IStorage {
   getCall(id: string): Promise<Call | undefined>;
   createCall(call: InsertCall): Promise<Call>;
   updateCallStatus(id: string, status: string, endedAt?: Date): Promise<Call | undefined>;
+  updateCallLocation(id: string, locationData: any): Promise<boolean>;
   getActiveCallForUser(userId: string): Promise<Call | undefined>;
   
   getCapturedImages(callId: string): Promise<CapturedImage[]>;
@@ -80,6 +81,7 @@ export class MemStorage implements IStorage {
       endedAt: null,
       status: insertCall.status || "pending",
       siteLocation: insertCall.siteLocation || null,
+      inspectorLocation: null,
       metadata: insertCall.metadata || null,
     };
     this.calls.set(id, call);
@@ -97,6 +99,18 @@ export class MemStorage implements IStorage {
     };
     this.calls.set(id, updatedCall);
     return updatedCall;
+  }
+
+  async updateCallLocation(id: string, locationData: any): Promise<boolean> {
+    const call = this.calls.get(id);
+    if (!call) return false;
+    
+    const updatedCall = { 
+      ...call, 
+      inspectorLocation: locationData 
+    };
+    this.calls.set(id, updatedCall);
+    return true;
   }
 
   async getActiveCallForUser(userId: string): Promise<Call | undefined> {

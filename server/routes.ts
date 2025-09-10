@@ -170,6 +170,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Location tracking routes
+  app.post('/api/calls/:callId/location', async (req, res) => {
+    try {
+      const { callId } = req.params;
+      const locationData = req.body;
+      
+      const success = await storage.updateCallLocation(callId, locationData);
+      if (!success) {
+        return res.status(404).json({ message: 'Call not found' });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: 'Failed to update location' });
+    }
+  });
+
   // Image capture routes
   app.post('/api/calls/:callId/images', upload.single('image'), async (req, res) => {
     try {

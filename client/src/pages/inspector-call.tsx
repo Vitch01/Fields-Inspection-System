@@ -51,8 +51,43 @@ export default function InspectorCall() {
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleJoinCall = () => {
+  const handleJoinCall = async () => {
     if (inspectorName.trim()) {
+      // Capture inspector's location when joining
+      if (navigator.geolocation) {
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 5000,
+              maximumAge: 0
+            });
+          });
+          
+          const locationData = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            timestamp: new Date().toISOString()
+          };
+          
+          // Send location to server
+          try {
+            await fetch(`/api/calls/${callId}/location`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(locationData),
+            });
+          } catch (error) {
+            console.error('Failed to save location:', error);
+          }
+        } catch (error) {
+          console.error('Failed to get location:', error);
+        }
+      }
+      
       setHasJoined(true);
     }
   };
@@ -167,6 +202,7 @@ export default function InspectorCall() {
           onToggleMute={toggleMute}
           onToggleVideo={toggleVideo}
           onOpenSettings={() => setShowSettings(true)}
+          onOpenChat={() => {}} // Placeholder for inspector chat
           onEndCall={endCall}
           onImageClick={setSelectedImage}
           isCoordinator={false}
