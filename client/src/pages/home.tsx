@@ -182,12 +182,15 @@ export default function Home() {
                 <div className="space-y-2">
                   <Label htmlFor="inspector">Inspector</Label>
                   <Select value={inspectorId} onValueChange={setInspectorId}>
-                    <SelectTrigger data-testid="select-inspector">
+                    <SelectTrigger 
+                      data-testid="select-inspector"
+                      className="bg-white text-black border-black focus:ring-black focus:border-black"
+                    >
                       <SelectValue placeholder="Select inspector" />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="inspector1-id">John Martinez</SelectItem>
-                      <SelectItem value="inspector2-id">Maria Garcia</SelectItem>
+                    <SelectContent className="bg-white border-black">
+                      <SelectItem value="inspector1-id" className="text-black hover:bg-gray-100 focus:bg-gray-100">John Martinez</SelectItem>
+                      <SelectItem value="inspector2-id" className="text-black hover:bg-gray-100 focus:bg-gray-100">Maria Garcia</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
