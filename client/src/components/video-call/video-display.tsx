@@ -8,7 +8,6 @@ interface VideoDisplayProps {
   isCoordinator: boolean;
   onCaptureImage: () => void;
   onRotationChange?: (rotation: number) => void;
-  isFullscreen?: boolean;
 }
 
 export default function VideoDisplay({ 
@@ -16,8 +15,7 @@ export default function VideoDisplay({
   remoteStream, 
   isCoordinator, 
   onCaptureImage,
-  onRotationChange,
-  isFullscreen = false
+  onRotationChange
 }: VideoDisplayProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -128,7 +126,7 @@ export default function VideoDisplay({
 
 
   return (
-    <div className={`relative bg-slate-900 overflow-hidden ${isFullscreen ? 'h-screen w-screen' : 'h-full'}`}>
+    <div className="relative h-full bg-slate-900 overflow-hidden">
       {/* Remote Video Feed (Main) */}
       <div className="absolute inset-0 video-container">
         <video
@@ -189,12 +187,12 @@ export default function VideoDisplay({
           </Button>
         </div>
 
-        {/* Video Info Overlay - Smaller in fullscreen */}
-        <div className={`absolute top-4 right-4 bg-black/70 text-white px-3 py-2 rounded-md ${isFullscreen ? 'text-xs' : ''}`}>
-          <div className={`font-medium ${isFullscreen ? 'text-xs' : 'text-sm'}`}>
+        {/* Video Info Overlay */}
+        <div className="absolute top-4 right-4 bg-black/70 text-white px-3 py-2 rounded-md">
+          <div className="text-sm font-medium">
             {isCoordinator ? "Field Inspector" : "Your View"}
           </div>
-          <div className={`opacity-80 ${isFullscreen ? 'text-xs' : 'text-xs'}`}>
+          <div className="text-xs opacity-80">
             {isCoordinator 
               ? `${videoAspectRatio > 1 ? 'Landscape' : 'Portrait'} • ${Math.round(videoAspectRatio * 100) / 100}:1`
               : "Broadcasting to Coordinator"
@@ -203,12 +201,8 @@ export default function VideoDisplay({
         </div>
       </div>
 
-      {/* Local Video Feed (Picture-in-Picture) - Smaller and repositioned in fullscreen */}
-      <div className={`absolute bg-slate-800 rounded-lg overflow-hidden border-2 border-white/20 shadow-lg ${
-        isFullscreen 
-          ? 'bottom-4 right-4 w-24 h-16' 
-          : 'bottom-20 right-4 w-32 h-24 md:w-40 md:h-30'
-      }`}>
+      {/* Local Video Feed (Picture-in-Picture) */}
+      <div className="absolute bottom-20 right-4 w-32 h-24 md:w-40 md:h-30 bg-slate-800 rounded-lg overflow-hidden border-2 border-white/20 shadow-lg">
         <video
           ref={localVideoRef}
           autoPlay
@@ -222,18 +216,14 @@ export default function VideoDisplay({
         </div>
       </div>
 
-      {/* Floating Capture Button - Repositioned in fullscreen */}
+      {/* Floating Capture Button */}
       <Button
         size="icon"
-        className={`absolute capture-button text-white rounded-full shadow-lg ${
-          isFullscreen 
-            ? 'bottom-4 left-1/2 transform -translate-x-1/2 w-12 h-12' 
-            : 'bottom-20 left-1/2 transform -translate-x-1/2 w-16 h-16'
-        }`}
+        className="absolute bottom-20 left-1/2 transform -translate-x-1/2 w-16 h-16 capture-button text-white rounded-full shadow-lg"
         onClick={handleCaptureImage}
         data-testid="button-capture-image"
       >
-        <Camera className={isFullscreen ? 'w-5 h-5' : 'w-6 h-6'} />
+        <Camera className="w-6 h-6" />
       </Button>
 
       {/* Capture Flash Effect */}

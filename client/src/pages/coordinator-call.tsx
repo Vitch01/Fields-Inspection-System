@@ -5,7 +5,7 @@ import CallControls from "@/components/video-call/call-controls";
 import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import { useWebRTC } from "@/hooks/use-webrtc";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Clock, Signal, Users, Copy, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -16,45 +16,7 @@ export default function CoordinatorCall() {
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [callDuration, setCallDuration] = useState(942); // seconds
   const [videoRotation, setVideoRotation] = useState(0); // Track video rotation state
-  const [isLandscapeFullscreen, setIsLandscapeFullscreen] = useState(false);
   const { toast } = useToast();
-
-  // Detect landscape orientation for fullscreen mode
-  useEffect(() => {
-    const checkOrientation = () => {
-      // More robust landscape detection with minimum width threshold
-      const isLandscape = window.innerWidth > window.innerHeight && window.innerWidth >= 768;
-      console.log('Orientation check:', { 
-        width: window.innerWidth, 
-        height: window.innerHeight, 
-        isLandscape,
-        aspectRatio: window.innerWidth / window.innerHeight
-      });
-      setIsLandscapeFullscreen(isLandscape);
-    };
-
-    // Check initial orientation
-    checkOrientation();
-
-    // Listen for orientation changes with debouncing
-    const debounce = (func: Function, wait: number) => {
-      let timeout: NodeJS.Timeout;
-      return (...args: any[]) => {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => func.apply(null, args), wait);
-      };
-    };
-
-    const debouncedCheck = debounce(checkOrientation, 100);
-
-    window.addEventListener('resize', debouncedCheck);
-    window.addEventListener('orientationchange', debouncedCheck);
-
-    return () => {
-      window.removeEventListener('resize', debouncedCheck);
-      window.removeEventListener('orientationchange', debouncedCheck);
-    };
-  }, []);
 
   const { data: call } = useQuery({
     queryKey: ["/api/calls", callId],
@@ -173,7 +135,6 @@ export default function CoordinatorCall() {
           isCoordinator={true}
           onCaptureImage={captureImage}
           onRotationChange={setVideoRotation}
-          isFullscreen={isLandscapeFullscreen}
         />
       </main>
 
@@ -201,6 +162,7 @@ export default function CoordinatorCall() {
       <ImageViewerModal
         image={selectedImage}
         onClose={() => setSelectedImage(null)}
+        videoRotation={videoRotation}
       />
     </div>
   );
