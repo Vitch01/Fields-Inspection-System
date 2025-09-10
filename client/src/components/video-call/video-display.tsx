@@ -26,19 +26,32 @@ export default function VideoDisplay({
 
   // Helper function to determine rotation class
   const getRotationClass = (aspectRatio: number, rotation: number) => {
-    // Auto-rotate to landscape if video is landscape (aspectRatio > 1) OR manual rotation is set
-    const shouldRotate = aspectRatio > 1 || rotation !== 0;
-    
-    if (!shouldRotate) return '';
-    
-    // Apply manual rotation or default 90 degrees for landscape
-    const finalRotation = rotation !== 0 ? rotation : 90;
-    
-    switch (finalRotation) {
-      case 90: return 'rotate-90';
-      case -90: return '-rotate-90';
-      case 180: return 'rotate-180';
-      default: return '';
+    // For coordinator: Only apply manual rotation, ignore aspect ratio to maintain consistent settings
+    // For inspector: Keep existing behavior
+    if (isCoordinator) {
+      // Coordinator uses only manual rotation for consistent video area settings
+      if (rotation === 0) return '';
+      
+      switch (rotation) {
+        case 90: return 'rotate-90';
+        case -90: return '-rotate-90';
+        case 180: return 'rotate-180';
+        default: return '';
+      }
+    } else {
+      // Inspector keeps original auto-rotation behavior
+      const shouldRotate = aspectRatio > 1 || rotation !== 0;
+      
+      if (!shouldRotate) return '';
+      
+      const finalRotation = rotation !== 0 ? rotation : 90;
+      
+      switch (finalRotation) {
+        case 90: return 'rotate-90';
+        case -90: return '-rotate-90';
+        case 180: return 'rotate-180';
+        default: return '';
+      }
     }
   };
 
