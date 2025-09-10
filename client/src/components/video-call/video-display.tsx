@@ -211,7 +211,7 @@ export default function VideoDisplay({
             <Button 
               size="icon"
               variant="secondary"
-              className="bg-black/50 text-white hover:bg-black/70"
+              className="bg-white text-black hover:bg-gray-100 border border-gray-300"
               onClick={handleCaptureImage}
               data-testid="button-capture-image-overlay"
             >
@@ -221,7 +221,7 @@ export default function VideoDisplay({
           <Button 
             size="icon"
             variant="secondary"
-            className="bg-black/50 text-white hover:bg-black/70"
+            className="bg-white text-black hover:bg-gray-100 border border-gray-300"
             data-testid="button-toggle-remote-audio"
           >
             <ChevronsUp className="w-4 h-4" />
@@ -231,8 +231,8 @@ export default function VideoDisplay({
               <Button 
                 size="icon"
                 variant="secondary"
-                className={`text-white hover:bg-black/70 ${
-                  manualRotation !== 0 ? 'bg-blue-600' : 'bg-black/50'
+                className={`border border-gray-300 hover:bg-gray-100 ${
+                  manualRotation !== 0 ? 'bg-blue-600 text-white' : 'bg-white text-black'
                 }`}
                 onClick={rotateClockwise}
                 data-testid="button-rotate-clockwise"
@@ -242,8 +242,8 @@ export default function VideoDisplay({
               <Button 
                 size="icon"
                 variant="secondary"
-                className={`text-white hover:bg-black/70 ${
-                  manualRotation !== 0 ? 'bg-blue-600' : 'bg-black/50'
+                className={`border border-gray-300 hover:bg-gray-100 ${
+                  manualRotation !== 0 ? 'bg-blue-600 text-white' : 'bg-white text-black'
                 }`}
                 onClick={rotateCounterclockwise}
                 data-testid="button-rotate-counterclockwise"
@@ -255,7 +255,7 @@ export default function VideoDisplay({
           <Button 
             size="icon"
             variant="secondary"
-            className="bg-black/50 text-white hover:bg-black/70"
+            className="bg-white text-black hover:bg-gray-100 border border-gray-300"
             onClick={toggleFullscreen}
             data-testid="button-toggle-fullscreen"
           >
@@ -265,11 +265,11 @@ export default function VideoDisplay({
 
 
         {/* Video Info Overlay */}
-        <div className="absolute top-4 right-4 bg-black/70 text-white px-3 py-2 rounded-md">
+        <div className="absolute top-4 right-4 bg-white text-black px-3 py-2 rounded-md border border-gray-300">
           <div className="text-sm font-medium">
             {isCoordinator ? "Field Inspector" : "Your View"}
           </div>
-          <div className="text-xs opacity-80">
+          <div className="text-xs opacity-70">
             {isCoordinator 
               ? `${videoAspectRatio > 1 ? 'Landscape' : 'Portrait'} • ${Math.round(videoAspectRatio * 100) / 100}:1`
               : "Broadcasting to Coordinator"
@@ -288,7 +288,7 @@ export default function VideoDisplay({
           className="w-full h-full object-cover"
           data-testid="video-local-stream"
         />
-        <div className="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1 rounded">
+        <div className="absolute bottom-1 left-1 bg-white text-black text-xs px-1 rounded border border-gray-300">
           {isCoordinator ? "You" : "You"}
         </div>
       </div>
