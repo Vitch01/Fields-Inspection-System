@@ -118,62 +118,55 @@ export default function CoordinatorCall() {
   };
 
   return (
-    <div className={`flex flex-col h-screen bg-background ${isLandscapeFullscreen ? 'fixed inset-0 z-50' : ''}`}>
-      {/* Debug info */}
-      <div className="fixed top-0 left-0 bg-red-500 text-white p-2 z-50 text-xs">
-        Landscape: {isLandscapeFullscreen ? 'YES' : 'NO'} ({window.innerWidth}x{window.innerHeight})
-      </div>
-      
-      {/* Header with Call Status - Hidden in landscape fullscreen */}
-      {!isLandscapeFullscreen && (
-        <header className="bg-card border-b border-border px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-2">
-              <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 connection-indicator' : 'bg-red-500'}`}></div>
-              <span className="text-sm font-medium text-muted-foreground">
-                {isConnected ? 'Connected' : 'Connecting...'}
-              </span>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              <Clock className="w-4 h-4 inline mr-1" />
-              <span data-testid="text-call-duration">{formatDuration(callDuration)}</span>
-            </div>
+    <div className="flex flex-col h-screen bg-background">
+      {/* Header with Call Status */}
+      <header className="bg-card border-b border-border px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2">
+            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 connection-indicator' : 'bg-red-500'}`}></div>
+            <span className="text-sm font-medium text-muted-foreground">
+              {isConnected ? 'Connected' : 'Connecting...'}
+            </span>
           </div>
-          
-          <div className="flex items-center space-x-4">
-            <div className="text-sm font-medium">
-              Inspector: <span className="text-primary" data-testid="text-inspector-name">John Martinez</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={generateInspectorLink}
-                data-testid="button-copy-inspector-link"
-              >
-                <Copy className="w-3 h-3 mr-1" />
-                Copy Inspector Link
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={openInspectorLink}
-                data-testid="button-open-inspector-link"
-              >
-                <ExternalLink className="w-3 h-3 mr-1" />
-                Open Link
-              </Button>
-            </div>
-            <div className="flex items-center space-x-1">
-              <Signal className="w-4 h-4 text-green-500" />
-              <span className="text-xs text-muted-foreground">Excellent</span>
-            </div>
+          <div className="text-sm text-muted-foreground">
+            <Clock className="w-4 h-4 inline mr-1" />
+            <span data-testid="text-call-duration">{formatDuration(callDuration)}</span>
           </div>
-        </header>
-      )}
+        </div>
+        
+        <div className="flex items-center space-x-4">
+          <div className="text-sm font-medium">
+            Inspector: <span className="text-primary" data-testid="text-inspector-name">John Martinez</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={generateInspectorLink}
+              data-testid="button-copy-inspector-link"
+            >
+              <Copy className="w-3 h-3 mr-1" />
+              Copy Inspector Link
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={openInspectorLink}
+              data-testid="button-open-inspector-link"
+            >
+              <ExternalLink className="w-3 h-3 mr-1" />
+              Open Link
+            </Button>
+          </div>
+          <div className="flex items-center space-x-1">
+            <Signal className="w-4 h-4 text-green-500" />
+            <span className="text-xs text-muted-foreground">Excellent</span>
+          </div>
+        </div>
+      </header>
 
-      {/* Main Video Area - Full screen in landscape */}
-      <main className={`${isLandscapeFullscreen ? 'h-screen' : 'flex-1'}`}>
+      {/* Main Video Area */}
+      <main className="flex-1">
         <VideoDisplay
           localStream={localStream}
           remoteStream={remoteStream}
@@ -184,22 +177,20 @@ export default function CoordinatorCall() {
         />
       </main>
 
-      {/* Bottom Control Bar - Hidden in landscape fullscreen */}
-      {!isLandscapeFullscreen && (
-        <CallControls
-          isMuted={isMuted}
-          isVideoEnabled={isVideoEnabled}
-          capturedImages={capturedImages}
-          onToggleMute={toggleMute}
-          onToggleVideo={toggleVideo}
-          onOpenSettings={() => setShowSettings(true)}
-          onEndCall={endCall}
-          onImageClick={setSelectedImage}
-          onCaptureImage={captureImage}
-          isCoordinator={true}
-          videoRotation={videoRotation}
-        />
-      )}
+      {/* Bottom Control Bar */}
+      <CallControls
+        isMuted={isMuted}
+        isVideoEnabled={isVideoEnabled}
+        capturedImages={capturedImages}
+        onToggleMute={toggleMute}
+        onToggleVideo={toggleVideo}
+        onOpenSettings={() => setShowSettings(true)}
+        onEndCall={endCall}
+        onImageClick={setSelectedImage}
+        onCaptureImage={captureImage}
+        isCoordinator={true}
+        videoRotation={videoRotation}
+      />
 
       {/* Modals */}
       <SettingsModal
