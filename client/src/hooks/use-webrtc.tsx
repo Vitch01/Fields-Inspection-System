@@ -329,7 +329,12 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
       // Cleanup and redirect
       cleanup();
-      window.location.href = "/";
+      // Different redirect behavior for inspectors vs coordinators
+      if (userRole === "inspector") {
+        window.location.href = `/inspector/${callId}`;
+      } else {
+        window.location.href = "/";
+      }
     } catch (error) {
       console.error("Failed to end call:", error);
     }
