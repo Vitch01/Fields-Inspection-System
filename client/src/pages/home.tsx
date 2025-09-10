@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Video, Users, Shield, Clock } from "lucide-react";
+import logoImage from "@assets/1767 copy_1757516319425.png";
 
 export default function Home() {
   const [, setLocation] = useLocation();
@@ -27,7 +28,7 @@ export default function Home() {
 
   // Call creation state
   const [inspectorId, setInspectorId] = useState("");
-  const [siteLocation, setSiteLocation] = useState("");
+  const [inspectionReference, setInspectionReference] = useState("");
 
   const handleLogin = async () => {
     setIsLoading(true);
@@ -60,7 +61,7 @@ export default function Home() {
         coordinatorId: user.id,
         inspectorId: inspectorId || "inspector1-id", // For demo purposes
         status: "pending",
-        siteLocation,
+        inspectionReference,
       });
       const call = await response.json();
       
@@ -81,11 +82,6 @@ export default function Home() {
     }
   };
 
-  const handleJoinCall = () => {
-    // For demo purposes, join as inspector
-    const callId = "demo-call-id";
-    setLocation(`/join/${callId}`);
-  };
 
   // Show inspector login if needed
   const showInspectorLogin = user.role !== "coordinator" && !user.id;
@@ -155,7 +151,7 @@ export default function Home() {
       <header className="bg-card border-b border-border px-4 py-3">
         <div className="flex items-center justify-between max-w-6xl mx-auto">
           <div className="flex items-center space-x-3">
-            <Video className="w-6 h-6 text-primary" />
+            <img src={logoImage} alt="Company Logo" className="w-8 h-8" />
             <h1 className="text-xl font-semibold" data-testid="title-dashboard">Field Inspection Dashboard</h1>
           </div>
           <div className="flex items-center space-x-4">
@@ -196,13 +192,13 @@ export default function Home() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="location">Site Location</Label>
+                  <Label htmlFor="reference">Inspection Reference Number</Label>
                   <Input
-                    id="location"
-                    value={siteLocation}
-                    onChange={(e) => setSiteLocation(e.target.value)}
-                    placeholder="Building A - Floor 3"
-                    data-testid="input-location"
+                    id="reference"
+                    value={inspectionReference}
+                    onChange={(e) => setInspectionReference(e.target.value)}
+                    placeholder="INS-2024-001"
+                    data-testid="input-reference"
                   />
                 </div>
                 <Button 
@@ -217,29 +213,6 @@ export default function Home() {
             </Card>
           )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Users className="w-5 h-5" />
-                <span>Join Inspection</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-muted-foreground">
-                {user.role === "inspector" 
-                  ? "Join an active inspection call" 
-                  : "Quick access to join ongoing calls"}
-              </p>
-              <Button 
-                onClick={handleJoinCall} 
-                variant="secondary" 
-                className="w-full"
-                data-testid="button-join-call"
-              >
-                Join Demo Call
-              </Button>
-            </CardContent>
-          </Card>
 
           <Card className="md:col-span-2">
             <CardHeader>
