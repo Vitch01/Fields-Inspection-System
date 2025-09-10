@@ -33,6 +33,8 @@ export default function InspectorCall() {
     toggleVideo,
     captureImage,
     endCall,
+    chatMessages,
+    sendChatMessage,
   } = useWebRTC(callId!, "inspector");
 
   // Inspector doesn't need to fetch captured images

@@ -4,12 +4,20 @@ import { createPeerConnection, captureImageFromStream, capturePhotoFromCamera } 
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
+interface ChatMessage {
+  id: string;
+  text: string;
+  sender: 'coordinator' | 'inspector';
+  timestamp: Date;
+}
+
 export function useWebRTC(callId: string, userRole: "coordinator" | "inspector") {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -203,6 +211,18 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
             description: "A new inspection image has been captured",
           });
           break;
+
+        case "chat-message":
+          if (message.data && message.data.text && message.userId !== userRole) {
+            const newMessage: ChatMessage = {
+              id: message.data.id,
+              text: message.data.text,
+              sender: message.userId === 'coordinator' ? 'coordinator' : 'inspector',
+              timestamp: new Date(message.data.timestamp)
+            };
+            setChatMessages(prev => [...prev, newMessage]);
+          }
+          break;
       }
     } catch (error) {
       console.error("Error handling signaling message:", error);
@@ -315,6 +335,31 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, [callId, userRole, sendMessage]);
 
+  const sendChatMessage = useCallback((text: string) => {
+    const messageData = {
+      id: Date.now().toString(),
+      text: text,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Send the message via WebSocket
+    sendMessage({
+      type: "chat-message",
+      callId,
+      userId: userRole,
+      data: messageData
+    });
+
+    // Add to local state immediately
+    const newMessage: ChatMessage = {
+      id: messageData.id,
+      text: messageData.text,
+      sender: userRole,
+      timestamp: new Date()
+    };
+    setChatMessages(prev => [...prev, newMessage]);
+  }, [callId, userRole, sendMessage]);
+
   function cleanup() {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -337,5 +382,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     toggleVideo,
     captureImage,
     endCall,
+    chatMessages,
+    sendChatMessage,
   };
 }

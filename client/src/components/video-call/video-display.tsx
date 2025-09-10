@@ -186,8 +186,8 @@ export default function VideoDisplay({
       <div className={`absolute video-container transition-all duration-500 ${
         isFullscreen
           ? getFullscreenContainerClass() // Adapt to rotation in fullscreen
-          : isHorizontalOrientation() && isCoordinator
-            ? 'inset-0' // Full area when horizontal - landscape mode gets maximum space
+          : isCoordinator
+            ? 'inset-4' // Consistent padding to fit within the frame
             : 'inset-2' // Smaller area for portrait mode
       }`}>
         <video
@@ -199,7 +199,7 @@ export default function VideoDisplay({
             isFullscreen 
               ? getFullscreenVideoClass()
               : isCoordinator
-                ? 'w-[120%] h-[120%]' // Larger size for coordinator
+                ? 'w-full h-full' // Fit within the container frame
                 : 'w-full h-full'
           } object-contain transition-transform duration-500 ${
             isCoordinator ? getRotationClass(videoAspectRatio, manualRotation) : ''

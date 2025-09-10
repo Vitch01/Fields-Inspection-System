@@ -14,10 +14,11 @@ interface ChatPanelProps {
   isOpen: boolean;
   onClose: () => void;
   isCoordinator: boolean;
+  messages: Message[];
+  onSendMessage: (text: string) => void;
 }
 
-export default function ChatPanel({ isOpen, onClose, isCoordinator }: ChatPanelProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+export default function ChatPanel({ isOpen, onClose, isCoordinator, messages, onSendMessage }: ChatPanelProps) {
   const [inputValue, setInputValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -31,13 +32,7 @@ export default function ChatPanel({ isOpen, onClose, isCoordinator }: ChatPanelP
 
   const handleSendMessage = () => {
     if (inputValue.trim()) {
-      const newMessage: Message = {
-        id: Date.now().toString(),
-        text: inputValue.trim(),
-        sender: isCoordinator ? 'coordinator' : 'inspector',
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, newMessage]);
+      onSendMessage(inputValue.trim());
       setInputValue("");
     }
   };

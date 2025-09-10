@@ -76,6 +76,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               data: message.data
             });
             break;
+
+          case 'chat-message':
+            // Forward chat message to other participants
+            broadcastToCall(message.callId, {
+              type: 'chat-message',
+              callId: message.callId,
+              userId: message.userId,
+              data: message.data
+            }, message.userId);
+            break;
         }
       } catch (error) {
         console.error('WebSocket message error:', error);

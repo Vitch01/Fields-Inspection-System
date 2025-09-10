@@ -36,6 +36,8 @@ export default function CoordinatorCall() {
     toggleVideo,
     captureImage: originalCaptureImage,
     endCall,
+    chatMessages,
+    sendChatMessage,
   } = useWebRTC(callId!, "coordinator");
 
   const { data: capturedImages = [], refetch: refetchImages } = useQuery<any[]>({
@@ -132,7 +134,7 @@ export default function CoordinatorCall() {
 
       {/* Inspector Location Info */}
       <div className="bg-card border-b border-border px-4 py-2">
-        <InspectorLocation location={call?.inspectorLocation} />
+        <InspectorLocation location={call?.inspectorLocation || null} />
       </div>
 
       {/* Main Video Area */}
@@ -167,6 +169,8 @@ export default function CoordinatorCall() {
         isOpen={showChat}
         onClose={() => setShowChat(false)}
         isCoordinator={true}
+        messages={chatMessages}
+        onSendMessage={sendChatMessage}
       />
 
       {/* Modals */}

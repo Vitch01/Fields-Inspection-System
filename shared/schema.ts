@@ -59,7 +59,7 @@ export type CapturedImage = typeof capturedImages.$inferSelect;
 
 // WebRTC signaling message types
 export const signalingMessageSchema = z.object({
-  type: z.enum(["offer", "answer", "ice-candidate", "join-call", "leave-call", "capture-image"]),
+  type: z.enum(["offer", "answer", "ice-candidate", "join-call", "leave-call", "capture-image", "chat-message"]),
   callId: z.string(),
   userId: z.string(),
   data: z.any().optional(),
