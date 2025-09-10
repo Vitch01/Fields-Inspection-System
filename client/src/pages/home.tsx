@@ -214,32 +214,6 @@ export default function Home() {
           )}
 
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Clock className="w-5 h-5" />
-                <span>Recent Activity</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-muted rounded-md">
-                  <div>
-                    <p className="font-medium">Building A Electrical Inspection</p>
-                    <p className="text-sm text-muted-foreground">with John Martinez • 2 hours ago</p>
-                  </div>
-                  <Badge variant="outline">Completed</Badge>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-muted rounded-md">
-                  <div>
-                    <p className="font-medium">HVAC System Check</p>
-                    <p className="text-sm text-muted-foreground">with Maria Garcia • 1 day ago</p>
-                  </div>
-                  <Badge variant="outline">Completed</Badge>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </main>
     </div>
