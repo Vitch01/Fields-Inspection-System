@@ -162,7 +162,6 @@ export default function CoordinatorCall() {
       <ImageViewerModal
         image={selectedImage}
         onClose={() => setSelectedImage(null)}
-        videoRotation={videoRotation}
       />
     </div>
   );

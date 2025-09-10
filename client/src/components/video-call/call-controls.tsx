@@ -118,7 +118,6 @@ export default function CallControls({
         <CapturedImagesGallery
           images={capturedImages}
           onImageClick={onImageClick}
-          videoRotation={videoRotation}
         />
       )}
     </div>
