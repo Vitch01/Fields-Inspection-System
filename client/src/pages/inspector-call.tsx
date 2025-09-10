@@ -2,6 +2,7 @@ import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import VideoDisplay from "@/components/video-call/video-display";
 import CallControls from "@/components/video-call/call-controls";
+import ChatPanel from "@/components/video-call/chat-panel";
 import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import { useWebRTC } from "@/hooks/use-webrtc";
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/button";
 export default function InspectorCall() {
   const { callId } = useParams();
   const [showSettings, setShowSettings] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [callDuration, setCallDuration] = useState(942);
   const [hasJoined, setHasJoined] = useState(false);
@@ -204,12 +206,21 @@ export default function InspectorCall() {
           onToggleMute={toggleMute}
           onToggleVideo={toggleVideo}
           onOpenSettings={() => setShowSettings(true)}
-          onOpenChat={() => {}} // Placeholder for inspector chat
+          onOpenChat={() => setShowChat(true)}
           onEndCall={endCall}
           onImageClick={setSelectedImage}
           isCoordinator={false}
         />
       </div>
+
+      {/* Chat Panel */}
+      <ChatPanel
+        isOpen={showChat}
+        onClose={() => setShowChat(false)}
+        isCoordinator={false}
+        messages={chatMessages}
+        onSendMessage={sendChatMessage}
+      />
 
       {/* Modals */}
       <SettingsModal
