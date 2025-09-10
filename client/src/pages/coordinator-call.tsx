@@ -113,7 +113,7 @@ export default function CoordinatorCall() {
         <div className="flex items-center space-x-4">
           <div className="text-sm font-medium">
             Inspector: <span className="text-primary" data-testid="text-inspector-name">
-              {call?.inspectorId ? getInspectorName(call.inspectorId) : "Loading..."}
+              {(call as any)?.inspectorId ? getInspectorName((call as any).inspectorId) : "Loading..."}
             </span>
           </div>
           <div className="flex items-center space-x-2">
