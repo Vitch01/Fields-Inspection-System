@@ -169,9 +169,9 @@ export default function Home() {
       </header>
 
       <main className="max-w-6xl mx-auto p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6">
           {user.role === "coordinator" && (
-            <Card>
+            <Card className="max-w-md">
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   <Video className="w-5 h-5" />
@@ -214,7 +214,7 @@ export default function Home() {
           )}
 
 
-          <Card className="md:col-span-2">
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Clock className="w-5 h-5" />

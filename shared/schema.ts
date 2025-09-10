@@ -18,7 +18,7 @@ export const calls = pgTable("calls", {
   status: text("status").notNull().default("pending"), // "pending", "active", "ended"
   startedAt: timestamp("started_at").default(sql`now()`),
   endedAt: timestamp("ended_at"),
-  siteLocation: text("site_location"),
+  inspectionReference: text("inspection_reference"),
   inspectorLocation: json("inspector_location"), // GPS coordinates when inspector joins
   metadata: json("metadata"),
 });

@@ -80,7 +80,7 @@ export class MemStorage implements IStorage {
       startedAt: new Date(),
       endedAt: null,
       status: insertCall.status || "pending",
-      siteLocation: insertCall.siteLocation || null,
+      inspectionReference: insertCall.inspectionReference || null,
       inspectorLocation: null,
       metadata: insertCall.metadata || null,
     };
