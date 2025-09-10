@@ -60,26 +60,26 @@ export default function InspectorCall() {
   // Show join screen if not yet joined
   if (!hasJoined) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <Card className="w-full max-w-md bg-white text-black border border-gray-300">
           <CardHeader className="text-center">
             <div className="flex justify-center mb-4">
-              <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center">
-                <Video className="w-8 h-8 text-primary-foreground" />
+              <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center">
+                <Video className="w-8 h-8 text-white" />
               </div>
             </div>
-            <CardTitle className="text-2xl" data-testid="title-join-call">Join Inspection Call</CardTitle>
-            <p className="text-muted-foreground">
+            <CardTitle className="text-2xl text-black" data-testid="title-join-call">Join Inspection Call</CardTitle>
+            <p className="text-gray-600">
               You've been invited to join an inspection video call
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <label htmlFor="inspector-name" className="text-sm font-medium">Your Name</label>
+              <label htmlFor="inspector-name" className="text-sm font-medium text-black">Your Name</label>
               <input
                 id="inspector-name"
                 type="text"
-                className="w-full px-3 py-2 border border-border rounded-md bg-background"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-black"
                 value={inspectorName}
                 onChange={(e) => setInspectorName(e.target.value)}
                 placeholder="Enter your name"
@@ -87,12 +87,12 @@ export default function InspectorCall() {
               />
             </div>
             
-            <div className="bg-muted p-3 rounded-md text-sm">
+            <div className="bg-gray-100 border border-gray-300 p-3 rounded-md text-sm">
               <div className="flex items-center space-x-2 mb-2">
-                <UserCheck className="w-4 h-4 text-primary" />
-                <span className="font-medium">Call Information</span>
+                <UserCheck className="w-4 h-4 text-black" />
+                <span className="font-medium text-black">Call Information</span>
               </div>
-              <p className="text-muted-foreground">
+              <p className="text-gray-600">
                 Site: Building A - Floor 3<br />
                 Coordinator: Sarah Johnson
               </p>
@@ -100,7 +100,7 @@ export default function InspectorCall() {
 
             <Button 
               onClick={handleJoinCall} 
-              className="w-full" 
+              className="w-full bg-black text-white hover:bg-gray-800 border-black" 
               disabled={!inspectorName.trim()}
               data-testid="button-join-inspection-call"
             >
@@ -133,15 +133,15 @@ export default function InspectorCall() {
       </div>
 
       {/* Header Overlay */}
-      <header className="relative z-10 bg-black/50 backdrop-blur-sm border-b border-white/20 px-4 py-3 flex items-center justify-between">
+      <header className="relative z-10 bg-black border-b border-white px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2">
-            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 connection-indicator' : 'bg-red-500'}`}></div>
+            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-white' : 'bg-gray-500'}`}></div>
             <span className="text-sm font-medium text-white">
               {isConnected ? 'Connected' : 'Connecting...'}
             </span>
           </div>
-          <div className="text-sm text-white/80">
+          <div className="text-sm text-white">
             <Clock className="w-4 h-4 inline mr-1" />
             <span data-testid="text-call-duration">{formatDuration(callDuration)}</span>
           </div>
@@ -149,17 +149,17 @@ export default function InspectorCall() {
         
         <div className="flex items-center space-x-4">
           <div className="text-sm font-medium text-white">
-            Coordinator: <span className="text-blue-300" data-testid="text-coordinator-name">Sarah Johnson</span>
+            Coordinator: <span className="text-white" data-testid="text-coordinator-name">Sarah Johnson</span>
           </div>
           <div className="flex items-center space-x-1">
-            <Signal className="w-4 h-4 text-green-400" />
-            <span className="text-xs text-white/80">Excellent</span>
+            <Signal className="w-4 h-4 text-white" />
+            <span className="text-xs text-white">Excellent</span>
           </div>
         </div>
       </header>
 
       {/* Bottom Control Bar Overlay */}
-      <div className="relative z-10 mt-auto bg-black/50 backdrop-blur-sm">
+      <div className="relative z-10 mt-auto bg-black">
         <CallControls
           isMuted={isMuted}
           isVideoEnabled={isVideoEnabled}
