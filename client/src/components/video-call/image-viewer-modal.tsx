@@ -1,15 +1,13 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Download, Edit, X } from "lucide-react";
-import { getImageRotationClass } from "@/lib/webrtc-utils";
 
 interface ImageViewerModalProps {
   image: any;
   onClose: () => void;
-  videoRotation?: number;
 }
 
-export default function ImageViewerModal({ image, onClose, videoRotation = 0 }: ImageViewerModalProps) {
+export default function ImageViewerModal({ image, onClose }: ImageViewerModalProps) {
   if (!image) return null;
 
   const handleDownload = () => {
