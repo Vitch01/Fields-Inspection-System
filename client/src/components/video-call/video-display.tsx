@@ -132,7 +132,8 @@ export default function VideoDisplay({
       if (document.fullscreenElement) {
         document.exitFullscreen();
       } else {
-        remoteVideoRef.current.requestFullscreen();
+        // Request fullscreen on the container div instead of just the video
+        remoteVideoRef.current.parentElement?.requestFullscreen();
       }
     }
   };
@@ -148,44 +149,31 @@ export default function VideoDisplay({
   const getFullscreenContainerClass = () => {
     if (!isCoordinator) return 'inset-0';
     
-    switch (manualRotation) {
-      case 90:
-      case -90:
-        // When rotated 90 degrees, video area should be wider than tall
-        return 'inset-0 flex items-center justify-center';
-      case 180:
-        // When rotated 180 degrees, keep normal dimensions
-        return 'inset-0 flex items-center justify-center';
-      default:
-        // No rotation or auto-rotation for landscape
-        if (videoAspectRatio > 1) {
-          // Video is naturally landscape, expand to fill
-          return 'inset-0 flex items-center justify-center';
-        }
-        return 'inset-0 flex items-center justify-center';
-    }
+    // In fullscreen, always center and contain
+    return 'inset-0 flex items-center justify-center bg-black';
   };
 
   // Get fullscreen video classes based on rotation
   const getFullscreenVideoClass = () => {
     if (!isCoordinator) return 'w-full h-full';
     
+    // In fullscreen, let video scale appropriately while maintaining rotation
     switch (manualRotation) {
       case 90:
       case -90:
-        // When rotated, adapt dimensions to fill screen optimally
-        return 'h-screen w-auto max-w-full';
+        // When rotated 90/-90 degrees, video needs height constraint
+        return 'max-h-screen max-w-screen w-auto h-auto';
       case 180:
-        // When rotated 180, use full dimensions
-        return 'w-full h-full';
+        // When rotated 180 degrees
+        return 'max-h-screen max-w-screen w-auto h-auto';
       default:
-        // No rotation or auto-rotation for landscape
+        // No manual rotation
         if (videoAspectRatio > 1) {
           // Video is naturally landscape
-          return 'w-full h-full';
+          return 'max-h-screen max-w-screen w-auto h-auto';
         }
         // Video is portrait
-        return 'h-full w-auto max-w-full';
+        return 'max-h-screen max-w-screen w-auto h-auto';
     }
   };
 
