@@ -187,7 +187,7 @@ export default function VideoDisplay({
         isFullscreen
           ? getFullscreenContainerClass() // Adapt to rotation in fullscreen
           : isCoordinator
-            ? 'inset-4' // Consistent padding to fit within the frame
+            ? 'inset-1' // Larger video with minimal padding
             : 'inset-2' // Smaller area for portrait mode
       }`}>
         <video
