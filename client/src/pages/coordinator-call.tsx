@@ -21,6 +21,15 @@ export default function CoordinatorCall() {
   const [videoRotation, setVideoRotation] = useState(0); // Track video rotation state
   const { toast } = useToast();
 
+  // Inspector name mapping
+  const getInspectorName = (inspectorId: string) => {
+    const inspectorMap: Record<string, string> = {
+      "inspector1-id": "John Martinez",
+      "inspector2-id": "Maria Garcia"
+    };
+    return inspectorMap[inspectorId] || "Unknown Inspector";
+  };
+
   const { data: call } = useQuery({
     queryKey: ["/api/calls", callId],
     enabled: !!callId,
@@ -103,7 +112,9 @@ export default function CoordinatorCall() {
         
         <div className="flex items-center space-x-4">
           <div className="text-sm font-medium">
-            Inspector: <span className="text-primary" data-testid="text-inspector-name">John Martinez</span>
+            Inspector: <span className="text-primary" data-testid="text-inspector-name">
+              {call?.inspectorId ? getInspectorName(call.inspectorId) : "Loading..."}
+            </span>
           </div>
           <div className="flex items-center space-x-2">
             <Button 
@@ -134,7 +145,7 @@ export default function CoordinatorCall() {
 
       {/* Inspector Location Info */}
       <div className="bg-card border-b border-border px-4 py-2">
-        <InspectorLocation location={call?.inspectorLocation || null} />
+        <InspectorLocation location={(call as any)?.inspectorLocation || null} />
       </div>
 
       {/* Main Video Area */}
