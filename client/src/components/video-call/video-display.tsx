@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Camera, Expand, ChevronsUp, RotateCw } from "lucide-react";
+import { Camera, Expand, ChevronsUp, RotateCw, RotateCcw } from "lucide-react";
 
 interface VideoDisplayProps {
   localStream: MediaStream | null;
@@ -19,7 +19,49 @@ export default function VideoDisplay({
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [captureFlash, setCaptureFlash] = useState(false);
   const [videoAspectRatio, setVideoAspectRatio] = useState<number>(16/9);
-  const [manualLandscapeMode, setManualLandscapeMode] = useState(false);
+  const [manualRotation, setManualRotation] = useState(0); // 0, 90, -90, 180 degrees
+
+  // Helper function to determine rotation class
+  const getRotationClass = (aspectRatio: number, rotation: number) => {
+    // Auto-rotate to landscape if video is landscape (aspectRatio > 1) OR manual rotation is set
+    const shouldRotate = aspectRatio > 1 || rotation !== 0;
+    
+    if (!shouldRotate) return '';
+    
+    // Apply manual rotation or default 90 degrees for landscape
+    const finalRotation = rotation !== 0 ? rotation : 90;
+    
+    switch (finalRotation) {
+      case 90: return 'rotate-90';
+      case -90: return '-rotate-90';
+      case 180: return 'rotate-180';
+      default: return '';
+    }
+  };
+
+  const rotateClockwise = () => {
+    setManualRotation(prev => {
+      switch (prev) {
+        case 0: return 90;
+        case 90: return 180;
+        case 180: return -90;
+        case -90: return 0;
+        default: return 90;
+      }
+    });
+  };
+
+  const rotateCounterclockwise = () => {
+    setManualRotation(prev => {
+      switch (prev) {
+        case 0: return -90;
+        case -90: return 180;
+        case 180: return 90;
+        case 90: return 0;
+        default: return -90;
+      }
+    });
+  };
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -76,7 +118,7 @@ export default function VideoDisplay({
           playsInline
           muted={isCoordinator} // Coordinator doesn't hear their own audio
           className={`w-full h-full object-contain transition-transform duration-500 ${
-            isCoordinator && (videoAspectRatio > 1 || manualLandscapeMode) ? 'rotate-90' : ''
+            isCoordinator ? getRotationClass(videoAspectRatio, manualRotation) : ''
           }`}
           data-testid="video-remote-stream"
         />
@@ -92,17 +134,30 @@ export default function VideoDisplay({
             <ChevronsUp className="w-4 h-4" />
           </Button>
           {isCoordinator && (
-            <Button 
-              size="icon"
-              variant="secondary"
-              className={`text-white hover:bg-black/70 ${
-                manualLandscapeMode ? 'bg-blue-600' : 'bg-black/50'
-              }`}
-              onClick={() => setManualLandscapeMode(!manualLandscapeMode)}
-              data-testid="button-toggle-landscape"
-            >
-              <RotateCw className="w-4 h-4" />
-            </Button>
+            <>
+              <Button 
+                size="icon"
+                variant="secondary"
+                className={`text-white hover:bg-black/70 ${
+                  manualRotation !== 0 ? 'bg-blue-600' : 'bg-black/50'
+                }`}
+                onClick={rotateClockwise}
+                data-testid="button-rotate-clockwise"
+              >
+                <RotateCw className="w-4 h-4" />
+              </Button>
+              <Button 
+                size="icon"
+                variant="secondary"
+                className={`text-white hover:bg-black/70 ${
+                  manualRotation !== 0 ? 'bg-blue-600' : 'bg-black/50'
+                }`}
+                onClick={rotateCounterclockwise}
+                data-testid="button-rotate-counterclockwise"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </Button>
+            </>
           )}
           <Button 
             size="icon"
