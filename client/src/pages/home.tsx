@@ -207,7 +207,7 @@ export default function Home() {
                 <Button 
                   onClick={handleStartCall} 
                   className="w-full" 
-                  disabled={isLoading}
+                  disabled={isLoading || !inspectorId || !inspectionReference}
                   data-testid="button-start-call"
                 >
                   {isLoading ? "Starting..." : "Start Inspection Call"}

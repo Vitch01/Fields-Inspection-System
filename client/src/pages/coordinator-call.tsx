@@ -116,6 +116,11 @@ export default function CoordinatorCall() {
               {(call as any)?.inspectorId ? getInspectorName((call as any).inspectorId) : "Loading..."}
             </span>
           </div>
+          <div className="text-sm font-medium">
+            Reference: <span className="text-primary" data-testid="text-inspection-reference">
+              {(call as any)?.inspectionReference || "N/A"}
+            </span>
+          </div>
           <div className="flex items-center space-x-2">
             <Button 
               size="sm" 
