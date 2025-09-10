@@ -184,7 +184,7 @@ export default function VideoDisplay({
         isFullscreen
           ? getFullscreenContainerClass() // Adapt to rotation in fullscreen
           : isHorizontalOrientation() && isCoordinator
-            ? 'inset-x-4 inset-y-2' // Larger when horizontal
+            ? 'inset-x-2 inset-y-1' // Much larger when horizontal
             : 'inset-0' // Normal size
       }`}>
         <video
@@ -260,17 +260,6 @@ export default function VideoDisplay({
           </Button>
         </div>
 
-        {/* Fullscreen Capture Button */}
-        {isFullscreen && isCoordinator && (
-          <Button
-            size="icon"
-            className="absolute bottom-10 left-1/2 transform -translate-x-1/2 w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg z-50"
-            onClick={handleCaptureImage}
-            data-testid="button-capture-image-fullscreen"
-          >
-            <Camera className="w-6 h-6" />
-          </Button>
-        )}
 
         {/* Video Info Overlay */}
         <div className="absolute top-4 right-4 bg-black/70 text-white px-3 py-2 rounded-md">
@@ -333,6 +322,20 @@ export default function VideoDisplay({
               {isCoordinator ? "Connecting to inspector" : "Connecting to coordinator"}
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Fullscreen Capture Button - Positioned below video area */}
+      {isFullscreen && isCoordinator && (
+        <div className="fixed bottom-8 left-0 right-0 flex justify-center z-50">
+          <Button
+            size="icon"
+            className="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg"
+            onClick={handleCaptureImage}
+            data-testid="button-capture-image-fullscreen"
+          >
+            <Camera className="w-6 h-6" />
+          </Button>
         </div>
       )}
     </div>
