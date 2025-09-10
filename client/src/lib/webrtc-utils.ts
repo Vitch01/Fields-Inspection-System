@@ -24,10 +24,12 @@ export async function captureImageFromStream(stream: MediaStream): Promise<Blob>
     video.play();
 
     video.onloadedmetadata = () => {
+      // Preserve natural stream orientation
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       
-      ctx.drawImage(video, 0, 0);
+      // Draw the video frame preserving natural dimensions
+      ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
       
       canvas.toBlob((blob) => {
         if (blob) {
@@ -47,12 +49,12 @@ export async function captureImageFromStream(stream: MediaStream): Promise<Blob>
 // New function to capture photo using device camera
 export async function capturePhotoFromCamera(): Promise<Blob> {
   try {
-    // Request high-resolution photo capture from rear camera
+    // Request high-resolution photo capture from rear camera with natural orientation
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
-        width: { ideal: 3840, min: 1920 }, // 4K preferred, 1080p minimum
-        height: { ideal: 2160, min: 1080 },
-        facingMode: { ideal: "environment" } // Rear camera - let it use natural orientation
+        facingMode: { ideal: "environment" }, // Rear camera
+        // Remove specific width/height constraints to preserve natural orientation
+        // Let the camera use its natural resolution and orientation
       }
     });
 
@@ -70,11 +72,14 @@ export async function capturePhotoFromCamera(): Promise<Blob> {
       video.play();
 
       video.onloadedmetadata = () => {
-        // Use high resolution for photo capture
+        // Use natural video dimensions to preserve orientation
+        // If video is wider than tall = horizontal/landscape
+        // If video is taller than wide = vertical/portrait
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         
-        ctx.drawImage(video, 0, 0);
+        // Draw the video frame to canvas preserving natural orientation
+        ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
         
         // Stop the camera stream after capture
         stream.getTracks().forEach(track => track.stop());
