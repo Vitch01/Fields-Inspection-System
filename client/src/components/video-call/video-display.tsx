@@ -141,8 +141,11 @@ export default function VideoDisplay({
 
   // Determine if video is in horizontal orientation
   const isHorizontalOrientation = () => {
-    const currentRotationClass = getRotationClass(videoAspectRatio, manualRotation);
-    return currentRotationClass !== '' && (manualRotation === 90 || manualRotation === -90 || (manualRotation === 0 && videoAspectRatio > 1));
+    // Video is considered horizontal if:
+    // 1. It's manually rotated to 90 or -90 degrees (portrait becomes landscape)
+    // 2. It's naturally landscape (aspect ratio > 1) and not rotated
+    return (manualRotation === 90 || manualRotation === -90) || 
+           (manualRotation === 0 && videoAspectRatio > 1);
   };
 
   // Get fullscreen container classes based on rotation
@@ -184,7 +187,7 @@ export default function VideoDisplay({
         isFullscreen
           ? getFullscreenContainerClass() // Adapt to rotation in fullscreen
           : isHorizontalOrientation() && isCoordinator
-            ? 'inset-x-2 inset-y-1' // Much larger when horizontal
+            ? 'inset-1' // Much larger when horizontal - smaller inset = larger area
             : 'inset-0' // Normal size
       }`}>
         <video
@@ -327,16 +330,14 @@ export default function VideoDisplay({
 
       {/* Fullscreen Capture Button - Positioned below video area */}
       {isFullscreen && isCoordinator && (
-        <div className="fixed bottom-8 left-0 right-0 flex justify-center z-50">
-          <Button
-            size="icon"
-            className="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg"
-            onClick={handleCaptureImage}
-            data-testid="button-capture-image-fullscreen"
-          >
-            <Camera className="w-6 h-6" />
-          </Button>
-        </div>
+        <Button
+          size="icon"
+          className="absolute bottom-8 left-1/2 transform -translate-x-1/2 w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg z-50"
+          onClick={handleCaptureImage}
+          data-testid="button-capture-image-fullscreen"
+        >
+          <Camera className="w-6 h-6" />
+        </Button>
       )}
     </div>
   );
