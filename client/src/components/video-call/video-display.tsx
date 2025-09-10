@@ -22,6 +22,7 @@ export default function VideoDisplay({
   const [captureFlash, setCaptureFlash] = useState(false);
   const [videoAspectRatio, setVideoAspectRatio] = useState<number>(16/9);
   const [manualRotation, setManualRotation] = useState(0); // 0, 90, -90, 180 degrees
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Helper function to determine rotation class
   const getRotationClass = (aspectRatio: number, rotation: number) => {
@@ -114,6 +115,18 @@ export default function VideoDisplay({
     onCaptureImage();
   };
 
+  // Track fullscreen state
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
   const toggleFullscreen = () => {
     if (remoteVideoRef.current) {
       if (document.fullscreenElement) {
@@ -131,20 +144,71 @@ export default function VideoDisplay({
     return currentRotationClass !== '' && (manualRotation === 90 || manualRotation === -90 || (manualRotation === 0 && videoAspectRatio > 1));
   };
 
+  // Get fullscreen container classes based on rotation
+  const getFullscreenContainerClass = () => {
+    if (!isCoordinator) return 'inset-0';
+    
+    switch (manualRotation) {
+      case 90:
+      case -90:
+        // When rotated 90 degrees, video area should be wider than tall
+        return 'inset-0 flex items-center justify-center';
+      case 180:
+        // When rotated 180 degrees, keep normal dimensions
+        return 'inset-0 flex items-center justify-center';
+      default:
+        // No rotation or auto-rotation for landscape
+        if (videoAspectRatio > 1) {
+          // Video is naturally landscape, expand to fill
+          return 'inset-0 flex items-center justify-center';
+        }
+        return 'inset-0 flex items-center justify-center';
+    }
+  };
+
+  // Get fullscreen video classes based on rotation
+  const getFullscreenVideoClass = () => {
+    if (!isCoordinator) return 'w-full h-full';
+    
+    switch (manualRotation) {
+      case 90:
+      case -90:
+        // When rotated, adapt dimensions to fill screen optimally
+        return 'h-screen w-auto max-w-full';
+      case 180:
+        // When rotated 180, use full dimensions
+        return 'w-full h-full';
+      default:
+        // No rotation or auto-rotation for landscape
+        if (videoAspectRatio > 1) {
+          // Video is naturally landscape
+          return 'w-full h-full';
+        }
+        // Video is portrait
+        return 'h-full w-auto max-w-full';
+    }
+  };
+
   return (
     <div className="relative h-full bg-slate-900 overflow-hidden">
       {/* Remote Video Feed (Main) */}
       <div className={`absolute video-container transition-all duration-500 ${
-        isHorizontalOrientation() && isCoordinator
-          ? 'inset-x-4 inset-y-2' // Larger when horizontal
-          : 'inset-0' // Normal size
+        isFullscreen
+          ? getFullscreenContainerClass() // Adapt to rotation in fullscreen
+          : isHorizontalOrientation() && isCoordinator
+            ? 'inset-x-4 inset-y-2' // Larger when horizontal
+            : 'inset-0' // Normal size
       }`}>
         <video
           ref={remoteVideoRef}
           autoPlay
           playsInline
           muted={isCoordinator} // Coordinator doesn't hear their own audio
-          className={`w-full h-full object-contain transition-transform duration-500 ${
+          className={`${
+            isFullscreen 
+              ? getFullscreenVideoClass()
+              : 'w-full h-full'
+          } object-contain transition-transform duration-500 ${
             isCoordinator ? getRotationClass(videoAspectRatio, manualRotation) : ''
           }`}
           data-testid="video-remote-stream"
