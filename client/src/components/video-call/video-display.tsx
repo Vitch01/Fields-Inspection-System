@@ -204,6 +204,17 @@ export default function VideoDisplay({
         
         {/* Video Controls Overlay */}
         <div className="absolute top-4 left-4 flex space-x-2">
+          {isCoordinator && (
+            <Button 
+              size="icon"
+              variant="secondary"
+              className="bg-black/50 text-white hover:bg-black/70"
+              onClick={handleCaptureImage}
+              data-testid="button-capture-image-overlay"
+            >
+              <Camera className="w-4 h-4" />
+            </Button>
+          )}
           <Button 
             size="icon"
             variant="secondary"
@@ -249,6 +260,18 @@ export default function VideoDisplay({
           </Button>
         </div>
 
+        {/* Fullscreen Capture Button */}
+        {isFullscreen && isCoordinator && (
+          <Button
+            size="icon"
+            className="absolute bottom-10 left-1/2 transform -translate-x-1/2 w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg z-50"
+            onClick={handleCaptureImage}
+            data-testid="button-capture-image-fullscreen"
+          >
+            <Camera className="w-6 h-6" />
+          </Button>
+        )}
+
         {/* Video Info Overlay */}
         <div className="absolute top-4 right-4 bg-black/70 text-white px-3 py-2 rounded-md">
           <div className="text-sm font-medium">
@@ -278,15 +301,17 @@ export default function VideoDisplay({
         </div>
       </div>
 
-      {/* Floating Capture Button */}
-      <Button
-        size="icon"
-        className="absolute bottom-20 left-1/2 transform -translate-x-1/2 w-16 h-16 capture-button text-white rounded-full shadow-lg"
-        onClick={handleCaptureImage}
-        data-testid="button-capture-image"
-      >
-        <Camera className="w-6 h-6" />
-      </Button>
+      {/* Floating Capture Button - Only show when not fullscreen */}
+      {!isFullscreen && isCoordinator && (
+        <Button
+          size="icon"
+          className="absolute bottom-20 left-1/2 transform -translate-x-1/2 w-16 h-16 capture-button text-white rounded-full shadow-lg"
+          onClick={handleCaptureImage}
+          data-testid="button-capture-image"
+        >
+          <Camera className="w-6 h-6" />
+        </Button>
+      )}
 
       {/* Capture Flash Effect */}
       <div 
