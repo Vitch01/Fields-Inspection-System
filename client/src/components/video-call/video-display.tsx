@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Camera, Expand, ChevronsUp } from "lucide-react";
+import { Camera, Expand, ChevronsUp, RotateCw } from "lucide-react";
 
 interface VideoDisplayProps {
   localStream: MediaStream | null;
@@ -19,6 +19,7 @@ export default function VideoDisplay({
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [captureFlash, setCaptureFlash] = useState(false);
   const [videoAspectRatio, setVideoAspectRatio] = useState<number>(16/9);
+  const [manualLandscapeMode, setManualLandscapeMode] = useState(false);
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -75,7 +76,7 @@ export default function VideoDisplay({
           playsInline
           muted={isCoordinator} // Coordinator doesn't hear their own audio
           className={`w-full h-full object-contain transition-transform duration-500 ${
-            isCoordinator && videoAspectRatio > 1 ? 'rotate-90' : ''
+            isCoordinator && (videoAspectRatio > 1 || manualLandscapeMode) ? 'rotate-90' : ''
           }`}
           data-testid="video-remote-stream"
         />
@@ -90,6 +91,19 @@ export default function VideoDisplay({
           >
             <ChevronsUp className="w-4 h-4" />
           </Button>
+          {isCoordinator && (
+            <Button 
+              size="icon"
+              variant="secondary"
+              className={`text-white hover:bg-black/70 ${
+                manualLandscapeMode ? 'bg-blue-600' : 'bg-black/50'
+              }`}
+              onClick={() => setManualLandscapeMode(!manualLandscapeMode)}
+              data-testid="button-toggle-landscape"
+            >
+              <RotateCw className="w-4 h-4" />
+            </Button>
+          )}
           <Button 
             size="icon"
             variant="secondary"
