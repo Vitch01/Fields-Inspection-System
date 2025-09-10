@@ -24,42 +24,14 @@ export async function captureImageFromStream(stream: MediaStream): Promise<Blob>
     video.play();
 
     video.onloadedmetadata = () => {
-      // Detect coordinator's device orientation
-      const isDeviceHorizontal = window.innerWidth > window.innerHeight;
+      // Save photo in its natural orientation - preserve how it appears when captured
+      // If video is displaying in landscape (wider than tall), save as landscape
+      // If video is displaying in portrait (taller than wide), save as portrait
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
       
-      if (isDeviceHorizontal) {
-        // Device is horizontal - save photo in landscape orientation
-        canvas.width = Math.max(video.videoWidth, video.videoHeight);
-        canvas.height = Math.min(video.videoWidth, video.videoHeight);
-        
-        // If video is naturally portrait, rotate it to landscape
-        if (video.videoHeight > video.videoWidth) {
-          ctx.save();
-          ctx.translate(canvas.width / 2, canvas.height / 2);
-          ctx.rotate(Math.PI / 2);
-          ctx.drawImage(video, -video.videoWidth / 2, -video.videoHeight / 2, video.videoWidth, video.videoHeight);
-          ctx.restore();
-        } else {
-          // Video is already landscape
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        }
-      } else {
-        // Device is vertical - save photo in portrait orientation
-        canvas.width = Math.min(video.videoWidth, video.videoHeight);
-        canvas.height = Math.max(video.videoWidth, video.videoHeight);
-        
-        // If video is naturally landscape, rotate it to portrait
-        if (video.videoWidth > video.videoHeight) {
-          ctx.save();
-          ctx.translate(canvas.width / 2, canvas.height / 2);
-          ctx.rotate(-Math.PI / 2);
-          ctx.drawImage(video, -video.videoWidth / 2, -video.videoHeight / 2, video.videoWidth, video.videoHeight);
-          ctx.restore();
-        } else {
-          // Video is already portrait
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        }
-      }
+      // Draw the video frame preserving its natural display orientation
+      ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
       
       canvas.toBlob((blob) => {
         if (blob) {
