@@ -125,10 +125,20 @@ export default function VideoDisplay({
   };
 
 
+  // Determine if video is in horizontal orientation
+  const isHorizontalOrientation = () => {
+    const currentRotationClass = getRotationClass(videoAspectRatio, manualRotation);
+    return currentRotationClass !== '' && (manualRotation === 90 || manualRotation === -90 || (manualRotation === 0 && videoAspectRatio > 1));
+  };
+
   return (
     <div className="relative h-full bg-slate-900 overflow-hidden">
       {/* Remote Video Feed (Main) */}
-      <div className="absolute inset-0 video-container">
+      <div className={`absolute video-container transition-all duration-500 ${
+        isHorizontalOrientation() && isCoordinator
+          ? 'inset-x-4 inset-y-2' // Larger when horizontal
+          : 'inset-0' // Normal size
+      }`}>
         <video
           ref={remoteVideoRef}
           autoPlay

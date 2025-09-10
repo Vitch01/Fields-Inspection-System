@@ -52,8 +52,7 @@ export async function capturePhotoFromCamera(): Promise<Blob> {
       video: {
         width: { ideal: 3840, min: 1920 }, // 4K preferred, 1080p minimum
         height: { ideal: 2160, min: 1080 },
-        facingMode: { ideal: "environment" }, // Rear camera
-        aspectRatio: { ideal: 16/9 }
+        facingMode: { ideal: "environment" } // Rear camera - let it use natural orientation
       }
     });
 
