@@ -18,6 +18,7 @@ interface CallControlsProps {
   onToggleMute: () => void;
   onToggleVideo: () => void;
   onOpenSettings: () => void;
+  onOpenChat: () => void;
   onEndCall: () => void;
   onImageClick: (image: any) => void;
   onCaptureImage?: (rotation?: number) => void;
@@ -32,6 +33,7 @@ export default function CallControls({
   onToggleMute,
   onToggleVideo,
   onOpenSettings,
+  onOpenChat,
   onEndCall,
   onImageClick,
   onCaptureImage,
@@ -110,6 +112,7 @@ export default function CallControls({
           <Button 
             variant="secondary"
             className={!isCoordinator ? "bg-white text-black border-gray-300 hover:bg-gray-100" : ""}
+            onClick={onOpenChat}
             data-testid="button-open-chat"
           >
             <MessageCircle className="w-4 h-4 mr-2" />
