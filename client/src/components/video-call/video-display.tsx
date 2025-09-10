@@ -74,7 +74,9 @@ export default function VideoDisplay({
           autoPlay
           playsInline
           muted={isCoordinator} // Coordinator doesn't hear their own audio
-          className="w-full h-full object-contain"
+          className={`w-full h-full object-contain transition-transform duration-500 ${
+            isCoordinator && videoAspectRatio > 1 ? 'rotate-90' : ''
+          }`}
           data-testid="video-remote-stream"
         />
         
