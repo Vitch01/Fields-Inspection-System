@@ -212,6 +212,9 @@ export default function Home() {
                 >
                   {isLoading ? "Starting..." : "Start Inspection Call"}
                 </Button>
+                <div className="text-center text-sm text-muted-foreground mt-4">
+                  IFS Video Inspection System
+                </div>
               </CardContent>
             </Card>
           )}
