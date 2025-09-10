@@ -331,7 +331,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       cleanup();
       // Different redirect behavior for inspectors vs coordinators
       if (userRole === "inspector") {
-        window.location.href = `/inspector/${callId}`;
+        window.location.href = `/join/${callId}`;
       } else {
         window.location.href = "/";
       }
