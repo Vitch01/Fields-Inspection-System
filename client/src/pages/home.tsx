@@ -15,10 +15,15 @@ export default function Home() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
-  // Login state
+  // Login state (skip login for coordinators)
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<any>({
+    id: "coordinator-default",
+    username: "coordinator",
+    role: "coordinator",
+    name: "Site Coordinator"
+  });
 
   // Call creation state
   const [inspectorId, setInspectorId] = useState("");
@@ -48,9 +53,7 @@ export default function Home() {
     }
   };
 
-  const handleStartCall = async () => {
-    if (!user || user.role !== "coordinator") return;
-    
+  const handleStartCall = async () => {    
     setIsLoading(true);
     try {
       const response = await apiRequest("POST", "/api/calls", {
@@ -84,7 +87,10 @@ export default function Home() {
     setLocation(`/join/${callId}`);
   };
 
-  if (!user) {
+  // Show inspector login if needed
+  const showInspectorLogin = user.role !== "coordinator" && !user.id;
+
+  if (showInspectorLogin) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
@@ -96,7 +102,7 @@ export default function Home() {
             </div>
             <CardTitle className="text-2xl" data-testid="title-login">Field Inspection System</CardTitle>
             <p className="text-muted-foreground">
-              Secure video calls for field inspections
+              Inspector Login Required
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -132,16 +138,10 @@ export default function Home() {
             </Button>
             
             <div className="pt-4 border-t space-y-2">
-              <p className="text-sm text-muted-foreground text-center">Demo accounts:</p>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="text-center">
-                  <Badge variant="outline">coordinator1</Badge>
-                  <p className="text-muted-foreground">Coordinator</p>
-                </div>
-                <div className="text-center">
-                  <Badge variant="outline">inspector1</Badge>
-                  <p className="text-muted-foreground">Inspector</p>
-                </div>
+              <p className="text-sm text-muted-foreground text-center">Demo account:</p>
+              <div className="text-center text-xs">
+                <Badge variant="outline">inspector1</Badge>
+                <p className="text-muted-foreground">Inspector</p>
               </div>
             </div>
           </CardContent>
@@ -163,9 +163,11 @@ export default function Home() {
               {user.role === "coordinator" ? <Shield className="w-3 h-3 mr-1" /> : <Users className="w-3 h-3 mr-1" />}
               {user.name}
             </Badge>
-            <Button variant="outline" onClick={() => setUser(null)} data-testid="button-logout">
-              Sign Out
-            </Button>
+            {user.role === "inspector" && (
+              <Button variant="outline" onClick={() => setUser(null)} data-testid="button-logout">
+                Sign Out
+              </Button>
+            )}
           </div>
         </div>
       </header>
