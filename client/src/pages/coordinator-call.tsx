@@ -41,9 +41,9 @@ export default function CoordinatorCall() {
   });
 
   // Enhanced capture function that refreshes images immediately
-  const captureImage = async () => {
+  const captureImage = async (rotation = 0) => {
     try {
-      await originalCaptureImage();
+      await originalCaptureImage(rotation);
       // Immediately refresh the images to show the new capture
       await refetchImages();
     } catch (error) {
