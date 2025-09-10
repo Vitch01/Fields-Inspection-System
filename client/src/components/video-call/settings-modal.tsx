@@ -29,19 +29,19 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md" data-testid="modal-settings">
+      <DialogContent className="sm:max-w-md bg-white text-black border border-gray-300" data-testid="modal-settings">
         <DialogHeader>
-          <DialogTitle>Call Settings</DialogTitle>
+          <DialogTitle className="text-black">Call Settings</DialogTitle>
         </DialogHeader>
         
         <div className="space-y-4">
           <div>
-            <Label htmlFor="video-quality" className="text-sm font-medium">Video Quality</Label>
+            <Label htmlFor="video-quality" className="text-sm font-medium text-black">Video Quality</Label>
             <Select value={videoQuality} onValueChange={setVideoQuality}>
-              <SelectTrigger className="mt-2" data-testid="select-video-quality">
+              <SelectTrigger className="mt-2 bg-white text-black border-gray-300" data-testid="select-video-quality">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-white text-black border-gray-300">
                 <SelectItem value="auto">Auto (Recommended)</SelectItem>
                 <SelectItem value="720p">720p HD</SelectItem>
                 <SelectItem value="480p">480p</SelectItem>
@@ -51,36 +51,38 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </div>
           
           <div>
-            <Label className="text-sm font-medium">Audio Settings</Label>
+            <Label className="text-sm font-medium text-black">Audio Settings</Label>
             <div className="space-y-2 mt-2">
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="noise-reduction"
                   checked={noiseReduction}
                   onCheckedChange={(checked) => setNoiseReduction(checked === true)}
+                  className="border-gray-400 data-[state=checked]:bg-black data-[state=checked]:text-white"
                   data-testid="checkbox-noise-reduction"
                 />
-                <Label htmlFor="noise-reduction" className="text-sm">Noise Reduction</Label>
+                <Label htmlFor="noise-reduction" className="text-sm text-black">Noise Reduction</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="echo-cancellation"
                   checked={echoCancellation}
                   onCheckedChange={(checked) => setEchoCancellation(checked === true)}
+                  className="border-gray-400 data-[state=checked]:bg-black data-[state=checked]:text-white"
                   data-testid="checkbox-echo-cancellation"
                 />
-                <Label htmlFor="echo-cancellation" className="text-sm">Echo Cancellation</Label>
+                <Label htmlFor="echo-cancellation" className="text-sm text-black">Echo Cancellation</Label>
               </div>
             </div>
           </div>
           
           <div>
-            <Label htmlFor="capture-quality" className="text-sm font-medium">Image Capture Quality</Label>
+            <Label htmlFor="capture-quality" className="text-sm font-medium text-black">Image Capture Quality</Label>
             <Select value={captureQuality} onValueChange={setCaptureQuality}>
-              <SelectTrigger className="mt-2" data-testid="select-capture-quality">
+              <SelectTrigger className="mt-2 bg-white text-black border-gray-300" data-testid="select-capture-quality">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-white text-black border-gray-300">
                 <SelectItem value="high">High (Recommended)</SelectItem>
                 <SelectItem value="medium">Medium</SelectItem>
                 <SelectItem value="low">Low</SelectItem>
@@ -92,7 +94,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         <div className="flex space-x-3 mt-6">
           <Button 
             onClick={handleSaveSettings} 
-            className="flex-1"
+            className="flex-1 bg-black text-white hover:bg-gray-800 border-black"
             data-testid="button-save-settings"
           >
             Save Settings
@@ -100,6 +102,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           <Button 
             variant="outline" 
             onClick={onClose}
+            className="bg-white text-black border-gray-300 hover:bg-gray-100"
             data-testid="button-cancel-settings"
           >
             Cancel
