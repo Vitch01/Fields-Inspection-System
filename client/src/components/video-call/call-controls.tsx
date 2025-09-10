@@ -39,7 +39,11 @@ export default function CallControls({
   videoRotation = 0,
 }: CallControlsProps) {
   return (
-    <div className="bg-card border-t border-border p-4">
+    <div className={`border-t p-4 ${
+      isCoordinator 
+        ? "bg-card border-border" 
+        : "bg-white border-gray-300"
+    }`}>
       {/* Call Controls */}
       <div className="flex items-center justify-between mb-4">
         
@@ -48,6 +52,7 @@ export default function CallControls({
           <Button
             size="icon"
             variant={isMuted ? "destructive" : "secondary"}
+            className={!isCoordinator ? "bg-white text-black border-gray-300 hover:bg-gray-100" : ""}
             onClick={onToggleMute}
             data-testid="button-toggle-mute"
           >
@@ -57,6 +62,7 @@ export default function CallControls({
           <Button
             size="icon"
             variant={!isVideoEnabled ? "destructive" : "secondary"}
+            className={!isCoordinator ? "bg-white text-black border-gray-300 hover:bg-gray-100" : ""}
             onClick={onToggleVideo}
             data-testid="button-toggle-video"
           >
@@ -66,6 +72,7 @@ export default function CallControls({
           <Button
             size="icon"
             variant="secondary"
+            className={!isCoordinator ? "bg-white text-black border-gray-300 hover:bg-gray-100" : ""}
             onClick={onOpenSettings}
             data-testid="button-open-settings"
           >
@@ -75,8 +82,14 @@ export default function CallControls({
 
         {/* Center - Call Info */}
         <div className="text-center">
-          <div className="text-sm font-medium text-foreground">Inspection Call Active</div>
-          <div className="text-xs text-muted-foreground">
+          <div className={`text-sm font-medium ${
+            isCoordinator ? "text-foreground" : "text-black"
+          }`}>
+            Inspection Call Active
+          </div>
+          <div className={`text-xs ${
+            isCoordinator ? "text-muted-foreground" : "text-gray-600"
+          }`}>
             {isCoordinator ? "Monitor inspector's feed and capture images" : "Broadcasting to coordinator"}
           </div>
         </div>
@@ -96,6 +109,7 @@ export default function CallControls({
           
           <Button 
             variant="secondary"
+            className={!isCoordinator ? "bg-white text-black border-gray-300 hover:bg-gray-100" : ""}
             data-testid="button-open-chat"
           >
             <MessageCircle className="w-4 h-4 mr-2" />
