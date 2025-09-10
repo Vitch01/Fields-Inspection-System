@@ -86,7 +86,7 @@ export default function CapturedImagesGallery({ images, onImageClick }: Captured
           <Button
             variant="ghost"
             size="sm"
-            className="h-auto p-1 text-xs"
+            className="h-auto p-1 text-xs bg-black text-white hover:bg-gray-800"
             onClick={() => setIsSelectionMode(!isSelectionMode)}
             data-testid="button-toggle-selection"
           >

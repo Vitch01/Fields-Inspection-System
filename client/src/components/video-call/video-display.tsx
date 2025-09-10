@@ -21,7 +21,7 @@ export default function VideoDisplay({
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [captureFlash, setCaptureFlash] = useState(false);
   const [videoAspectRatio, setVideoAspectRatio] = useState<number>(16/9);
-  const [manualRotation, setManualRotation] = useState(isCoordinator ? 90 : 0); // Start coordinator with 90 degrees (horizontal), inspector with 0
+  const [manualRotation, setManualRotation] = useState(isCoordinator ? -90 : 0); // Start coordinator with -90 degrees (horizontal, opposite side), inspector with 0
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Helper function to determine rotation class
