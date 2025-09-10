@@ -22,20 +22,37 @@ export default function CoordinatorCall() {
   // Detect landscape orientation for fullscreen mode
   useEffect(() => {
     const checkOrientation = () => {
-      const isLandscape = window.innerWidth > window.innerHeight;
+      // More robust landscape detection with minimum width threshold
+      const isLandscape = window.innerWidth > window.innerHeight && window.innerWidth >= 768;
+      console.log('Orientation check:', { 
+        width: window.innerWidth, 
+        height: window.innerHeight, 
+        isLandscape,
+        aspectRatio: window.innerWidth / window.innerHeight
+      });
       setIsLandscapeFullscreen(isLandscape);
     };
 
     // Check initial orientation
     checkOrientation();
 
-    // Listen for orientation changes
-    window.addEventListener('resize', checkOrientation);
-    window.addEventListener('orientationchange', checkOrientation);
+    // Listen for orientation changes with debouncing
+    const debounce = (func: Function, wait: number) => {
+      let timeout: NodeJS.Timeout;
+      return (...args: any[]) => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(null, args), wait);
+      };
+    };
+
+    const debouncedCheck = debounce(checkOrientation, 100);
+
+    window.addEventListener('resize', debouncedCheck);
+    window.addEventListener('orientationchange', debouncedCheck);
 
     return () => {
-      window.removeEventListener('resize', checkOrientation);
-      window.removeEventListener('orientationchange', checkOrientation);
+      window.removeEventListener('resize', debouncedCheck);
+      window.removeEventListener('orientationchange', debouncedCheck);
     };
   }, []);
 
@@ -102,6 +119,11 @@ export default function CoordinatorCall() {
 
   return (
     <div className={`flex flex-col h-screen bg-background ${isLandscapeFullscreen ? 'fixed inset-0 z-50' : ''}`}>
+      {/* Debug info */}
+      <div className="fixed top-0 left-0 bg-red-500 text-white p-2 z-50 text-xs">
+        Landscape: {isLandscapeFullscreen ? 'YES' : 'NO'} ({window.innerWidth}x{window.innerHeight})
+      </div>
+      
       {/* Header with Call Status - Hidden in landscape fullscreen */}
       {!isLandscapeFullscreen && (
         <header className="bg-card border-b border-border px-4 py-3 flex items-center justify-between">
@@ -188,7 +210,6 @@ export default function CoordinatorCall() {
       <ImageViewerModal
         image={selectedImage}
         onClose={() => setSelectedImage(null)}
-        videoRotation={videoRotation}
       />
     </div>
   );
