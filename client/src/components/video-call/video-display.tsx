@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Camera, Expand, ChevronsUp, RotateCw, RotateCcw } from "lucide-react";
+import { Camera, Expand, RotateCw, RotateCcw } from "lucide-react";
 
 interface VideoDisplayProps {
   localStream: MediaStream | null;
@@ -8,6 +8,8 @@ interface VideoDisplayProps {
   isCoordinator: boolean;
   onCaptureImage: (rotation?: number) => void;
   onRotationChange?: (rotation: number) => void;
+  inspectorName?: string;
+  callStartTime?: string;
 }
 
 export default function VideoDisplay({ 
@@ -15,7 +17,9 @@ export default function VideoDisplay({
   remoteStream, 
   isCoordinator, 
   onCaptureImage,
-  onRotationChange
+  onRotationChange,
+  inspectorName,
+  callStartTime
 }: VideoDisplayProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -23,6 +27,28 @@ export default function VideoDisplay({
   const [videoAspectRatio, setVideoAspectRatio] = useState<number>(16/9);
   const [manualRotation, setManualRotation] = useState(isCoordinator ? -90 : 0); // Start coordinator with -90 degrees (horizontal, opposite side), inspector with 0
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [callDuration, setCallDuration] = useState(0);
+
+  // Calculate call duration
+  useEffect(() => {
+    if (!callStartTime || !isCoordinator) return;
+
+    const interval = setInterval(() => {
+      const startTime = new Date(callStartTime).getTime();
+      const now = new Date().getTime();
+      const durationSeconds = Math.floor((now - startTime) / 1000);
+      setCallDuration(durationSeconds);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [callStartTime, isCoordinator]);
+
+  // Format call duration as MM:SS
+  const formatDuration = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
 
   // Helper function to determine rotation class
   const getRotationClass = (aspectRatio: number, rotation: number) => {
@@ -233,14 +259,6 @@ export default function VideoDisplay({
               <Camera className="w-4 h-4" />
             </Button>
           )}
-          <Button 
-            size="icon"
-            variant="secondary"
-            className="bg-white text-black hover:bg-gray-100 border border-gray-300"
-            data-testid="button-toggle-remote-audio"
-          >
-            <ChevronsUp className="w-4 h-4" />
-          </Button>
           {isCoordinator && (
             <>
               <Button 
@@ -281,15 +299,21 @@ export default function VideoDisplay({
 
         {/* Video Info Overlay */}
         <div className="absolute top-4 right-4 bg-white text-black px-3 py-2 rounded-md border border-gray-300">
-          <div className="text-sm font-medium">
-            {isCoordinator ? "Field Inspector" : "Your View"}
-          </div>
-          <div className="text-xs opacity-70">
-            {isCoordinator 
-              ? `${videoAspectRatio > 1 ? 'Landscape' : 'Portrait'} • ${Math.round(videoAspectRatio * 100) / 100}:1`
-              : "Broadcasting to Coordinator"
-            }
-          </div>
+          {isCoordinator ? (
+            <>
+              <div className="text-sm font-medium">
+                {inspectorName || "Field Inspector"}
+              </div>
+              <div className="text-xs opacity-70">
+                {`${videoAspectRatio > 1 ? 'Landscape' : 'Portrait'} • ${formatDuration(callDuration)}`}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-sm font-medium">Your View</div>
+              <div className="text-xs opacity-70">Broadcasting to Coordinator</div>
+            </>
+          )}
         </div>
       </div>
 

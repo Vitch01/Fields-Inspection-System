@@ -7,7 +7,7 @@ import InspectorLocation from "@/components/video-call/inspector-location";
 import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import { useWebRTC } from "@/hooks/use-webrtc";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Clock, Signal, Users, Copy, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -17,7 +17,7 @@ export default function CoordinatorCall() {
   const [showSettings, setShowSettings] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [selectedImage, setSelectedImage] = useState<any>(null);
-  const [callDuration, setCallDuration] = useState(942); // seconds
+  const [callDuration, setCallDuration] = useState(0); // seconds
   const [videoRotation, setVideoRotation] = useState(0); // Track video rotation state
   const { toast } = useToast();
 
@@ -65,13 +65,19 @@ export default function CoordinatorCall() {
     }
   };
 
-  // Mock call timer
-  useState(() => {
+  // Call duration timer based on call start time
+  useEffect(() => {
+    if (!(call as any)?.startedAt) return;
+
     const interval = setInterval(() => {
-      setCallDuration(prev => prev + 1);
+      const startTime = new Date((call as any).startedAt).getTime();
+      const now = new Date().getTime();
+      const durationSeconds = Math.floor((now - startTime) / 1000);
+      setCallDuration(durationSeconds);
     }, 1000);
+
     return () => clearInterval(interval);
-  });
+  }, [(call as any)?.startedAt]);
 
   const formatDuration = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -161,6 +167,8 @@ export default function CoordinatorCall() {
           isCoordinator={true}
           onCaptureImage={(rotation = 0) => captureImage(rotation)}
           onRotationChange={setVideoRotation}
+          inspectorName={(call as any)?.inspectorId ? getInspectorName((call as any).inspectorId) : undefined}
+          callStartTime={(call as any)?.startedAt}
         />
       </main>
 
