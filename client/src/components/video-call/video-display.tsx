@@ -198,10 +198,8 @@ export default function VideoDisplay({
           className={`${
             isFullscreen 
               ? getFullscreenVideoClass()
-              : isCoordinator
-                ? 'w-[175%] h-[175%]' // Enlarge video frame for coordinator
-                : 'w-full h-full'
-          } object-contain transition-transform duration-500 ${
+              : 'w-full h-full'
+          } ${isCoordinator ? 'object-cover' : 'object-contain'} transition-transform duration-500 ${
             isCoordinator ? getRotationClass(videoAspectRatio, manualRotation) : ''
           }`}
           data-testid="video-remote-stream"
