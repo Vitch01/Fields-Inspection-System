@@ -178,7 +178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { callId } = req.params;
-      const { filename = req.file.originalname } = req.body;
+      const { filename = req.file.originalname, videoRotation = "0" } = req.body;
 
       const imageData = insertCapturedImageSchema.parse({
         callId,
@@ -188,7 +188,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         metadata: {
           originalName: req.file.originalname,
           size: req.file.size,
-          mimetype: req.file.mimetype
+          mimetype: req.file.mimetype,
+          videoRotation: parseInt(videoRotation, 10)
         }
       });
 

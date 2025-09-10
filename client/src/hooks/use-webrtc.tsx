@@ -229,7 +229,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, []);
 
-  const captureImage = useCallback(async () => {
+  const captureImage = useCallback(async (videoRotation = 0) => {
     try {
       let imageBlob: Blob;
       
@@ -253,6 +253,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       const formData = new FormData();
       formData.append('image', imageBlob, `inspection-${Date.now()}.jpg`);
       formData.append('filename', `inspection-${Date.now()}.jpg`);
+      formData.append('videoRotation', videoRotation.toString());
       
       const response = await fetch(`/api/calls/${callId}/images`, {
         method: 'POST',
