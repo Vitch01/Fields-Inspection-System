@@ -187,8 +187,8 @@ export default function VideoDisplay({
         isFullscreen
           ? getFullscreenContainerClass() // Adapt to rotation in fullscreen
           : isHorizontalOrientation() && isCoordinator
-            ? 'inset-1' // Much larger when horizontal - smaller inset = larger area
-            : 'inset-0' // Normal size
+            ? 'inset-0' // Full area when horizontal - landscape mode gets maximum space
+            : 'inset-2' // Smaller area for portrait mode
       }`}>
         <video
           ref={remoteVideoRef}
