@@ -24,13 +24,12 @@ export async function captureImageFromStream(stream: MediaStream): Promise<Blob>
     video.play();
 
     video.onloadedmetadata = () => {
-      // Save photo in its natural orientation - preserve how it appears when captured
-      // If video is displaying in landscape (wider than tall), save as landscape
-      // If video is displaying in portrait (taller than wide), save as portrait
+      // Save photo exactly as it appears in the video frame
+      // This preserves the orientation as seen when capturing
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       
-      // Draw the video frame preserving its natural display orientation
+      // Draw the video frame at its natural size and orientation
       ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
       
       canvas.toBlob((blob) => {
