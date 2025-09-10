@@ -169,9 +169,9 @@ export default function Home() {
       </header>
 
       <main className="max-w-6xl mx-auto p-6">
-        <div className="grid grid-cols-1 gap-6">
+        <div className="flex justify-center">
           {user.role === "coordinator" && (
-            <Card className="max-w-md">
+            <Card className="w-full max-w-md">
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   <Video className="w-5 h-5" />
