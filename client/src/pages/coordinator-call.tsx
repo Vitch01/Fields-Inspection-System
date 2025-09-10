@@ -2,6 +2,8 @@ import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import VideoDisplay from "@/components/video-call/video-display";
 import CallControls from "@/components/video-call/call-controls";
+import ChatPanel from "@/components/video-call/chat-panel";
+import InspectorLocation from "@/components/video-call/inspector-location";
 import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import { useWebRTC } from "@/hooks/use-webrtc";
@@ -13,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 export default function CoordinatorCall() {
   const { callId } = useParams();
   const [showSettings, setShowSettings] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [callDuration, setCallDuration] = useState(942); // seconds
   const [videoRotation, setVideoRotation] = useState(0); // Track video rotation state
@@ -127,6 +130,11 @@ export default function CoordinatorCall() {
         </div>
       </header>
 
+      {/* Inspector Location Info */}
+      <div className="bg-card border-b border-border px-4 py-2">
+        <InspectorLocation location={call?.inspectorLocation} />
+      </div>
+
       {/* Main Video Area */}
       <main className="flex-1">
         <VideoDisplay
@@ -146,11 +154,19 @@ export default function CoordinatorCall() {
         onToggleMute={toggleMute}
         onToggleVideo={toggleVideo}
         onOpenSettings={() => setShowSettings(true)}
+        onOpenChat={() => setShowChat(true)}
         onEndCall={endCall}
         onImageClick={setSelectedImage}
         onCaptureImage={(rotation = 0) => captureImage(rotation)}
         isCoordinator={true}
         videoRotation={videoRotation}
+      />
+
+      {/* Chat Panel */}
+      <ChatPanel
+        isOpen={showChat}
+        onClose={() => setShowChat(false)}
+        isCoordinator={true}
       />
 
       {/* Modals */}
