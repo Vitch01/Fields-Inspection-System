@@ -186,9 +186,9 @@ export default function VideoDisplay({
       <div className={`absolute video-container transition-all duration-500 ${
         isFullscreen
           ? getFullscreenContainerClass() // Adapt to rotation in fullscreen
-          : isHorizontalOrientation() && isCoordinator
-            ? 'inset-0' // Full area when horizontal - landscape mode gets maximum space
-            : 'inset-2' // Smaller area for portrait mode
+          : isCoordinator
+            ? 'top-[12.5%] left-[12.5%] w-[75%] h-[75%]' // 75% of screen for coordinator
+            : 'inset-2' // Smaller area for inspector
       }`}>
         <video
           ref={remoteVideoRef}
