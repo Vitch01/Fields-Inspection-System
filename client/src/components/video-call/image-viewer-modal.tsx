@@ -2,6 +2,16 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Download, Edit, X } from "lucide-react";
 
+// Helper function to get rotation class for captured images
+function getImageRotationClass(videoRotation: number): string {
+  switch (videoRotation) {
+    case 90: return 'rotate-90';
+    case -90: return '-rotate-90';
+    case 180: return 'rotate-180';
+    default: return '';
+  }
+}
+
 interface ImageViewerModalProps {
   image: any;
   onClose: () => void;
@@ -38,7 +48,9 @@ export default function ImageViewerModal({ image, onClose }: ImageViewerModalPro
             <img 
               src={image.originalUrl}
               alt={`Inspection image - ${image.filename}`}
-              className="max-w-full max-h-full object-contain"
+              className={`max-w-full max-h-full object-contain transition-transform ${
+                getImageRotationClass(image.metadata?.videoRotation || 0)
+              }`}
               style={{ maxHeight: '85vh', maxWidth: '90vw' }}
               data-testid="image-full-size"
             />

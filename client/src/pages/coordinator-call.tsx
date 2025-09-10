@@ -133,7 +133,7 @@ export default function CoordinatorCall() {
           localStream={localStream}
           remoteStream={remoteStream}
           isCoordinator={true}
-          onCaptureImage={() => captureImage(videoRotation)}
+          onCaptureImage={(rotation = 0) => captureImage(rotation)}
           onRotationChange={setVideoRotation}
         />
       </main>
@@ -148,7 +148,7 @@ export default function CoordinatorCall() {
         onOpenSettings={() => setShowSettings(true)}
         onEndCall={endCall}
         onImageClick={setSelectedImage}
-        onCaptureImage={() => captureImage(videoRotation)}
+        onCaptureImage={(rotation = 0) => captureImage(rotation)}
         isCoordinator={true}
         videoRotation={videoRotation}
       />

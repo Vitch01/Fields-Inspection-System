@@ -20,7 +20,7 @@ interface CallControlsProps {
   onOpenSettings: () => void;
   onEndCall: () => void;
   onImageClick: (image: any) => void;
-  onCaptureImage?: () => void;
+  onCaptureImage?: (rotation?: number) => void;
   isCoordinator: boolean;
   videoRotation?: number;
 }
@@ -86,7 +86,7 @@ export default function CallControls({
           {isCoordinator && onCaptureImage && (
             <Button 
               variant="default"
-              onClick={onCaptureImage}
+              onClick={() => onCaptureImage?.(videoRotation)}
               data-testid="button-capture-image"
             >
               <Camera className="w-4 h-4 mr-2" />

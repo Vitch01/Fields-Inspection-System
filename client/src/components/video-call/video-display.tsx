@@ -6,7 +6,7 @@ interface VideoDisplayProps {
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
   isCoordinator: boolean;
-  onCaptureImage: () => void;
+  onCaptureImage: (rotation?: number) => void;
   onRotationChange?: (rotation: number) => void;
 }
 
@@ -112,7 +112,7 @@ export default function VideoDisplay({
   const handleCaptureImage = () => {
     setCaptureFlash(true);
     setTimeout(() => setCaptureFlash(false), 200);
-    onCaptureImage();
+    onCaptureImage(manualRotation);
   };
 
   // Track fullscreen state

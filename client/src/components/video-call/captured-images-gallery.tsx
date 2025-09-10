@@ -1,6 +1,16 @@
 import { Button } from "@/components/ui/button";
 import { Download, Share, Plus } from "lucide-react";
 
+// Helper function to get rotation class for captured images
+function getImageRotationClass(videoRotation: number): string {
+  switch (videoRotation) {
+    case 90: return 'rotate-90';
+    case -90: return '-rotate-90';
+    case 180: return 'rotate-180';
+    default: return '';
+  }
+}
+
 interface CapturedImagesGalleryProps {
   images: any[];
   onImageClick: (image: any) => void;
@@ -27,7 +37,9 @@ export default function CapturedImagesGallery({ images, onImageClick }: Captured
             <img 
               src={image.thumbnailUrl || image.originalUrl}
               alt={`Captured inspection image ${index + 1}`}
-              className="w-20 h-20 object-contain rounded border-2 border-border group-hover:border-primary transition-colors bg-gray-100 dark:bg-gray-800"
+              className={`w-20 h-20 object-contain rounded border-2 border-border group-hover:border-primary transition-colors bg-gray-100 dark:bg-gray-800 ${
+                getImageRotationClass(image.metadata?.videoRotation || 0)
+              }`}
             />
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 rounded transition-colors"></div>
             <div className="absolute bottom-1 right-1 bg-primary text-primary-foreground text-xs px-1 rounded">
