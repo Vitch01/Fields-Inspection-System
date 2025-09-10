@@ -29,7 +29,7 @@ export default function CapturedImagesGallery({ images, onImageClick, videoRotat
             <img 
               src={image.thumbnailUrl || image.originalUrl}
               alt={`Captured inspection image ${index + 1}`}
-              className={`w-20 h-16 object-cover rounded border-2 border-border group-hover:border-primary transition-all duration-500 ${getImageRotationClass(videoRotation)}`}
+              className="w-20 h-16 object-cover rounded border-2 border-border group-hover:border-primary transition-colors"
             />
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 rounded transition-colors"></div>
             <div className="absolute bottom-1 right-1 bg-primary text-primary-foreground text-xs px-1 rounded">

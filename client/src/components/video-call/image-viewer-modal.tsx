@@ -24,8 +24,8 @@ export default function ImageViewerModal({ image, onClose, videoRotation = 0 }: 
 
   return (
     <Dialog open={!!image} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] p-0" data-testid="modal-image-viewer">
-        <div className="relative w-full h-full flex items-center justify-center bg-black">
+      <DialogContent className="max-w-[95vw] max-h-[95vh] w-full h-full p-0" data-testid="modal-image-viewer">
+        <div className="relative w-full h-full flex items-center justify-center bg-black min-h-[80vh]">
           <Button
             size="icon"
             variant="ghost"
@@ -36,11 +36,12 @@ export default function ImageViewerModal({ image, onClose, videoRotation = 0 }: 
             <X className="w-6 h-6" />
           </Button>
           
-          <div className="max-w-full max-h-full p-4">
+          <div className="w-full h-full flex items-center justify-center p-4">
             <img 
               src={image.originalUrl}
               alt={`Inspection image - ${image.filename}`}
-              className={`max-w-full max-h-full object-contain transition-transform duration-500 ${getImageRotationClass(videoRotation)}`}
+              className="max-w-full max-h-full object-contain"
+              style={{ maxHeight: '85vh', maxWidth: '90vw' }}
               data-testid="image-full-size"
             />
           </div>
