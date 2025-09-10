@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useWebSocket } from "./use-websocket";
-import { createPeerConnection, captureImageFromStream } from "@/lib/webrtc-utils";
+import { createPeerConnection, captureImageFromStream, capturePhotoFromCamera } from "@/lib/webrtc-utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -231,19 +231,23 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
   const captureImage = useCallback(async () => {
     try {
-      const streamToCapture = userRole === "coordinator" ? remoteStream : localStream;
-      if (!streamToCapture) {
-        toast({
-          title: "Capture Failed",
-          description: userRole === "coordinator" 
-            ? "No inspector video feed available for capture" 
-            : "No camera feed available",
-          variant: "destructive",
-        });
-        return;
+      let imageBlob: Blob;
+      
+      if (userRole === "inspector") {
+        // For inspector: Use rear camera to take a high-quality photo
+        imageBlob = await capturePhotoFromCamera();
+      } else {
+        // For coordinator: Capture from inspector's video stream
+        if (!remoteStream) {
+          toast({
+            title: "Capture Failed",
+            description: "No inspector video feed available for capture",
+            variant: "destructive",
+          });
+          return;
+        }
+        imageBlob = await captureImageFromStream(remoteStream);
       }
-
-      const imageBlob = await captureImageFromStream(streamToCapture);
       
       // Upload image to server
       const formData = new FormData();
@@ -273,7 +277,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         title: "Image Captured",
         description: userRole === "coordinator" 
           ? "Inspector's camera view captured successfully"
-          : "Inspection image saved successfully",
+          : "High-quality inspection photo captured and uploaded instantly",
       });
 
       // Return the captured image data for immediate display
@@ -282,11 +286,13 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       console.error("Failed to capture image:", error);
       toast({
         title: "Capture Failed",
-        description: "Failed to capture inspection image",
+        description: userRole === "inspector" 
+          ? "Failed to access camera for photo capture" 
+          : "Failed to capture inspection image",
         variant: "destructive",
       });
     }
-  }, [callId, userRole, localStream, remoteStream, sendMessage, toast]);
+  }, [callId, userRole, remoteStream, sendMessage, toast]);
 
   const endCall = useCallback(async () => {
     try {
