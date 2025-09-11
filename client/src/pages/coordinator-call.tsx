@@ -220,7 +220,7 @@ export default function CoordinatorCall() {
         videoRotation={videoRotation}
         unreadCount={unreadCount}
         isRecording={isRecording}
-        onStartRecording={startRecording}
+        onStartRecording={() => startRecording(videoRotation)}
         onStopRecording={handleStopRecording}
         hasStreamToRecord={!!(remoteStream || localStream)}
       />

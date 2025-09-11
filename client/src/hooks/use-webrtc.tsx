@@ -496,7 +496,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     setUnreadCount(0);
   }, []);
 
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (videoRotation = 0) => {
     if (userRole !== "coordinator") {
       toast({
         title: "Recording Error",
@@ -595,6 +595,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           formData.append('video', videoFile);
           formData.append('callId', callId);
           formData.append('timestamp', new Date().toISOString());
+          formData.append('videoRotation', videoRotation.toString());
           
           const response = await fetch('/api/recordings', {
             method: 'POST',

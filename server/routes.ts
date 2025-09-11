@@ -366,6 +366,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { callId, timestamp } = validationResult.data;
+      const { videoRotation = "0" } = req.body;
 
       // Double-check MIME type (defense in depth) - handle codec information
       const baseType = req.file.mimetype.split(';')[0]; // Remove codec information
@@ -399,7 +400,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             originalName: req.file.originalname,
             size: req.file.size,
             mimetype: req.file.mimetype,
-            timestamp
+            timestamp,
+            videoRotation: parseInt(videoRotation, 10)
           }
         });
 
