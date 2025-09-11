@@ -309,17 +309,19 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
               variant: "default"
             });
             
-            // Clean up for both roles, but different redirect behavior
+            // Clean up for both roles and redirect both to appropriate pages
             setTimeout(() => {
               cleanup();
               setHasPeerJoined(false);
               setIsConnectionEstablished(false);
               
-              // Only redirect coordinator to home, inspector stays on call page
+              // Redirect both coordinator and inspector when call ends
               if (userRole === "coordinator") {
                 window.location.href = "/";
+              } else {
+                // Inspector also gets redirected to home page when call ends
+                window.location.href = "/";
               }
-              // Inspector stays on the call page, no redirect
             }, 1500);
           }
           break;
@@ -704,14 +706,10 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         userId: userRole,
       });
 
-      // Cleanup and redirect
+      // Cleanup and redirect both parties to home
       cleanup();
-      // Different redirect behavior for inspectors vs coordinators
-      if (userRole === "inspector") {
-        window.location.href = `/join/${callId}`;
-      } else {
-        window.location.href = "/";
-      }
+      // Both inspector and coordinator get redirected to home when call ends
+      window.location.href = "/";
     } catch (error) {
       console.error("Failed to end call:", error);
     }

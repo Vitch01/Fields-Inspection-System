@@ -125,6 +125,7 @@ export default function CallControls({
           {isCoordinator && (
             <Button 
               variant={isRecording ? "destructive" : "secondary"}
+              className={isRecording ? "bg-red-600 hover:bg-red-700" : ""}
               onClick={isRecording ? onStopRecording : onStartRecording}
               data-testid="button-toggle-recording"
               disabled={!hasStreamToRecord && !isRecording}
