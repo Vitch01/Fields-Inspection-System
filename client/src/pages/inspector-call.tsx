@@ -183,10 +183,6 @@ export default function InspectorCall() {
               {isConnected ? 'Connected' : 'Connecting...'}
             </span>
           </div>
-          <div className="text-sm text-white">
-            <Clock className="w-4 h-4 inline mr-1" />
-            <span data-testid="text-call-duration">{formatDuration(callDuration)}</span>
-          </div>
         </div>
         
         <div className="flex items-center space-x-4">
@@ -236,7 +232,8 @@ export default function InspectorCall() {
       />
 
       <ImageViewerModal
-        image={selectedImage}
+        images={capturedImages}
+        selectedImage={selectedImage}
         onClose={() => setSelectedImage(null)}
       />
     </div>

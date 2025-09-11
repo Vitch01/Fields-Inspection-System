@@ -779,12 +779,27 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     // Stop all media tracks to revoke camera and microphone permissions
     if (localStreamRef.current) {
       console.log('Stopping media tracks and revoking camera/microphone permissions');
-      localStreamRef.current.getTracks().forEach(track => {
+      const tracks = localStreamRef.current.getTracks();
+      tracks.forEach(track => {
         console.log(`Stopping ${track.kind} track (${track.label})`);
         track.stop();
+        // Force release track reference
+        track.enabled = false;
       });
+      
+      // Clear the stream reference completely
       localStreamRef.current = null;
+      console.log('All media tracks stopped and permissions revoked');
     }
+    
+    // Also ensure local video elements are cleared
+    const localVideoElements = document.querySelectorAll('video[data-testid="video-local-stream"], video[data-testid="video-local-fullscreen"]');
+    localVideoElements.forEach(video => {
+      if (video instanceof HTMLVideoElement) {
+        video.srcObject = null;
+        video.load(); // Force video element to release resources
+      }
+    });
     
     // Close peer connection
     if (peerConnectionRef.current) {
