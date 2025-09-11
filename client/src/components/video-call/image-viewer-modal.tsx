@@ -149,9 +149,7 @@ export default function ImageViewerModal({ images, selectedImage, onClose }: Ima
                 src={currentImage.originalUrl}
                 controls
                 autoPlay
-                className={`max-w-full max-h-full object-contain ${
-                  getImageRotationClass(currentImage.metadata?.videoRotation || 0)
-                }`}
+                className="max-w-full max-h-full object-contain"
                 style={{ maxHeight: '85vh', maxWidth: '90vw' }}
                 data-testid="video-full-size"
               />
@@ -225,9 +223,7 @@ export default function ImageViewerModal({ images, selectedImage, onClose }: Ima
                     {img.type === 'video' ? (
                       <video 
                         src={img.originalUrl}
-                        className={`w-full h-full object-cover ${
-                          getImageRotationClass(img.metadata?.videoRotation || 0)
-                        }`}
+                        className="w-full h-full object-cover"
                         preload="metadata"
                         muted
                       />

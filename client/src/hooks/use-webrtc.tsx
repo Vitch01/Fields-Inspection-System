@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useWebSocket } from "./use-websocket";
-import { createPeerConnection, captureImageFromStream, capturePhotoFromCamera } from "@/lib/webrtc-utils";
+import { createPeerConnection, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream } from "@/lib/webrtc-utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -28,6 +28,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const localStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
+  const canvasCleanupRef = useRef<(() => void) | null>(null);
   const { toast } = useToast();
 
   // Helper function to get supported mimeType
@@ -536,22 +537,31 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
 
     try {
-      // Create a combined stream with available video and audio
-      const combinedStream = new MediaStream();
+      let recordingStream: MediaStream;
+      let fallbackMode = false;
       
-      // Add video tracks from the chosen stream (remote or local)
-      streamToRecord.getVideoTracks().forEach(track => {
-        combinedStream.addTrack(track);
-      });
-      
-      // Add audio tracks from available sources
-      if (remoteStream) {
-        remoteStream.getAudioTracks().forEach(track => {
-          combinedStream.addTrack(track);
-        });
-      } else if (localStreamRef.current) {
-        localStreamRef.current.getAudioTracks().forEach(track => {
-          combinedStream.addTrack(track);
+      try {
+        // Try canvas-based recording stream with baked-in rotation
+        const rotatedStreamData = await createRotatedRecordingStream(
+          streamToRecord,
+          videoRotation,
+          30 // 30 FPS for smooth recording
+        );
+        
+        recordingStream = rotatedStreamData.stream;
+        canvasCleanupRef.current = rotatedStreamData.cleanup;
+      } catch (canvasError) {
+        // FALLBACK: Use direct recording without rotation if canvas recording unsupported
+        console.warn('Canvas recording not supported, falling back to direct recording:', canvasError);
+        fallbackMode = true;
+        recordingStream = streamToRecord;
+        canvasCleanupRef.current = null;
+        
+        // Notify user about fallback
+        toast({
+          title: "Recording Mode",
+          description: "Using direct recording mode (rotation will not be applied to video file)",
+          variant: "default"
         });
       }
 
@@ -560,7 +570,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         throw new Error('No supported video format found');
       }
 
-      const mediaRecorder = new MediaRecorder(combinedStream, {
+      const mediaRecorder = new MediaRecorder(recordingStream, {
         mimeType: supportedMimeType
       });
       
@@ -642,6 +652,17 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       });
     } catch (error) {
       console.error('Failed to start recording:', error);
+      
+      // Clean up canvas elements if they were created
+      if (canvasCleanupRef.current) {
+        try {
+          canvasCleanupRef.current();
+          canvasCleanupRef.current = null;
+        } catch (cleanupError) {
+          console.error('Error cleaning up canvas after recording failure:', cleanupError);
+        }
+      }
+      
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       toast({
         title: "Recording Error",
@@ -657,6 +678,16 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }, [remoteStream, localStreamRef, userRole, callId, toast, isRecordingSupported, isRecording, getSupportedMimeType]);
 
   const stopRecording = useCallback(() => {
+    // Clean up canvas recording elements first
+    if (canvasCleanupRef.current) {
+      try {
+        canvasCleanupRef.current();
+        canvasCleanupRef.current = null;
+      } catch (error) {
+        console.error('Error cleaning up canvas recording:', error);
+      }
+    }
+    
     if (mediaRecorderRef.current) {
       try {
         // Only stop if not already stopping/stopped
@@ -710,6 +741,16 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }, [callId, userRole, sendMessage, isRecording, stopRecording]);
 
   function cleanup() {
+    // Clean up canvas recording elements first
+    if (canvasCleanupRef.current) {
+      try {
+        canvasCleanupRef.current();
+        canvasCleanupRef.current = null;
+      } catch (error) {
+        console.error('Error cleaning up canvas recording during cleanup:', error);
+      }
+    }
+    
     // Always stop recording if MediaRecorder exists, regardless of isRecording state
     if (mediaRecorderRef.current) {
       try {

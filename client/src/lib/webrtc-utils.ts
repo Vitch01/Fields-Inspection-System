@@ -138,3 +138,229 @@ export function getImageRotationClass(videoRotation: number): string {
     default: return '';
   }
 }
+
+// Canvas-based recording utilities for baked-in rotation
+export interface CanvasRecordingElements {
+  canvas: HTMLCanvasElement;
+  video: HTMLVideoElement;
+  context: CanvasRenderingContext2D;
+  stream: MediaStream;
+  cleanup: () => void;
+}
+
+// Create a canvas-based recording stream with rotation baked in
+export function createCanvasRecordingStream(
+  sourceStream: MediaStream,
+  videoRotation: number = 0,
+  frameRate: number = 30
+): Promise<CanvasRecordingElements> {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) {
+      reject(new Error('Could not get canvas context'));
+      return;
+    }
+    
+    // Feature detection for canvas.captureStream
+    if (typeof canvas.captureStream !== 'function') {
+      reject(new Error('Canvas captureStream not supported by this browser'));
+      return;
+    }
+    
+    const video = document.createElement('video');
+
+    // Create cleanup function
+    let animationId: number | null = null;
+    let isRendering = false;
+    let lastFrameTime = 0;
+    const frameDuration = 1000 / frameRate; // Convert to milliseconds
+
+    const cleanup = () => {
+      isRendering = false;
+      if (animationId !== null) {
+        cancelAnimationFrame(animationId);
+        animationId = null;
+      }
+      // Don't stop the source stream, just clean up our rendering
+      video.srcObject = null;
+      
+      // CRITICAL FIX: Remove DOM elements to prevent memory leaks
+      try {
+        if (video.parentNode) {
+          video.parentNode.removeChild(video);
+        }
+        if (canvas.parentNode) {
+          canvas.parentNode.removeChild(canvas);
+        }
+      } catch (error) {
+        console.warn('Error removing DOM elements during cleanup:', error);
+      }
+      
+      // Canvas stream tracks will be stopped by the calling code
+    };
+
+    // Hide elements
+    video.style.position = 'absolute';
+    video.style.left = '-9999px';
+    video.style.top = '-9999px';
+    video.style.width = '1px';
+    video.style.height = '1px';
+    video.muted = true;
+    video.playsInline = true;
+
+    canvas.style.position = 'absolute';
+    canvas.style.left = '-9999px';
+    canvas.style.top = '-9999px';
+
+    // Append to document
+    document.body.appendChild(video);
+    document.body.appendChild(canvas);
+
+    video.srcObject = sourceStream;
+    video.play().catch(reject);
+
+    video.onloadedmetadata = () => {
+      try {
+        const videoWidth = video.videoWidth;
+        const videoHeight = video.videoHeight;
+
+        if (videoWidth === 0 || videoHeight === 0) {
+          cleanup();
+          reject(new Error('Invalid video dimensions'));
+          return;
+        }
+
+        // Calculate canvas dimensions based on rotation
+        const needsSwap = Math.abs(videoRotation) === 90 || Math.abs(videoRotation) === 270;
+        canvas.width = needsSwap ? videoHeight : videoWidth;
+        canvas.height = needsSwap ? videoWidth : videoHeight;
+
+        // Start the canvas stream
+        const canvasStream = canvas.captureStream(frameRate);
+        
+        // Setup optimized rendering loop with frame rate limiting
+        isRendering = true;
+        lastFrameTime = performance.now();
+        
+        const renderFrame = (currentTime: number) => {
+          if (!isRendering) return;
+
+          // PERFORMANCE FIX: Frame rate limiting - only render when enough time has passed
+          const timeSinceLastFrame = currentTime - lastFrameTime;
+          if (timeSinceLastFrame < frameDuration) {
+            animationId = requestAnimationFrame(renderFrame);
+            return;
+          }
+          
+          lastFrameTime = currentTime;
+
+          // Clear canvas
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          // Save context state
+          ctx.save();
+
+          // Apply rotation transformation
+          const centerX = canvas.width / 2;
+          const centerY = canvas.height / 2;
+
+          ctx.translate(centerX, centerY);
+          ctx.rotate((videoRotation * Math.PI) / 180);
+
+          // Draw video frame centered after rotation
+          const drawWidth = needsSwap ? videoHeight : videoWidth;
+          const drawHeight = needsSwap ? videoWidth : videoHeight;
+          
+          ctx.drawImage(
+            video,
+            -drawWidth / 2,
+            -drawHeight / 2,
+            drawWidth,
+            drawHeight
+          );
+
+          // Restore context state
+          ctx.restore();
+
+          // Schedule next frame
+          animationId = requestAnimationFrame(renderFrame);
+        };
+
+        // Start rendering with initial timestamp
+        renderFrame(performance.now());
+
+        resolve({
+          canvas,
+          video,
+          context: ctx,
+          stream: canvasStream,
+          cleanup
+        });
+
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
+    };
+
+    video.onerror = () => {
+      cleanup();
+      reject(new Error('Video load error'));
+    };
+  });
+}
+
+// Create a composed stream with rotated video and original audio
+export async function createRotatedRecordingStream(
+  sourceStream: MediaStream,
+  videoRotation: number = 0,
+  frameRate: number = 30
+): Promise<{ stream: MediaStream; cleanup: () => void }> {
+  try {
+    // Feature detection fallback
+    const testCanvas = document.createElement('canvas');
+    if (typeof testCanvas.captureStream !== 'function') {
+      throw new Error('Canvas captureStream not supported - falling back to direct recording');
+    }
+    
+    // Create canvas recording for video
+    const canvasElements = await createCanvasRecordingStream(sourceStream, videoRotation, frameRate);
+    
+    // Create composed stream
+    const composedStream = new MediaStream();
+    
+    // Add rotated video track from canvas
+    const videoTracks = canvasElements.stream.getVideoTracks();
+    videoTracks.forEach(track => {
+      composedStream.addTrack(track);
+    });
+    
+    // CRITICAL FIX: Clone audio tracks to prevent stopping original call audio
+    const audioTracks = sourceStream.getAudioTracks();
+    audioTracks.forEach(originalTrack => {
+      // Clone the audio track so we can stop the cloned version without affecting the original
+      const clonedTrack = originalTrack.clone();
+      composedStream.addTrack(clonedTrack);
+    });
+
+    const cleanup = () => {
+      // Stop composed stream tracks (only affects our cloned audio tracks and canvas video)
+      composedStream.getTracks().forEach(track => {
+        track.stop();
+      });
+      
+      // Cleanup canvas elements
+      canvasElements.cleanup();
+    };
+
+    return {
+      stream: composedStream,
+      cleanup
+    };
+
+  } catch (error) {
+    throw new Error(`Failed to create rotated recording stream: ${error}`);
+  }
+}
