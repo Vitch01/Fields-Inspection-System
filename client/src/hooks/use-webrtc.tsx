@@ -25,6 +25,40 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const localStreamRef = useRef<MediaStream | null>(null);
   const { toast } = useToast();
 
+  // Create notification sound function
+  const playNotificationSound = useCallback(() => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+      oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1);
+      
+      gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.2, audioContext.currentTime + 0.01);
+      gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.2);
+      
+      // Clean up AudioContext after sound finishes to prevent resource leaks
+      oscillator.onended = () => {
+        audioContext.close();
+      };
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.2);
+      
+      // Resume AudioContext in case it's suspended due to autoplay policies
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+    } catch (error) {
+      console.warn("Failed to play notification sound:", error);
+    }
+  }, []);
+
   const { sendMessage, isConnected: wsConnected } = useWebSocket(callId, userRole, {
     onMessage: handleSignalingMessage,
   });
@@ -254,6 +288,16 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
               timestamp: new Date(message.data.timestamp)
             };
             setChatMessages(prev => [...prev, newMessage]);
+            
+            // Play notification sound for incoming messages
+            playNotificationSound();
+            
+            // Show toast notification
+            toast({
+              title: "New Message",
+              description: `Message from ${message.userId === 'coordinator' ? 'Coordinator' : 'Inspector'}`,
+              variant: "default"
+            });
           }
           break;
       }
