@@ -776,11 +776,20 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       setIsRecording(false);
     }
     
+    // Stop all media tracks to revoke camera and microphone permissions
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
+      console.log('Stopping media tracks and revoking camera/microphone permissions');
+      localStreamRef.current.getTracks().forEach(track => {
+        console.log(`Stopping ${track.kind} track (${track.label})`);
+        track.stop();
+      });
+      localStreamRef.current = null;
     }
+    
+    // Close peer connection
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
     }
     setLocalStream(null);
     setRemoteStream(null);
