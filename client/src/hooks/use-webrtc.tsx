@@ -170,23 +170,25 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
   async function handleSignalingMessage(message: any) {
     const pc = peerConnectionRef.current;
-    if (!pc) return;
 
     try {
       switch (message.type) {
         case "offer":
+          if (!pc) return;
           if (userRole === "inspector") {
             await createAnswer(message.data);
           }
           break;
 
         case "answer":
+          if (!pc) return;
           if (userRole === "coordinator") {
             await pc.setRemoteDescription(message.data);
           }
           break;
 
         case "ice-candidate":
+          if (!pc) return;
           // Only add ICE candidate if we have remote description set
           if (pc.remoteDescription) {
             await pc.addIceCandidate(message.data);
@@ -203,6 +205,21 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
         case "user-left":
           console.log("User left:", message.userId);
+          // Automatically end the call for the remaining participant
+          toast({
+            title: "Call Ended",
+            description: "The other participant has left the call",
+            variant: "default"
+          });
+          // Clean up and redirect after a short delay
+          setTimeout(() => {
+            cleanup();
+            if (userRole === "inspector") {
+              window.location.href = `/join/${callId}`;
+            } else {
+              window.location.href = "/";
+            }
+          }, 1500);
           break;
 
         case "image-captured":
