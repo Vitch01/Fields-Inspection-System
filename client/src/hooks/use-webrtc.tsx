@@ -575,28 +575,20 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       mediaRecorder.onstop = async () => {
         const supportedMimeType = getSupportedMimeType();
         const mimeTypeForBlob = supportedMimeType || 'video/webm';
-        const blob = new Blob(recordedChunksRef.current, { type: mimeTypeForBlob });
+        
+        // Strip codec information for the blob and file type
+        const baseMimeType = mimeTypeForBlob.split(';')[0]; // Remove codec info
+        
+        const blob = new Blob(recordedChunksRef.current, { type: baseMimeType });
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const extension = mimeTypeForBlob.includes('mp4') ? 'mp4' : 'webm';
+        const extension = baseMimeType.includes('mp4') ? 'mp4' : 'webm';
         const filename = `inspection-${callId}-${timestamp}.${extension}`;
         
         // Save recording to server
         try {
-          console.log('Preparing to upload video:', {
-            blobSize: blob.size,
-            blobType: blob.type,
-            filename: filename
-          });
-          
-          // Create a File object from the blob to ensure proper MIME type
+          // Create a File object from the blob with the base MIME type
           const videoFile = new File([blob], filename, { 
-            type: blob.type || 'video/webm' 
-          });
-          
-          console.log('Created video file:', {
-            fileSize: videoFile.size,
-            fileType: videoFile.type,
-            fileName: videoFile.name
+            type: baseMimeType 
           });
           
           const formData = new FormData();
