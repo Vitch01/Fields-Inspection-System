@@ -18,12 +18,14 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [hasPeerJoined, setHasPeerJoined] = useState(false);
+  const [isConnectionEstablished, setIsConnectionEstablished] = useState(false);
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const { toast } = useToast();
 
-  const { sendMessage, isConnected: wsConnected } = useWebSocket(callId, {
+  const { sendMessage, isConnected: wsConnected } = useWebSocket(callId, userRole, {
     onMessage: handleSignalingMessage,
   });
 
@@ -108,7 +110,11 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
     // Handle connection state changes
     pc.onconnectionstatechange = () => {
-      setIsConnected(pc.connectionState === "connected");
+      const connected = pc.connectionState === "connected";
+      setIsConnected(connected);
+      if (connected) {
+        setIsConnectionEstablished(true);
+      }
     };
 
     // Handle ICE candidates
@@ -197,29 +203,39 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
         case "user-joined":
           console.log("User joined:", message.userId);
+          // Track that a peer has joined (only if it's not our own join message)
+          if (message.userId !== userRole) {
+            setHasPeerJoined(true);
+          }
           // Initiate offer when someone joins (for coordinator)
-          if (userRole === "coordinator") {
+          if (userRole === "coordinator" && message.userId !== userRole) {
             setTimeout(() => createOffer(), 1000);
           }
           break;
 
         case "user-left":
           console.log("User left:", message.userId);
-          // Automatically end the call for the remaining participant
-          toast({
-            title: "Call Ended",
-            description: "The other participant has left the call",
-            variant: "default"
-          });
-          // Clean up and redirect after a short delay
-          setTimeout(() => {
-            cleanup();
-            if (userRole === "inspector") {
-              window.location.href = `/join/${callId}`;
-            } else {
-              window.location.href = "/";
-            }
-          }, 1500);
+          // Only handle if it's not our own leave message and we had a peer connection
+          if (message.userId !== userRole && (hasPeerJoined || isConnectionEstablished)) {
+            toast({
+              title: "Call Ended",
+              description: "The other participant has left the call",
+              variant: "default"
+            });
+            
+            // Clean up for both roles, but different redirect behavior
+            setTimeout(() => {
+              cleanup();
+              setHasPeerJoined(false);
+              setIsConnectionEstablished(false);
+              
+              // Only redirect coordinator to home, inspector stays on call page
+              if (userRole === "coordinator") {
+                window.location.href = "/";
+              }
+              // Inspector stays on the call page, no redirect
+            }, 1500);
+          }
           break;
 
         case "image-captured":
@@ -392,6 +408,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     setLocalStream(null);
     setRemoteStream(null);
     setIsConnected(false);
+    setHasPeerJoined(false);
+    setIsConnectionEstablished(false);
   }
 
   return {

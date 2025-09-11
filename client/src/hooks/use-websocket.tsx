@@ -6,7 +6,7 @@ interface UseWebSocketOptions {
   onDisconnect?: () => void;
 }
 
-export function useWebSocket(callId: string, options: UseWebSocketOptions = {}) {
+export function useWebSocket(callId: string, userRole: string, options: UseWebSocketOptions = {}) {
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
@@ -35,7 +35,7 @@ export function useWebSocket(callId: string, options: UseWebSocketOptions = {}) 
         sendMessage({
           type: "join-call",
           callId,
-          userId: `user-${Date.now()}`, // Generate a unique user ID
+          userId: userRole,
         });
       };
 
