@@ -25,6 +25,17 @@ export function createPeerConnection(): RTCPeerConnection {
         username: 'openrelayproject',
         credential: 'openrelayproject',
       },
+      // TLS TURN servers for stricter mobile networks/firewalls
+      {
+        urls: 'turns:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
+      {
+        urls: 'turns:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
     ],
     // Improve ICE gathering for mobile networks
     iceCandidatePoolSize: 10,

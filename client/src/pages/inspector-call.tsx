@@ -39,6 +39,11 @@ export default function InspectorCall() {
     sendChatMessage,
     unreadCount,
     clearUnreadCount,
+    startMediaStream,
+    videoQuality,
+    connectionQuality,
+    isConnectionEstablished,
+    hasPeerJoined,
   } = useWebRTC(callId!, "inspector");
 
   // Inspector doesn't need to fetch captured images
@@ -57,8 +62,12 @@ export default function InspectorCall() {
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleJoinCall = () => {
+  const handleJoinCall = async () => {
     if (inspectorName.trim()) {
+      // Start media stream with user gesture (critical for mobile)
+      console.log("Inspector joining call - starting media stream");
+      await startMediaStream();
+      
       // Join the call immediately
       setHasJoined(true);
       

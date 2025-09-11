@@ -32,6 +32,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const recordedChunksRef = useRef<Blob[]>([]);
   const canvasCleanupRef = useRef<(() => void) | null>(null);
   const qualityMonitorRef = useRef<ConnectionQualityMonitor | null>(null);
+  const pendingRemoteCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const { toast } = useToast();
 
   // Helper function to get supported mimeType
@@ -118,9 +119,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     onMessage: handleSignalingMessage,
   });
 
-  // Initialize local media stream
+  // Don't auto-initialize stream - wait for user gesture (join button)
   useEffect(() => {
-    initializeLocalStream();
     return () => {
       cleanup();
     };
@@ -268,6 +268,18 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
     try {
       await pc.setRemoteDescription(offer);
+      
+      // Flush buffered ICE candidates after setting remote description
+      console.log(`Flushing ${pendingRemoteCandidatesRef.current.length} buffered ICE candidates`);
+      for (const candidate of pendingRemoteCandidatesRef.current) {
+        try {
+          await pc.addIceCandidate(candidate);
+        } catch (error) {
+          console.error("Failed to add buffered ICE candidate:", error);
+        }
+      }
+      pendingRemoteCandidatesRef.current = []; // Clear the buffer
+      
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       
@@ -298,14 +310,34 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           if (!pc) return;
           if (userRole === "coordinator") {
             await pc.setRemoteDescription(message.data);
+            
+            // Flush buffered ICE candidates after setting remote description
+            console.log(`Flushing ${pendingRemoteCandidatesRef.current.length} buffered ICE candidates`);
+            for (const candidate of pendingRemoteCandidatesRef.current) {
+              try {
+                await pc.addIceCandidate(candidate);
+              } catch (error) {
+                console.error("Failed to add buffered ICE candidate:", error);
+              }
+            }
+            pendingRemoteCandidatesRef.current = []; // Clear the buffer
           }
           break;
 
         case "ice-candidate":
           if (!pc) return;
-          // Only add ICE candidate if we have remote description set
           if (pc.remoteDescription) {
-            await pc.addIceCandidate(message.data);
+            // Remote description already set, add candidate immediately
+            try {
+              await pc.addIceCandidate(message.data);
+              console.log("Added ICE candidate immediately");
+            } catch (error) {
+              console.error("Failed to add ICE candidate:", error);
+            }
+          } else {
+            // Remote description not set yet, buffer the candidate
+            console.log("Buffering ICE candidate (remote description not set yet)");
+            pendingRemoteCandidatesRef.current.push(message.data);
           }
           break;
 
@@ -864,7 +896,16 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }
 
+  // Expose method to start media stream (call when user taps join)
+  const startMediaStream = useCallback(async () => {
+    console.log("Starting media stream after user gesture");
+    await initializeLocalStream();
+  }, []);
+
   function cleanup() {
+    // Clear any buffered ICE candidates
+    pendingRemoteCandidatesRef.current = [];
+    
     // Clean up quality monitoring
     if (qualityMonitorRef.current) {
       qualityMonitorRef.current.stopMonitoring();
@@ -953,5 +994,10 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     isRecordingSupported,
     startRecording,
     stopRecording,
+    startMediaStream, // Expose method to start media after user gesture
+    videoQuality,
+    connectionQuality,
+    isConnectionEstablished,
+    hasPeerJoined,
   };
 }
