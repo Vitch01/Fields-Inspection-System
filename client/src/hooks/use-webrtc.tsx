@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useWebSocket } from "./use-websocket";
-import { createPeerConnection, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream } from "@/lib/webrtc-utils";
+import { createPeerConnection, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream, getAdaptiveVideoConstraints, ConnectionQualityMonitor } from "@/lib/webrtc-utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -23,12 +23,15 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [isConnectionEstablished, setIsConnectionEstablished] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingSupported, setIsRecordingSupported] = useState(false);
+  const [videoQuality, setVideoQuality] = useState<'minimal' | 'low' | 'medium' | 'high'>('minimal'); // Start with minimal quality
+  const [connectionQuality, setConnectionQuality] = useState<'poor' | 'fair' | 'good'>('fair');
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const canvasCleanupRef = useRef<(() => void) | null>(null);
+  const qualityMonitorRef = useRef<ConnectionQualityMonitor | null>(null);
   const { toast } = useToast();
 
   // Helper function to get supported mimeType
@@ -131,50 +134,66 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }, [wsConnected, localStream]);
 
   async function initializeLocalStream() {
-    try {
-      // Use rear camera for inspector, front camera for coordinator
-      const videoConstraints = userRole === "inspector" 
-        ? { 
-            width: { ideal: 1920 }, 
-            height: { ideal: 1080 },
-            facingMode: { exact: "environment" } // Rear camera
-          }
-        : { 
-            width: 1280, 
-            height: 720,
-            facingMode: "user" // Front camera
-          };
+    await initializeStreamWithQuality(videoQuality);
+  }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: videoConstraints,
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
+  async function initializeStreamWithQuality(quality: 'minimal' | 'low' | 'medium' | 'high') {
+    try {
+      console.log(`Initializing video stream with ${quality} quality`);
+      
+      // Get adaptive constraints based on quality level
+      const constraints = getAdaptiveVideoConstraints(userRole, quality);
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      // Stop existing stream if upgrading quality
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => track.stop());
+      }
       
       setLocalStream(stream);
       localStreamRef.current = stream;
+      setVideoQuality(quality);
+      
+      console.log(`Successfully initialized ${quality} quality video: ${stream.getVideoTracks()[0]?.getSettings().width}x${stream.getVideoTracks()[0]?.getSettings().height}`);
+      
     } catch (error) {
-      console.error("Failed to get local stream:", error);
+      console.error(`Failed to get ${quality} quality stream:`, error);
       
-      // Fallback for inspector if rear camera fails
-      if (userRole === "inspector") {
-        try {
-          const fallbackStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
-            audio: { echoCancellation: true, noiseSuppression: true },
-          });
-          setLocalStream(fallbackStream);
-          localStreamRef.current = fallbackStream;
-          return;
-        } catch (fallbackError) {
-          console.error("Fallback camera failed:", fallbackError);
+      // Progressive fallback to lower qualities
+      if (quality === 'high') {
+        console.log("High quality failed, trying medium...");
+        return initializeStreamWithQuality('medium');
+      } else if (quality === 'medium') {
+        console.log("Medium quality failed, trying low...");
+        return initializeStreamWithQuality('low');
+      } else if (quality === 'low') {
+        console.log("Low quality failed, trying minimal...");
+        return initializeStreamWithQuality('minimal');
+      } else {
+        // Last resort fallback for inspector with any available camera
+        if (userRole === "inspector") {
+          try {
+            console.log("Minimal quality failed, trying any available camera...");
+            const fallbackStream = await navigator.mediaDevices.getUserMedia({
+              video: true, // Accept any video
+              audio: { echoCancellation: true, noiseSuppression: true },
+            });
+            setLocalStream(fallbackStream);
+            localStreamRef.current = fallbackStream;
+            setVideoQuality('minimal');
+            return;
+          } catch (fallbackError) {
+            console.error("All video fallbacks failed:", fallbackError);
+          }
         }
+        
+        toast({
+          title: "Camera/Microphone Access Denied",
+          description: "Please allow camera and microphone access to join the call",
+          variant: "destructive",
+        });
       }
-      
-      toast({
-        title: "Camera/Microphone Access Denied",
-        description: "Please allow camera and microphone access to join the call",
-        variant: "destructive",
-      });
     }
   }
 
@@ -200,6 +219,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       setIsConnected(connected);
       if (connected) {
         setIsConnectionEstablished(true);
+        
+        // Start quality monitoring once connected
+        setupQualityMonitoring(pc);
       }
     };
 
@@ -750,7 +772,105 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, [callId, userRole, sendMessage, isRecording, stopRecording, toast]);
 
+  // Setup quality monitoring for adaptive video quality
+  function setupQualityMonitoring(pc: RTCPeerConnection) {
+    // Clean up existing monitor
+    if (qualityMonitorRef.current) {
+      qualityMonitorRef.current.stopMonitoring();
+    }
+    
+    // Create new monitor
+    const monitor = new ConnectionQualityMonitor(pc);
+    qualityMonitorRef.current = monitor;
+    
+    // Handle quality changes
+    monitor.onQualityChange((quality) => {
+      setConnectionQuality(quality);
+      
+      // Adapt video quality based on connection quality
+      const currentQuality = videoQuality;
+      let targetQuality: 'minimal' | 'low' | 'medium' | 'high' = currentQuality;
+      
+      if (quality === 'poor' && currentQuality !== 'minimal') {
+        // Downgrade quality on poor connection
+        targetQuality = currentQuality === 'high' ? 'medium' : 
+                       currentQuality === 'medium' ? 'low' : 'minimal';
+        console.log(`Poor connection detected, downgrading from ${currentQuality} to ${targetQuality}`);
+      } else if (quality === 'good' && currentQuality !== 'high') {
+        // Upgrade quality on good connection (but gradually)
+        if (currentQuality === 'minimal') {
+          targetQuality = 'low';
+        } else if (currentQuality === 'low' && Math.random() > 0.7) { // Only upgrade 30% of the time
+          targetQuality = 'medium';
+        }
+        console.log(`Good connection detected, upgrading from ${currentQuality} to ${targetQuality}`);
+      }
+      
+      // Apply quality change if different
+      if (targetQuality !== currentQuality) {
+        setTimeout(() => {
+          upgradeVideoQuality(targetQuality);
+        }, 2000); // Wait 2 seconds before changing quality
+      }
+    });
+    
+    // Start monitoring
+    monitor.startMonitoring();
+  }
+
+  // Upgrade video quality while maintaining connection
+  async function upgradeVideoQuality(newQuality: 'minimal' | 'low' | 'medium' | 'high') {
+    if (!peerConnectionRef.current || videoQuality === newQuality) {
+      return;
+    }
+    
+    try {
+      console.log(`Upgrading video quality from ${videoQuality} to ${newQuality}`);
+      
+      // Get new stream with better quality
+      const constraints = getAdaptiveVideoConstraints(userRole, newQuality);
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      // Replace video track in peer connection
+      const videoTrack = newStream.getVideoTracks()[0];
+      const sender = peerConnectionRef.current.getSenders().find(s => 
+        s.track && s.track.kind === 'video'
+      );
+      
+      if (sender && videoTrack) {
+        await sender.replaceTrack(videoTrack);
+        
+        // Stop old stream tracks
+        if (localStreamRef.current) {
+          localStreamRef.current.getVideoTracks().forEach(track => track.stop());
+        }
+        
+        // Update stream with new video track and existing audio
+        const audioTrack = localStreamRef.current?.getAudioTracks()[0];
+        const composedStream = new MediaStream();
+        composedStream.addTrack(videoTrack);
+        if (audioTrack) {
+          composedStream.addTrack(audioTrack);
+        }
+        
+        setLocalStream(composedStream);
+        localStreamRef.current = composedStream;
+        setVideoQuality(newQuality);
+        
+        console.log(`Successfully upgraded to ${newQuality} quality`);
+      }
+    } catch (error) {
+      console.error(`Failed to upgrade to ${newQuality} quality:`, error);
+    }
+  }
+
   function cleanup() {
+    // Clean up quality monitoring
+    if (qualityMonitorRef.current) {
+      qualityMonitorRef.current.stopMonitoring();
+      qualityMonitorRef.current = null;
+    }
+    
     // Clean up canvas recording elements first
     if (canvasCleanupRef.current) {
       try {
