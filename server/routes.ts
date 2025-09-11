@@ -42,8 +42,9 @@ const videoStorage = multer.diskStorage({
     cb(null, 'uploads/')
   },
   filename: function (req, file, cb) {
-    // Use the server-controlled filename from the route handler
-    const ext = file.mimetype === 'video/mp4' ? '.mp4' : '.webm';
+    // Handle MIME types with codec information
+    const baseType = file.mimetype.split(';')[0];
+    const ext = baseType === 'video/mp4' ? '.mp4' : '.webm';
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     cb(null, 'video-' + uniqueSuffix + ext);
   }
@@ -54,8 +55,9 @@ const videoUpload = multer({
   storage: videoStorage,
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit for videos
   fileFilter: (req, file, cb) => {
-    // Strict MIME type validation for video files
-    if (allowedVideoMimeTypes.includes(file.mimetype as any)) {
+    // Check if MIME type starts with allowed video types (handles codec info)
+    const baseType = file.mimetype.split(';')[0]; // Remove codec information
+    if (allowedVideoMimeTypes.includes(baseType as any)) {
       cb(null, true);
     } else {
       cb(new Error(`Invalid video format. Only ${allowedVideoMimeTypes.join(', ')} are allowed.`));
@@ -358,8 +360,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { callId, timestamp } = validationResult.data;
 
-      // Double-check MIME type (defense in depth)
-      if (!allowedVideoMimeTypes.includes(req.file.mimetype as any)) {
+      // Double-check MIME type (defense in depth) - handle codec information
+      const baseType = req.file.mimetype.split(';')[0]; // Remove codec information
+      if (!allowedVideoMimeTypes.includes(baseType as any)) {
         // Clean up uploaded file
         try {
           fs.unlinkSync(req.file.path);
