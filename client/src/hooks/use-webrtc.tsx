@@ -400,15 +400,36 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         imageBlob = await captureImageFromStream(remoteStream);
       }
       
-      // Upload image to server
+      // Ensure we have a valid blob
+      if (!imageBlob || imageBlob.size === 0) {
+        throw new Error('Failed to create image blob');
+      }
+      
+      console.log(`Captured image blob: size=${imageBlob.size}, type=${imageBlob.type}`);
+      
+      // Create a proper File object from the blob for better multer compatibility
+      const timestamp = Date.now();
+      const filename = `inspection-${timestamp}.jpg`;
+      const imageFile = new File([imageBlob], filename, { 
+        type: 'image/jpeg',
+        lastModified: timestamp 
+      });
+      
+      console.log(`Created File object: name=${imageFile.name}, size=${imageFile.size}, type=${imageFile.type}`);
+      
+      // Upload image to server using proper FormData
       const formData = new FormData();
-      formData.append('image', imageBlob, `inspection-${Date.now()}.jpg`);
-      formData.append('filename', `inspection-${Date.now()}.jpg`);
+      formData.append('image', imageFile);  // Use the File object
+      formData.append('filename', filename);
       formData.append('videoRotation', videoRotation.toString());
       
+      console.log('Uploading image to server...');
+      
+      // Make request without manually setting Content-Type (let FormData handle it)
       const response = await fetch(`/api/calls/${callId}/images`, {
         method: 'POST',
         body: formData,
+        // Important: Do not set Content-Type header - FormData sets boundary automatically
       });
       
       if (!response.ok) {

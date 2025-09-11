@@ -44,12 +44,12 @@ export default function InspectorCall() {
   // Inspector doesn't need to fetch captured images
   const capturedImages: any[] = [];
 
-  useState(() => {
+  useEffect(() => {
     const interval = setInterval(() => {
       setCallDuration(prev => prev + 1);
     }, 1000);
     return () => clearInterval(interval);
-  });
+  }, []);
 
   const formatDuration = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -57,44 +57,45 @@ export default function InspectorCall() {
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleJoinCall = async () => {
+  const handleJoinCall = () => {
     if (inspectorName.trim()) {
-      // Capture inspector's location when joining
-      if (navigator.geolocation) {
-        try {
-          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: true,
-              timeout: 5000,
-              maximumAge: 0
-            });
-          });
-          
-          const locationData = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-            timestamp: new Date().toISOString()
-          };
-          
-          // Send location to server
-          try {
-            await fetch(`/api/calls/${callId}/location`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(locationData),
-            });
-          } catch (error) {
-            console.error('Failed to save location:', error);
-          }
-        } catch (error) {
-          console.error('Failed to get location:', error);
-        }
-      }
-      
+      // Join the call immediately
       setHasJoined(true);
+      
+      // Capture inspector's location as fire-and-forget (don't block UI)
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            const locationData = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+              timestamp: new Date().toISOString()
+            };
+            
+            // Send location to server (fire-and-forget)
+            try {
+              await fetch(`/api/calls/${callId}/location`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(locationData),
+              });
+            } catch (error) {
+              console.error('Failed to save location:', error);
+            }
+          },
+          (error) => {
+            console.error('Failed to get location:', error);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 0
+          }
+        );
+      }
     }
   };
 

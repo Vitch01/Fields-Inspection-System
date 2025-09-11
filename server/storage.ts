@@ -1,5 +1,8 @@
 import { type User, type InsertUser, type Call, type InsertCall, type CapturedImage, type InsertCapturedImage } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { db } from "./db";
+import { users, calls, capturedImages } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -17,130 +20,117 @@ export interface IStorage {
   deleteCapturedImage(id: string): Promise<boolean>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-  private calls: Map<string, Call>;
-  private capturedImages: Map<string, CapturedImage>;
 
+// Database-backed storage implementation
+export class DbStorage implements IStorage {
   constructor() {
-    this.users = new Map();
-    this.calls = new Map();
-    this.capturedImages = new Map();
-    
-    // Add some test users
-    this.seedTestData();
+    this.seedTestDataIfNeeded();
   }
 
-  private async seedTestData() {
-    const coordinator = await this.createUser({
-      username: "coordinator1",
-      password: "password",
-      role: "coordinator",
-      name: "Sarah Johnson"
-    });
+  private async seedTestDataIfNeeded() {
+    try {
+      // Check if we already have users
+      const existingUsers = await db.select().from(users).limit(1);
+      if (existingUsers.length === 0) {
+        // Add some test users if none exist
+        await this.createUser({
+          username: "coordinator1",
+          password: "password",
+          role: "coordinator",
+          name: "Sarah Johnson"
+        });
 
-    const inspector = await this.createUser({
-      username: "inspector1", 
-      password: "password",
-      role: "inspector",
-      name: "John Martinez"
-    });
+        await this.createUser({
+          username: "inspector1",
+          password: "password", 
+          role: "inspector",
+          name: "John Martinez"
+        });
+
+        console.log("✓ Database seeded with test users");
+      }
+    } catch (error: any) {
+      console.log("Database seeding skipped - tables may not exist yet:", error.message);
+    }
   }
-
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    return result[0];
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const result = await db.select().from(users).where(eq(users.username, username)).limit(1);
+    return result[0];
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { 
-      ...insertUser, 
-      id,
-      role: insertUser.role || "inspector"
-    };
-    this.users.set(id, user);
-    return user;
+  async createUser(user: InsertUser): Promise<User> {
+    const result = await db.insert(users).values(user).returning();
+    return result[0];
   }
 
   async getCall(id: string): Promise<Call | undefined> {
-    return this.calls.get(id);
+    const result = await db.select().from(calls).where(eq(calls.id, id)).limit(1);
+    return result[0];
   }
 
-  async createCall(insertCall: InsertCall): Promise<Call> {
-    const id = randomUUID();
-    const call: Call = { 
-      ...insertCall, 
-      id,
-      startedAt: new Date(),
-      endedAt: null,
-      status: insertCall.status || "pending",
-      inspectionReference: insertCall.inspectionReference || null,
-      inspectorLocation: null,
-      metadata: insertCall.metadata || null,
-    };
-    this.calls.set(id, call);
-    return call;
+  async createCall(call: InsertCall): Promise<Call> {
+    const result = await db.insert(calls).values(call).returning();
+    return result[0];
   }
 
   async updateCallStatus(id: string, status: string, endedAt?: Date): Promise<Call | undefined> {
-    const call = this.calls.get(id);
-    if (!call) return undefined;
+    const updateData: Partial<Call> = { status };
+    if (endedAt) {
+      updateData.endedAt = endedAt;
+    }
     
-    const updatedCall = { 
-      ...call, 
-      status,
-      endedAt: endedAt || call.endedAt 
-    };
-    this.calls.set(id, updatedCall);
-    return updatedCall;
+    const result = await db.update(calls)
+      .set(updateData)
+      .where(eq(calls.id, id))
+      .returning();
+    
+    return result[0];
   }
 
   async updateCallLocation(id: string, locationData: any): Promise<boolean> {
-    const call = this.calls.get(id);
-    if (!call) return false;
+    const result = await db.update(calls)
+      .set({ inspectorLocation: locationData })
+      .where(eq(calls.id, id))
+      .returning();
     
-    const updatedCall = { 
-      ...call, 
-      inspectorLocation: locationData 
-    };
-    this.calls.set(id, updatedCall);
-    return true;
+    return result.length > 0;
   }
 
   async getActiveCallForUser(userId: string): Promise<Call | undefined> {
-    return Array.from(this.calls.values()).find(
-      (call) => (call.coordinatorId === userId || call.inspectorId === userId) && call.status === "active"
-    );
+    const result = await db.select()
+      .from(calls)
+      .where(eq(calls.status, "active"));
+    
+    return result.find(call => call.coordinatorId === userId || call.inspectorId === userId);
   }
 
   async getCapturedImages(callId: string): Promise<CapturedImage[]> {
-    return Array.from(this.capturedImages.values()).filter(
-      (image) => image.callId === callId
-    );
+    const result = await db.select()
+      .from(capturedImages)
+      .where(eq(capturedImages.callId, callId))
+      .orderBy(capturedImages.capturedAt);
+    
+    return result;
   }
 
-  async createCapturedImage(insertImage: InsertCapturedImage): Promise<CapturedImage> {
-    const id = randomUUID();
-    const image: CapturedImage = { 
-      ...insertImage, 
-      id,
-      capturedAt: new Date(),
-      thumbnailUrl: insertImage.thumbnailUrl || null,
-      metadata: insertImage.metadata || null,
-    };
-    this.capturedImages.set(id, image);
-    return image;
+  async createCapturedImage(image: InsertCapturedImage): Promise<CapturedImage> {
+    const result = await db.insert(capturedImages).values(image).returning();
+    return result[0];
   }
 
   async deleteCapturedImage(id: string): Promise<boolean> {
-    return this.capturedImages.delete(id);
+    const result = await db.delete(capturedImages)
+      .where(eq(capturedImages.id, id))
+      .returning();
+    
+    return result.length > 0;
   }
 }
 
-export const storage = new MemStorage();
+// Use database storage instead of memory storage
+export const storage = new DbStorage();

@@ -159,11 +159,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Call management routes
   app.post('/api/calls', async (req, res) => {
     try {
+      console.log('Creating call with data:', JSON.stringify(req.body, null, 2));
       const callData = insertCallSchema.parse(req.body);
+      console.log('Parsed call data:', JSON.stringify(callData, null, 2));
       const call = await storage.createCall(callData);
+      console.log('Created call:', JSON.stringify(call, null, 2));
       res.json(call);
-    } catch (error) {
-      res.status(400).json({ message: 'Invalid call data' });
+    } catch (error: any) {
+      console.error('Call creation failed:', error.message, error.stack);
+      if (error.name === 'ZodError') {
+        console.error('Zod validation errors:', JSON.stringify(error.errors, null, 2));
+      }
+      res.status(400).json({ message: 'Invalid call data', error: error.message });
     }
   });
 
