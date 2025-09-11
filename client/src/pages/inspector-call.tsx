@@ -37,6 +37,8 @@ export default function InspectorCall() {
     endCall,
     chatMessages,
     sendChatMessage,
+    unreadCount,
+    clearUnreadCount,
   } = useWebRTC(callId!, "inspector");
 
   // Inspector doesn't need to fetch captured images
@@ -206,10 +208,14 @@ export default function InspectorCall() {
           onToggleMute={toggleMute}
           onToggleVideo={toggleVideo}
           onOpenSettings={() => setShowSettings(true)}
-          onOpenChat={() => setShowChat(true)}
+          onOpenChat={() => {
+            clearUnreadCount();
+            setShowChat(true);
+          }}
           onEndCall={endCall}
           onImageClick={setSelectedImage}
           isCoordinator={false}
+          unreadCount={unreadCount}
         />
       </div>
 

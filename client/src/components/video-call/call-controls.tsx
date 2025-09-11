@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import CapturedImagesGallery from "./captured-images-gallery";
 import { 
   Mic, 
@@ -24,6 +25,7 @@ interface CallControlsProps {
   onCaptureImage?: (rotation?: number) => void;
   isCoordinator: boolean;
   videoRotation?: number;
+  unreadCount?: number;
 }
 
 export default function CallControls({
@@ -39,6 +41,7 @@ export default function CallControls({
   onCaptureImage,
   isCoordinator,
   videoRotation = 0,
+  unreadCount = 0,
 }: CallControlsProps) {
   return (
     <div className={`border-t p-4 ${
@@ -109,15 +112,26 @@ export default function CallControls({
             </Button>
           )}
           
-          <Button 
-            variant="secondary"
-            className={!isCoordinator ? "bg-white text-black border-gray-300 hover:bg-gray-100" : ""}
-            onClick={onOpenChat}
-            data-testid="button-open-chat"
-          >
-            <MessageCircle className="w-4 h-4 mr-2" />
-            Chat
-          </Button>
+          <div className="relative">
+            <Button 
+              variant="secondary"
+              className={!isCoordinator ? "bg-white text-black border-gray-300 hover:bg-gray-100" : ""}
+              onClick={onOpenChat}
+              data-testid="button-open-chat"
+            >
+              <MessageCircle className="w-4 h-4 mr-2" />
+              Chat
+            </Button>
+            {unreadCount > 0 && (
+              <Badge 
+                variant="destructive" 
+                className="absolute -top-2 -right-2 min-w-5 h-5 text-xs flex items-center justify-center rounded-full px-1"
+                data-testid="badge-unread-count"
+              >
+                {unreadCount}
+              </Badge>
+            )}
+          </div>
           
           <Button
             size="icon"

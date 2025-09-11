@@ -47,6 +47,8 @@ export default function CoordinatorCall() {
     endCall,
     chatMessages,
     sendChatMessage,
+    unreadCount,
+    clearUnreadCount,
   } = useWebRTC(callId!, "coordinator");
 
   const { data: capturedImages = [], refetch: refetchImages } = useQuery<any[]>({
@@ -180,12 +182,16 @@ export default function CoordinatorCall() {
         onToggleMute={toggleMute}
         onToggleVideo={toggleVideo}
         onOpenSettings={() => setShowSettings(true)}
-        onOpenChat={() => setShowChat(true)}
+        onOpenChat={() => {
+          clearUnreadCount();
+          setShowChat(true);
+        }}
         onEndCall={endCall}
         onImageClick={setSelectedImage}
         onCaptureImage={(rotation = 0) => captureImage(rotation)}
         isCoordinator={true}
         videoRotation={videoRotation}
+        unreadCount={unreadCount}
       />
 
       {/* Chat Panel */}

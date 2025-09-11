@@ -18,6 +18,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [hasPeerJoined, setHasPeerJoined] = useState(false);
   const [isConnectionEstablished, setIsConnectionEstablished] = useState(false);
   
@@ -289,6 +290,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
             };
             setChatMessages(prev => [...prev, newMessage]);
             
+            // Increment unread count for incoming messages
+            setUnreadCount(prev => prev + 1);
+            
             // Play notification sound for incoming messages
             playNotificationSound();
             
@@ -442,6 +446,10 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     setChatMessages(prev => [...prev, newMessage]);
   }, [callId, userRole, sendMessage]);
 
+  const clearUnreadCount = useCallback(() => {
+    setUnreadCount(0);
+  }, []);
+
   function cleanup() {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -468,5 +476,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     endCall,
     chatMessages,
     sendChatMessage,
+    unreadCount,
+    clearUnreadCount,
   };
 }
