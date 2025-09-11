@@ -44,6 +44,46 @@ export function createPeerConnection(): RTCPeerConnection {
   return new RTCPeerConnection(configuration);
 }
 
+// Force TURN-only for mobile inspectors (better NAT traversal)
+export function createPeerConnectionForMobile(): RTCPeerConnection {
+  const configuration: RTCConfiguration = {
+    iceTransportPolicy: 'relay', // Force TURN only, no direct P2P
+    iceServers: [
+      // Only TURN servers for mobile (no STUN)
+      {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject', 
+        credential: 'openrelayproject',
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
+      // TLS TURN servers for stricter mobile networks/firewalls
+      {
+        urls: 'turns:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
+      {
+        urls: 'turns:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
+    ],
+    // Improve ICE gathering for mobile networks
+    iceCandidatePoolSize: 10,
+  };
+
+  return new RTCPeerConnection(configuration);
+}
+
 export async function captureImageFromStream(stream: MediaStream): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');

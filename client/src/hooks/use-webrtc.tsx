@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useWebSocket } from "./use-websocket";
-import { createPeerConnection, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream, getAdaptiveVideoConstraints, ConnectionQualityMonitor } from "@/lib/webrtc-utils";
+import { createPeerConnection, createPeerConnectionForMobile, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream, getAdaptiveVideoConstraints, ConnectionQualityMonitor } from "@/lib/webrtc-utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -33,6 +33,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const canvasCleanupRef = useRef<(() => void) | null>(null);
   const qualityMonitorRef = useRef<ConnectionQualityMonitor | null>(null);
   const pendingRemoteCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null); // Buffer offer before PC exists
+  const pendingGlobalCandidatesRef = useRef<RTCIceCandidateInit[]>([]); // Buffer ICE before PC exists
   const { toast } = useToast();
 
   // Helper function to get supported mimeType
@@ -197,14 +199,28 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }
 
-  function initializePeerConnection() {
-    const pc = createPeerConnection();
+  async function initializePeerConnection() {
+    // For inspector on mobile, force TURN-only for better reliability
+    const pc = userRole === "inspector" 
+      ? createPeerConnectionForMobile() 
+      : createPeerConnection();
     peerConnectionRef.current = pc;
 
-    // Add local stream tracks
+    // Add local stream tracks with bitrate limiting for mobile
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current!);
+        const sender = pc.addTrack(track, localStreamRef.current!);
+        
+        // Limit initial bitrate for inspector on mobile
+        if (userRole === "inspector" && track.kind === "video") {
+          const params = sender.getParameters();
+          if (!params.encodings) {
+            params.encodings = [{}];
+          }
+          params.encodings[0].maxBitrate = 150000; // 150kbps initial
+          params.encodings[0].scaleResolutionDownBy = 2; // Scale down resolution
+          sender.setParameters(params).catch(e => console.error("Failed to set bitrate:", e));
+        }
       });
     }
 
@@ -213,15 +229,39 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       setRemoteStream(event.streams[0]);
     };
 
-    // Handle connection state changes
+    // Handle connection state changes with auto-recovery
+    let connectionCheckTimer: number | null = null;
     pc.onconnectionstatechange = () => {
-      const connected = pc.connectionState === "connected";
+      const state = pc.connectionState;
+      console.log(`Connection state changed: ${state}`);
+      
+      const connected = state === "connected";
       setIsConnected(connected);
+      
       if (connected) {
         setIsConnectionEstablished(true);
-        
+        // Clear any recovery timer
+        if (connectionCheckTimer) {
+          clearTimeout(connectionCheckTimer);
+          connectionCheckTimer = null;
+        }
         // Start quality monitoring once connected
         setupQualityMonitoring(pc);
+      } else if (state === "failed" || state === "disconnected") {
+        // Start recovery timer
+        if (!connectionCheckTimer) {
+          connectionCheckTimer = window.setTimeout(() => {
+            console.log("Connection lost, attempting ICE restart");
+            // Trigger ICE restart
+            if (pc.restartIce) {
+              pc.restartIce();
+              // Recreate offer/answer
+              if (userRole === "coordinator") {
+                createOffer();
+              }
+            }
+          }, 5000); // Wait 5 seconds before restarting
+        }
       }
     };
 
@@ -236,6 +276,26 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         });
       }
     };
+
+    // Process any buffered offer (for inspector)
+    if (userRole === "inspector" && pendingOfferRef.current) {
+      console.log("Processing buffered offer");
+      await createAnswer(pendingOfferRef.current);
+      pendingOfferRef.current = null;
+    }
+
+    // Process any globally buffered ICE candidates
+    if (pendingGlobalCandidatesRef.current.length > 0) {
+      console.log(`Processing ${pendingGlobalCandidatesRef.current.length} globally buffered ICE candidates`);
+      // Move global candidates to the regular buffer
+      pendingRemoteCandidatesRef.current.push(...pendingGlobalCandidatesRef.current);
+      pendingGlobalCandidatesRef.current = [];
+      
+      // If we have remote description, flush them now
+      if (pc.remoteDescription) {
+        await flushPendingCandidates();
+      }
+    }
 
     // Create offer if coordinator
     if (userRole === "coordinator") {
@@ -300,8 +360,13 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     try {
       switch (message.type) {
         case "offer":
-          if (!pc) return;
           if (userRole === "inspector") {
+            if (!pc) {
+              // No peer connection yet, buffer the offer
+              console.log("Buffering offer (PC not created yet)");
+              pendingOfferRef.current = message.data;
+              return;
+            }
             await createAnswer(message.data);
           }
           break;
@@ -325,7 +390,12 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           break;
 
         case "ice-candidate":
-          if (!pc) return;
+          if (!pc) {
+            // No peer connection yet, buffer globally
+            console.log("Buffering ICE candidate globally (PC not created yet)");
+            pendingGlobalCandidatesRef.current.push(message.data);
+            return;
+          }
           if (pc.remoteDescription) {
             // Remote description already set, add candidate immediately
             try {
@@ -975,6 +1045,19 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     setHasPeerJoined(false);
     setIsConnectionEstablished(false);
   }
+
+  // Function for inspectors to start media stream with user gesture
+  const startMediaStream = useCallback(async () => {
+    if (userRole === "inspector" && !localStreamRef.current) {
+      console.log("Inspector starting media stream with user gesture");
+      await initializeMediaStream();
+      
+      // After media is ready, initialize peer connection and process buffered offer
+      if (localStreamRef.current) {
+        await initializePeerConnection();
+      }
+    }
+  }, [userRole]);
 
   return {
     localStream,
