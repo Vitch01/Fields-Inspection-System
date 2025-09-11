@@ -29,9 +29,6 @@ export default function Home() {
   // Call creation state
   const [inspectorId, setInspectorId] = useState("");
   const [inspectionReference, setInspectionReference] = useState("INS-2024-001");
-  
-  // Inspector join state
-  const [callId, setCallId] = useState("");
 
   const handleLogin = async () => {
     setIsLoading(true);
@@ -85,17 +82,6 @@ export default function Home() {
     }
   };
 
-  const handleJoinCall = () => {
-    if (!callId.trim()) {
-      toast({
-        title: "Call ID Required",
-        description: "Please enter a call ID to join",
-        variant: "destructive",
-      });
-      return;
-    }
-    setLocation(`/join/${callId.trim()}`);
-  };
 
 
   // Show inspector login if needed
@@ -165,7 +151,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-800 flex items-center justify-center p-4">
-      <main className="w-full max-w-4xl">
+      <main className="w-full max-w-md">
         {/* Logo Header */}
         <div className="flex justify-center mb-8">
           <img 
@@ -175,93 +161,54 @@ export default function Home() {
           />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Coordinator Card */}
-          <Card className="bg-white border border-white">
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2 text-black">
-                <Video className="w-5 h-5 text-black" />
-                <span>Start New Inspection</span>
-              </CardTitle>
-              <p className="text-sm text-gray-600">For coordinators to create new inspection calls</p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="inspector" className="text-black">Inspector</Label>
-                <Select value={inspectorId} onValueChange={setInspectorId}>
-                  <SelectTrigger 
-                    data-testid="select-inspector"
-                    className="bg-white text-black border-black focus:ring-black focus:border-black"
-                  >
-                    <SelectValue placeholder="Select inspector" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border-black">
-                    <SelectItem value="inspector1-id" className="text-black hover:bg-gray-100 focus:bg-gray-100">John Martinez</SelectItem>
-                    <SelectItem value="inspector2-id" className="text-black hover:bg-gray-100 focus:bg-gray-100">Maria Garcia</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="reference" className="text-black">Inspection Reference Number</Label>
-                <Input
-                  id="reference"
-                  value={inspectionReference}
-                  onChange={(e) => setInspectionReference(e.target.value)}
-                  placeholder="INS-2024-001"
-                  data-testid="input-reference"
-                  className="bg-white text-black border-gray-300"
-                />
-              </div>
-              <Button 
-                onClick={handleStartCall} 
-                className="w-full bg-black text-white hover:bg-gray-800 border border-black" 
-                disabled={isLoading || !inspectorId || !inspectionReference}
-                data-testid="button-start-call"
-              >
-                {isLoading ? "Starting..." : "Start Inspection Call"}
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Inspector Join Card */}
-          <Card className="bg-white border border-white">
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2 text-black">
-                <Users className="w-5 h-5 text-black" />
-                <span>Join Inspection</span>
-              </CardTitle>
-              <p className="text-sm text-gray-600">For inspectors with a call ID to join an inspection</p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="callId" className="text-black">Call ID</Label>
-                <Input
-                  id="callId"
-                  value={callId}
-                  onChange={(e) => setCallId(e.target.value)}
-                  placeholder="Enter call ID"
-                  data-testid="input-call-id"
-                  className="bg-white text-black border-gray-300"
-                />
-              </div>
-              <Button 
-                onClick={handleJoinCall} 
-                className="w-full bg-black text-white hover:bg-gray-800 border border-black" 
-                disabled={!callId.trim()}
-                data-testid="button-join-call"
-              >
-                Join Inspection Call
-              </Button>
-              <div className="text-center text-sm text-gray-600 mt-4">
-                Enter the call ID provided by your coordinator
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="text-center text-sm text-white mt-8">
-          IFS Video Inspection System
-        </div>
+        {/* Coordinator Card */}
+        <Card className="bg-white border border-white">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2 text-black">
+              <Video className="w-5 h-5 text-black" />
+              <span>Start New Inspection</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="inspector" className="text-black">Inspector</Label>
+              <Select value={inspectorId} onValueChange={setInspectorId}>
+                <SelectTrigger 
+                  data-testid="select-inspector"
+                  className="bg-white text-black border-black focus:ring-black focus:border-black"
+                >
+                  <SelectValue placeholder="Select inspector" />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-black">
+                  <SelectItem value="inspector1-id" className="text-black hover:bg-gray-100 focus:bg-gray-100">John Martinez</SelectItem>
+                  <SelectItem value="inspector2-id" className="text-black hover:bg-gray-100 focus:bg-gray-100">Maria Garcia</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="reference" className="text-black">Inspection Reference Number</Label>
+              <Input
+                id="reference"
+                value={inspectionReference}
+                onChange={(e) => setInspectionReference(e.target.value)}
+                placeholder="INS-2024-001"
+                data-testid="input-reference"
+                className="bg-white text-black border-gray-300"
+              />
+            </div>
+            <Button 
+              onClick={handleStartCall} 
+              className="w-full bg-black text-white hover:bg-gray-800 border border-black" 
+              disabled={isLoading || !inspectorId || !inspectionReference}
+              data-testid="button-start-call"
+            >
+              {isLoading ? "Starting..." : "Start Inspection Call"}
+            </Button>
+            <div className="text-center text-sm text-black mt-4">
+              IFS Video Inspection System
+            </div>
+          </CardContent>
+        </Card>
       </main>
     </div>
   );
