@@ -65,9 +65,16 @@ const videoUpload = multer({
   }
 });
 
-// Ensure uploads directory exists
-if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
+// Ensure uploads directory exists with error handling
+try {
+  if (!fs.existsSync('uploads')) {
+    fs.mkdirSync('uploads', { recursive: true });
+    console.log('Created uploads directory');
+  }
+} catch (error) {
+  console.error('Failed to create uploads directory:', error);
+  // Continue execution as this may not be critical for the application to start
+  // The uploads directory can be created later when needed
 }
 
 interface WebSocketClient extends WebSocket {

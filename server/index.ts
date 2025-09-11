@@ -37,14 +37,24 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  const server = await registerRoutes(app);
+  try {
+    const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    res.status(status).json({ message });
-    throw err;
+    // Only send response if it hasn't been sent yet
+    if (!res.headersSent) {
+      res.status(status).json({ message });
+    }
+
+    // Log the error for debugging but don't throw it (prevents crashes)
+    console.error('Server error:', {
+      message: err.message,
+      status,
+      stack: err.stack
+    });
   });
 
   // importantly only setup vite in development and after
@@ -60,12 +70,19 @@ app.use((req, res, next) => {
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-  });
-})();
+    const port = parseInt(process.env.PORT || '5000', 10);
+    server.listen({
+      port,
+      host: "0.0.0.0",
+      reusePort: true,
+    }, () => {
+      log(`serving on port ${port}`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+})().catch(error => {
+  console.error('Unhandled error during server startup:', error);
+  process.exit(1);
+});
