@@ -145,16 +145,20 @@ export default function ImageViewerModal({ images, selectedImage, onClose }: Ima
           
           <div className="w-full h-full flex items-center justify-center p-4">
             {currentImage.type === 'video' ? (
-              <video
-                src={currentImage.originalUrl}
-                controls
-                autoPlay
-                className={`max-w-full max-h-full object-contain transition-transform ${
+              <div
+                className={`flex items-center justify-center transition-transform ${
                   getImageRotationClass(currentImage.metadata?.videoRotation || 0)
                 }`}
                 style={{ maxHeight: '85vh', maxWidth: '90vw' }}
-                data-testid="video-full-size"
-              />
+              >
+                <video
+                  src={currentImage.originalUrl}
+                  controls
+                  autoPlay
+                  className="max-w-full max-h-full object-contain"
+                  data-testid="video-full-size"
+                />
+              </div>
             ) : (
               <img 
                 src={currentImage.originalUrl}
@@ -223,14 +227,16 @@ export default function ImageViewerModal({ images, selectedImage, onClose }: Ima
                     data-testid={`thumbnail-${index}`}
                   >
                     {img.type === 'video' ? (
-                      <video 
-                        src={img.originalUrl}
-                        className={`w-full h-full object-cover ${
-                          getImageRotationClass(img.metadata?.videoRotation || 0)
-                        }`}
-                        preload="metadata"
-                        muted
-                      />
+                      <div className={`w-full h-full flex items-center justify-center ${
+                        getImageRotationClass(img.metadata?.videoRotation || 0)
+                      }`}>
+                        <video 
+                          src={img.originalUrl}
+                          className="w-full h-full object-cover"
+                          preload="metadata"
+                          muted
+                        />
+                      </div>
                     ) : (
                       <img 
                         src={img.thumbnailUrl || img.originalUrl}

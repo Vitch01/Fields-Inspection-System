@@ -113,15 +113,17 @@ export default function CapturedImagesGallery({ images, onImageClick }: Captured
                     ? 'border-blue-500' 
                     : 'border-border group-hover:border-primary'
                 }`}>
-                  <video 
-                    src={image.originalUrl}
-                    className={`w-full h-full object-cover ${
-                      getImageRotationClass(image.metadata?.videoRotation || 0)
-                    }`}
-                    preload="metadata"
-                    muted
-                    data-testid={`video-preview-${index}`}
-                  />
+                  <div className={`w-full h-full flex items-center justify-center ${
+                    getImageRotationClass(image.metadata?.videoRotation || 0)
+                  }`}>
+                    <video 
+                      src={image.originalUrl}
+                      className="w-full h-full object-cover"
+                      preload="metadata"
+                      muted
+                      data-testid={`video-preview-${index}`}
+                    />
+                  </div>
                   <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
                     <div className="bg-white/90 rounded-full p-1">
                       <Play className="w-4 h-4 text-gray-900" fill="currentColor" />
