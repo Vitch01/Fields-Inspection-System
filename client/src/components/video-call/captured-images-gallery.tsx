@@ -108,12 +108,23 @@ export default function CapturedImagesGallery({ images, onImageClick }: Captured
               data-testid={`image-thumbnail-${index}`}
             >
               {image.type === 'video' ? (
-                <div className={`w-20 h-20 rounded border-2 transition-colors bg-gray-900 flex items-center justify-center ${
+                <div className={`w-20 h-20 rounded border-2 transition-colors relative overflow-hidden ${
                   isSelected 
                     ? 'border-blue-500' 
                     : 'border-border group-hover:border-primary'
                 }`}>
-                  <Video className="w-8 h-8 text-white" />
+                  <video 
+                    src={image.originalUrl}
+                    className="w-full h-full object-cover"
+                    preload="metadata"
+                    muted
+                    data-testid={`video-preview-${index}`}
+                  />
+                  <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                    <div className="bg-white/90 rounded-full p-1">
+                      <Play className="w-4 h-4 text-gray-900" fill="currentColor" />
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <img 
@@ -129,13 +140,6 @@ export default function CapturedImagesGallery({ images, onImageClick }: Captured
               <div className={`absolute inset-0 rounded transition-colors ${
                 isSelected ? 'bg-blue-500/20' : 'bg-black/0 group-hover:bg-black/20'
               }`}>
-                {image.type === 'video' && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="bg-white/90 rounded-full p-2 group-hover:scale-110 transition-transform">
-                      <Play className="w-6 h-6 text-gray-900" fill="currentColor" />
-                    </div>
-                  </div>
-                )}
               </div>
               
               {/* Selection checkbox */}
