@@ -125,7 +125,7 @@ export default function CallControls({
             {unreadCount > 0 && (
               <Badge 
                 variant="destructive" 
-                className="absolute -top-2 -right-2 min-w-5 h-5 text-xs flex items-center justify-center rounded-full px-1"
+                className="absolute -top-2 -right-2 w-5 h-5 text-xs text-white bg-red-500 flex items-center justify-center rounded-full p-0 border-0"
                 data-testid="badge-unread-count"
               >
                 {unreadCount}
