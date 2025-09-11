@@ -537,33 +537,10 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
 
     try {
-      let recordingStream: MediaStream;
-      let fallbackMode = false;
-      
-      try {
-        // Try canvas-based recording stream with baked-in rotation
-        const rotatedStreamData = await createRotatedRecordingStream(
-          streamToRecord,
-          videoRotation,
-          30 // 30 FPS for smooth recording
-        );
-        
-        recordingStream = rotatedStreamData.stream;
-        canvasCleanupRef.current = rotatedStreamData.cleanup;
-      } catch (canvasError) {
-        // FALLBACK: Use direct recording without rotation if canvas recording unsupported
-        console.warn('Canvas recording not supported, falling back to direct recording:', canvasError);
-        fallbackMode = true;
-        recordingStream = streamToRecord;
-        canvasCleanupRef.current = null;
-        
-        // Notify user about fallback
-        toast({
-          title: "Recording Mode",
-          description: "Using direct recording mode (rotation will not be applied to video file)",
-          variant: "default"
-        });
-      }
+      // Use direct recording to preserve original video orientation
+      // Rotation will be applied via CSS during playback
+      const recordingStream = streamToRecord;
+      canvasCleanupRef.current = null;
 
       const supportedMimeType = getSupportedMimeType();
       if (!supportedMimeType) {

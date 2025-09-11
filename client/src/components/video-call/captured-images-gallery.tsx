@@ -115,7 +115,9 @@ export default function CapturedImagesGallery({ images, onImageClick }: Captured
                 }`}>
                   <video 
                     src={image.originalUrl}
-                    className="w-full h-full object-cover"
+                    className={`w-full h-full object-cover ${
+                      getImageRotationClass(image.metadata?.videoRotation || 0)
+                    }`}
                     preload="metadata"
                     muted
                     data-testid={`video-preview-${index}`}
