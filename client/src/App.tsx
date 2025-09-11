@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import CoordinatorCall from "@/pages/coordinator-call";
 import InspectorCall from "@/pages/inspector-call";
+import InspectorThankYou from "@/pages/inspector-thank-you";
 
 function Router() {
   return (
@@ -15,6 +16,7 @@ function Router() {
       <Route path="/coordinator/:callId" component={CoordinatorCall} />
       <Route path="/inspector/:callId" component={InspectorCall} />
       <Route path="/join/:callId" component={InspectorCall} />
+      <Route path="/inspector-thank-you" component={InspectorThankYou} />
       <Route component={NotFound} />
     </Switch>
   );

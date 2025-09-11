@@ -2,6 +2,12 @@
 
 This is a real-time video calling application built for remote site inspections. The application enables coordinators to create video calls with inspectors for conducting site surveys and quality assessments. During calls, users can capture and share images for documentation purposes. The system uses React with TypeScript for the frontend, Express.js for the backend, and WebRTC for real-time video communication.
 
+**Recent Updates (Sep 2025):**
+- Added inspector thank you page with company branding displayed after call completion
+- Enhanced home page with dual interface: coordinator call creation and inspector call joining
+- Improved camera permission cleanup to fully revoke access when inspectors end calls
+- Removed time display from inspector interface per user preference
+
 # User Preferences
 
 Preferred communication style: Simple, everyday language.
