@@ -168,7 +168,7 @@ export class DbStorage implements IStorage {
   async deleteVideoRecording(id: string): Promise<boolean> {
     try {
       const deleted = await db.delete(videoRecordings).where(eq(videoRecordings.id, id));
-      return deleted.rowCount > 0;
+      return (deleted.rowCount || 0) > 0;
     } catch (error) {
       console.error('Error deleting video recording:', error);
       return false;

@@ -279,7 +279,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/calls/:callId/images', async (req, res) => {
     try {
       const images = await storage.getCapturedImages(req.params.callId);
-      res.json(images);
+      
+      // Convert snake_case to camelCase for frontend compatibility
+      const formattedImages = images.map(image => ({
+        id: image.id,
+        callId: image.callId,
+        filename: image.filename,
+        originalUrl: image.originalUrl,
+        thumbnailUrl: image.thumbnailUrl,
+        capturedAt: image.capturedAt,
+        metadata: image.metadata
+      }));
+      
+      res.json(formattedImages);
     } catch (error) {
       res.status(500).json({ message: 'Failed to get images' });
     }
