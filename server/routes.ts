@@ -231,9 +231,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Image capture routes
   app.post('/api/calls/:callId/images', imageUpload.single('image'), async (req, res) => {
     try {
+      console.log('Image upload attempt:', {
+        hasFile: !!req.file,
+        body: req.body,
+        callId: req.params.callId
+      });
+      
       if (!req.file) {
-        return res.status(400).json({ message: 'No image file provided' });
+        console.log('No file uploaded - req.file is null/undefined');
+        return res.status(400).json({ message: 'No file uploaded' });
       }
+
+      console.log('File uploaded successfully:', {
+        filename: req.file.filename,
+        originalname: req.file.originalname,
+        path: req.file.path,
+        size: req.file.size,
+        mimetype: req.file.mimetype
+      });
 
       const { callId } = req.params;
       const { filename = req.file.originalname, videoRotation = "0" } = req.body;
@@ -251,9 +266,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
 
+      console.log('Saving image data to database:', imageData);
       const image = await storage.createCapturedImage(imageData);
+      console.log('Image saved successfully:', image);
       res.json(image);
     } catch (error) {
+      console.error('Image upload error:', error);
       res.status(400).json({ message: 'Failed to save image' });
     }
   });

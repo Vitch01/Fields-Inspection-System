@@ -1,7 +1,7 @@
-import { type User, type InsertUser, type Call, type InsertCall, type CapturedImage, type InsertCapturedImage } from "@shared/schema";
+import { type User, type InsertUser, type Call, type InsertCall, type CapturedImage, type InsertCapturedImage, type VideoRecording, type InsertVideoRecording } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { users, calls, capturedImages } from "@shared/schema";
+import { users, calls, capturedImages, videoRecordings } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 
 export interface IStorage {
@@ -18,6 +18,10 @@ export interface IStorage {
   getCapturedImages(callId: string): Promise<CapturedImage[]>;
   createCapturedImage(image: InsertCapturedImage): Promise<CapturedImage>;
   deleteCapturedImage(id: string): Promise<boolean>;
+  
+  getVideoRecordings(callId: string): Promise<VideoRecording[]>;
+  createVideoRecording(recording: InsertVideoRecording): Promise<VideoRecording>;
+  deleteVideoRecording(id: string): Promise<boolean>;
 }
 
 
@@ -129,6 +133,46 @@ export class DbStorage implements IStorage {
       .returning();
     
     return result.length > 0;
+  }
+
+  async getVideoRecordings(callId: string): Promise<VideoRecording[]> {
+    try {
+      const recordings = await db
+        .select()
+        .from(videoRecordings)
+        .where(eq(videoRecordings.callId, callId))
+        .orderBy(videoRecordings.recordedAt);
+      return recordings;
+    } catch (error) {
+      console.error('Error fetching video recordings:', error);
+      return [];
+    }
+  }
+
+  async createVideoRecording(recording: InsertVideoRecording): Promise<VideoRecording> {
+    try {
+      const [newRecording] = await db
+        .insert(videoRecordings)
+        .values({
+          id: randomUUID(),
+          ...recording,
+        })
+        .returning();
+      return newRecording;
+    } catch (error) {
+      console.error('Error creating video recording:', error);
+      throw error;
+    }
+  }
+
+  async deleteVideoRecording(id: string): Promise<boolean> {
+    try {
+      const deleted = await db.delete(videoRecordings).where(eq(videoRecordings.id, id));
+      return deleted.rowCount > 0;
+    } catch (error) {
+      console.error('Error deleting video recording:', error);
+      return false;
+    }
   }
 }
 

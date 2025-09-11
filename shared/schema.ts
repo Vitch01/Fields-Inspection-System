@@ -33,6 +33,17 @@ export const capturedImages = pgTable("captured_images", {
   metadata: json("metadata"),
 });
 
+export const videoRecordings = pgTable("video_recordings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  callId: varchar("call_id").notNull().references(() => calls.id),
+  filename: text("filename").notNull(),
+  originalUrl: text("original_url").notNull(),
+  duration: text("duration"),
+  size: text("size"),
+  recordedAt: timestamp("recorded_at").default(sql`now()`),
+  metadata: json("metadata"),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
 });
@@ -48,6 +59,11 @@ export const insertCapturedImageSchema = createInsertSchema(capturedImages).omit
   capturedAt: true,
 });
 
+export const insertVideoRecordingSchema = createInsertSchema(videoRecordings).omit({
+  id: true,
+  recordedAt: true,
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
@@ -56,6 +72,9 @@ export type Call = typeof calls.$inferSelect;
 
 export type InsertCapturedImage = z.infer<typeof insertCapturedImageSchema>;
 export type CapturedImage = typeof capturedImages.$inferSelect;
+
+export type InsertVideoRecording = z.infer<typeof insertVideoRecordingSchema>;
+export type VideoRecording = typeof videoRecordings.$inferSelect;
 
 // WebRTC signaling message types
 export const signalingMessageSchema = z.object({
@@ -75,5 +94,3 @@ export const videoRecordingSchema = z.object({
 
 export const allowedVideoMimeTypes = ["video/webm", "video/mp4"] as const;
 export const allowedVideoExtensions = [".webm", ".mp4"] as const;
-
-export type VideoRecording = z.infer<typeof videoRecordingSchema>;
