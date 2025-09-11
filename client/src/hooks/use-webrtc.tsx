@@ -696,28 +696,57 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         stopRecording();
       }
       
-      // Update call status
-      await apiRequest("PATCH", `/api/calls/${callId}/status`, { status: "ended" });
+      console.log(`${userRole} ending call ${callId}`);
       
-      // Notify other participants
+      // Update call status to completely end the call
+      await apiRequest("PATCH", `/api/calls/${callId}/status`, { status: "ended" });
+      console.log("Call status updated to ended");
+      
+      // Notify other participants that call is ending
       sendMessage({
         type: "leave-call",
         callId,
         userId: userRole,
       });
+      console.log("Leave call message sent");
 
-      // Cleanup and redirect
+      // Show confirmation that call is ending
+      toast({
+        title: "Call Ended",
+        description: "The inspection call has been terminated",
+        variant: "default"
+      });
+
+      // Cleanup all resources
       cleanup();
+      
       // Different redirect behavior for inspectors vs coordinators
-      if (userRole === "inspector") {
-        window.location.href = `/join/${callId}`;
-      } else {
-        window.location.href = "/";
-      }
+      setTimeout(() => {
+        if (userRole === "inspector") {
+          window.location.href = `/join/${callId}`;
+        } else {
+          window.location.href = "/";
+        }
+      }, 1000); // Small delay to ensure cleanup completes
+      
     } catch (error) {
       console.error("Failed to end call:", error);
+      // Force cleanup and redirect even if API call fails
+      cleanup();
+      toast({
+        title: "Call Ended",
+        description: "Connection terminated (some errors occurred)",
+        variant: "destructive"
+      });
+      setTimeout(() => {
+        if (userRole === "inspector") {
+          window.location.href = `/join/${callId}`;
+        } else {
+          window.location.href = "/";
+        }
+      }, 1000);
     }
-  }, [callId, userRole, sendMessage, isRecording, stopRecording]);
+  }, [callId, userRole, sendMessage, isRecording, stopRecording, toast]);
 
   function cleanup() {
     // Clean up canvas recording elements first
