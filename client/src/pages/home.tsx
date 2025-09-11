@@ -88,22 +88,22 @@ export default function Home() {
 
   if (showInspectorLogin) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <Card className="w-full max-w-md bg-white border border-white">
           <CardHeader className="text-center">
             <div className="flex justify-center mb-4">
-              <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center">
-                <Video className="w-8 h-8 text-primary-foreground" />
+              <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center">
+                <Video className="w-8 h-8 text-white" />
               </div>
             </div>
-            <CardTitle className="text-2xl" data-testid="title-login">Field Inspection System</CardTitle>
-            <p className="text-muted-foreground">
+            <CardTitle className="text-2xl text-black" data-testid="title-login">Field Inspection System</CardTitle>
+            <p className="text-gray-600">
               Inspector Login Required
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="username" className="text-black">Username</Label>
               <Input
                 id="username"
                 type="text"
@@ -111,10 +111,11 @@ export default function Home() {
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Enter username"
                 data-testid="input-username"
+                className="bg-white text-black border-gray-300"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password" className="text-black">Password</Label>
               <Input
                 id="password"
                 type="password"
@@ -122,22 +123,23 @@ export default function Home() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter password"
                 data-testid="input-password"
+                className="bg-white text-black border-gray-300"
               />
             </div>
             <Button 
               onClick={handleLogin} 
-              className="w-full" 
+              className="w-full bg-black text-white hover:bg-gray-800 border border-black" 
               disabled={isLoading || !username || !password}
               data-testid="button-login"
             >
               {isLoading ? "Signing in..." : "Sign In"}
             </Button>
             
-            <div className="pt-4 border-t space-y-2">
-              <p className="text-sm text-muted-foreground text-center">Demo account:</p>
+            <div className="pt-4 border-t border-gray-300 space-y-2">
+              <p className="text-sm text-gray-600 text-center">Demo account:</p>
               <div className="text-center text-xs">
-                <Badge variant="outline">inspector1</Badge>
-                <p className="text-muted-foreground">Inspector</p>
+                <Badge variant="outline" className="text-black border-black">inspector1</Badge>
+                <p className="text-gray-600">Inspector</p>
               </div>
             </div>
           </CardContent>
@@ -147,40 +149,20 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="bg-card border-b border-border px-4 py-3">
-        <div className="flex items-center justify-between max-w-6xl mx-auto">
-          <div className="flex items-center space-x-3">
-            <img src={logoImage} alt="Company Logo" className="w-8 h-8" />
-            <h1 className="text-xl font-semibold" data-testid="title-dashboard">Field Inspection Dashboard</h1>
-          </div>
-          <div className="flex items-center space-x-4">
-            <Badge variant={user.role === "coordinator" ? "default" : "secondary"}>
-              {user.role === "coordinator" ? <Shield className="w-3 h-3 mr-1" /> : <Users className="w-3 h-3 mr-1" />}
-              {user.name}
-            </Badge>
-            {user.role === "inspector" && (
-              <Button variant="outline" onClick={() => setUser(null)} data-testid="button-logout">
-                Sign Out
-              </Button>
-            )}
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto p-6">
+    <div className="min-h-screen bg-black flex items-center justify-center p-4">
+      <main className="w-full">
         <div className="flex justify-center">
           {user.role === "coordinator" && (
-            <Card className="w-full max-w-md">
+            <Card className="w-full max-w-md bg-white border border-white">
               <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Video className="w-5 h-5" />
+                <CardTitle className="flex items-center space-x-2 text-black">
+                  <Video className="w-5 h-5 text-black" />
                   <span>Start New Inspection</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="inspector">Inspector</Label>
+                  <Label htmlFor="inspector" className="text-black">Inspector</Label>
                   <Select value={inspectorId} onValueChange={setInspectorId}>
                     <SelectTrigger 
                       data-testid="select-inspector"
@@ -195,24 +177,25 @@ export default function Home() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="reference">Inspection Reference Number</Label>
+                  <Label htmlFor="reference" className="text-black">Inspection Reference Number</Label>
                   <Input
                     id="reference"
                     value={inspectionReference}
                     onChange={(e) => setInspectionReference(e.target.value)}
                     placeholder="INS-2024-001"
                     data-testid="input-reference"
+                    className="bg-white text-black border-gray-300"
                   />
                 </div>
                 <Button 
                   onClick={handleStartCall} 
-                  className="w-full" 
+                  className="w-full bg-black text-white hover:bg-gray-800 border border-black" 
                   disabled={isLoading || !inspectorId || !inspectionReference}
                   data-testid="button-start-call"
                 >
                   {isLoading ? "Starting..." : "Start Inspection Call"}
                 </Button>
-                <div className="text-center text-sm text-muted-foreground mt-4">
+                <div className="text-center text-sm text-black mt-4">
                   IFS Video Inspection System
                 </div>
               </CardContent>
