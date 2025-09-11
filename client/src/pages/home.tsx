@@ -28,7 +28,7 @@ export default function Home() {
 
   // Call creation state
   const [inspectorId, setInspectorId] = useState("");
-  const [inspectionReference, setInspectionReference] = useState("");
+  const [inspectionReference, setInspectionReference] = useState("INS-2024-001");
 
   const handleLogin = async () => {
     setIsLoading(true);
