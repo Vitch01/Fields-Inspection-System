@@ -409,15 +409,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`Recording saved securely: ${uniqueFilename} for call ${callId}, size: ${req.file.size} bytes`);
       
-      res.json({ 
-        success: true, 
-        filename: uniqueFilename,
-        callId,
-        timestamp,
-        url: `/uploads/${uniqueFilename}`,
-        size: req.file.size,
-        mimetype: req.file.mimetype
-      });
+      // Save recording metadata to database
+      try {
+        const videoData = insertVideoRecordingSchema.parse({
+          callId,
+          filename: uniqueFilename,
+          originalUrl: `/uploads/${uniqueFilename}`,
+          duration: req.body.duration || null,
+          size: req.file.size.toString(),
+          metadata: {
+            originalName: req.file.originalname,
+            size: req.file.size,
+            mimetype: req.file.mimetype,
+            timestamp
+          }
+        });
+
+        const recording = await storage.createVideoRecording(videoData);
+        console.log('Recording metadata saved to database:', recording.id);
+        
+        res.json({ 
+          success: true, 
+          id: recording.id,
+          filename: uniqueFilename,
+          callId,
+          timestamp,
+          url: `/uploads/${uniqueFilename}`,
+          size: req.file.size,
+          mimetype: req.file.mimetype,
+          recordedAt: recording.recordedAt
+        });
+      } catch (dbError) {
+        console.error('Database save failed for video recording:', dbError);
+        // File was saved successfully, but DB save failed - still return success
+        res.json({ 
+          success: true, 
+          filename: uniqueFilename,
+          callId,
+          timestamp,
+          url: `/uploads/${uniqueFilename}`,
+          size: req.file.size,
+          mimetype: req.file.mimetype,
+          warning: 'Metadata not saved to database'
+        });
+      }
     } catch (error) {
       console.error('Failed to save recording:', error);
       
@@ -485,6 +520,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     next();
   }, express.static('uploads'));
+
+  // Get video recordings for a call
+  app.get('/api/calls/:callId/recordings', async (req, res) => {
+    try {
+      const recordings = await storage.getVideoRecordings(req.params.callId);
+      
+      // Convert to camelCase for frontend compatibility
+      const formattedRecordings = recordings.map(recording => ({
+        id: recording.id,
+        callId: recording.callId,
+        filename: recording.filename,
+        originalUrl: recording.originalUrl,
+        duration: recording.duration,
+        size: recording.size,
+        recordedAt: recording.recordedAt,
+        metadata: recording.metadata
+      }));
+      
+      res.json(formattedRecordings);
+    } catch (error) {
+      console.error('Failed to get recordings:', error);
+      res.status(500).json({ message: 'Failed to get recordings' });
+    }
+  });
 
   // Error handling middleware for multer errors
   app.use((error: any, req: any, res: any, next: any) => {

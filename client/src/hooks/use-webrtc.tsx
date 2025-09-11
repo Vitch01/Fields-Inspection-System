@@ -497,10 +497,21 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }, []);
 
   const startRecording = useCallback(async () => {
-    if (!remoteStream || userRole !== "coordinator") {
+    if (userRole !== "coordinator") {
       toast({
         title: "Recording Error",
-        description: "Cannot record without an active connection",
+        description: "Only coordinators can record inspections",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Use remote stream if available, otherwise use local stream for testing
+    const streamToRecord = remoteStream || localStream;
+    if (!streamToRecord) {
+      toast({
+        title: "Recording Error",
+        description: "No video stream available for recording",
         variant: "destructive"
       });
       return;
@@ -525,18 +536,20 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
 
     try {
-      // Create a combined stream with remote video and local audio
+      // Create a combined stream with available video and audio
       const combinedStream = new MediaStream();
       
-      // Add remote video tracks
+      // Add video tracks from the chosen stream (remote or local)
+      streamToRecord.getVideoTracks().forEach(track => {
+        combinedStream.addTrack(track);
+      });
+      
+      // Add audio tracks from available sources
       if (remoteStream) {
-        remoteStream.getVideoTracks().forEach(track => {
+        remoteStream.getAudioTracks().forEach(track => {
           combinedStream.addTrack(track);
         });
-      }
-      
-      // Add local audio track if available
-      if (localStreamRef.current) {
+      } else if (localStreamRef.current) {
         localStreamRef.current.getAudioTracks().forEach(track => {
           combinedStream.addTrack(track);
         });
