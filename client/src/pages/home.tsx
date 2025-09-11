@@ -88,7 +88,7 @@ export default function Home() {
 
   if (showInspectorLogin) {
     return (
-      <div className="min-h-screen bg-blue-900 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-800 flex items-center justify-center p-4">
         <Card className="w-full max-w-md bg-white border border-white">
           <CardHeader className="text-center">
             <div className="flex justify-center mb-4">
@@ -149,7 +149,7 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-blue-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-slate-800 flex items-center justify-center p-4">
       <main className="w-full">
         <div className="flex justify-center">
           {user.role === "coordinator" && (
