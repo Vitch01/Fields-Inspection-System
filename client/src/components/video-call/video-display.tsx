@@ -322,7 +322,7 @@ export default function VideoDisplay({
           autoPlay
           playsInline
           muted
-          className="w-full h-full object-cover"
+          className={`w-full h-full object-cover ${isCoordinator ? 'scale-x-[-1]' : ''}`}
           data-testid="video-local-stream"
         />
         <div className="absolute bottom-1 left-1 bg-white text-black text-xs px-1 rounded border border-gray-300">
