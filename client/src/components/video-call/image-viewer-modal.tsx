@@ -1,7 +1,7 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Download, Edit, X, ChevronLeft, ChevronRight } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // Helper function to get rotation class for captured images
 function getImageRotationClass(videoRotation: number): string {
@@ -21,9 +21,13 @@ interface ImageViewerModalProps {
 
 export default function ImageViewerModal({ images, selectedImage, onClose }: ImageViewerModalProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const lastSelectedImageRef = useRef<any>(null);
 
   useEffect(() => {
-    if (selectedImage && images.length > 0) {
+    // Only run when selectedImage actually changes, not when images array changes
+    if (selectedImage && images.length > 0 && selectedImage !== lastSelectedImageRef.current) {
+      lastSelectedImageRef.current = selectedImage;
+      
       // Try to find the index using multiple strategies
       let index = -1;
       
@@ -59,6 +63,13 @@ export default function ImageViewerModal({ images, selectedImage, onClose }: Ima
       setCurrentIndex(index >= 0 ? index : 0);
     }
   }, [selectedImage, images]);
+
+  // Reset ref when modal closes
+  useEffect(() => {
+    if (!selectedImage) {
+      lastSelectedImageRef.current = null;
+    }
+  }, [selectedImage]);
 
   if (!selectedImage || images.length === 0) return null;
 
