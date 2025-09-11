@@ -199,6 +199,21 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }
 
+  async function flushPendingCandidates() {
+    const pc = peerConnectionRef.current;
+    if (!pc) return;
+
+    console.log(`Flushing ${pendingRemoteCandidatesRef.current.length} buffered ICE candidates`);
+    for (const candidate of pendingRemoteCandidatesRef.current) {
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch (error) {
+        console.error("Failed to add buffered ICE candidate:", error);
+      }
+    }
+    pendingRemoteCandidatesRef.current = []; // Clear the buffer
+  }
+
   async function initializePeerConnection() {
     // For inspector on mobile, force TURN-only for better reliability
     const pc = userRole === "inspector" 
@@ -970,7 +985,13 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const startMediaStream = useCallback(async () => {
     console.log("Starting media stream after user gesture");
     await initializeLocalStream();
-  }, []);
+    
+    // For inspectors, also initialize peer connection after media is ready
+    if (userRole === "inspector" && localStreamRef.current) {
+      console.log("Inspector initializing peer connection after media stream");
+      await initializePeerConnection();
+    }
+  }, [userRole]);
 
   function cleanup() {
     // Clear any buffered ICE candidates
@@ -1046,18 +1067,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     setIsConnectionEstablished(false);
   }
 
-  // Function for inspectors to start media stream with user gesture
-  const startMediaStream = useCallback(async () => {
-    if (userRole === "inspector" && !localStreamRef.current) {
-      console.log("Inspector starting media stream with user gesture");
-      await initializeMediaStream();
-      
-      // After media is ready, initialize peer connection and process buffered offer
-      if (localStreamRef.current) {
-        await initializePeerConnection();
-      }
-    }
-  }, [userRole]);
 
   return {
     localStream,
