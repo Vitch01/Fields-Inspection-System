@@ -1,9 +1,33 @@
 export function createPeerConnection(): RTCPeerConnection {
   const configuration: RTCConfiguration = {
     iceServers: [
+      // STUN servers for NAT discovery
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      
+      // Public TURN servers for mobile/cross-network connectivity
+      // These relay traffic when direct connections fail
+      {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject', 
+        credential: 'openrelayproject',
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
     ],
+    // Improve ICE gathering for mobile networks
+    iceCandidatePoolSize: 10,
   };
 
   return new RTCPeerConnection(configuration);
