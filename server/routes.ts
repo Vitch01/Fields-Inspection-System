@@ -269,7 +269,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('Saving image data to database:', imageData);
       const image = await storage.createCapturedImage(imageData);
       console.log('Image saved successfully:', image);
-      res.json(image);
+      
+      // Convert to camelCase for frontend compatibility
+      const formattedImage = {
+        id: image.id,
+        callId: image.callId,
+        filename: image.filename,
+        originalUrl: image.originalUrl,
+        thumbnailUrl: image.thumbnailUrl,
+        capturedAt: image.capturedAt,
+        metadata: image.metadata
+      };
+      
+      res.json(formattedImage);
     } catch (error) {
       console.error('Image upload error:', error);
       res.status(400).json({ message: 'Failed to save image' });
