@@ -36,15 +36,6 @@ export default function InspectorThankYou() {
             </p>
           </div>
           
-          {/* Action Button */}
-          <Link href="/">
-            <Button 
-              className="w-full"
-              data-testid="button-back-home"
-            >
-              Back to Home
-            </Button>
-          </Link>
         </CardContent>
       </Card>
     </div>
