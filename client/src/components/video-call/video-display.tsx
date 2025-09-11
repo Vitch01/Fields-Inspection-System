@@ -226,7 +226,7 @@ export default function VideoDisplay({
         isFullscreen
           ? getFullscreenContainerClass() // Adapt to rotation in fullscreen
           : isCoordinator
-            ? 'inset-1' // Larger video with minimal padding
+            ? 'inset-1 overflow-hidden' // Container for enlarged video
             : 'inset-2' // Smaller area for portrait mode
       }`}>
         <video
@@ -238,7 +238,7 @@ export default function VideoDisplay({
             isFullscreen 
               ? getFullscreenVideoClass()
               : isCoordinator
-                ? 'w-full h-full' // Fit within the container frame
+                ? 'w-full h-full transform scale-125 origin-center' // Enlarged by 25%
                 : 'w-full h-full'
           } object-contain transition-transform duration-500 ${
             isCoordinator ? getRotationClass(videoAspectRatio, manualRotation) : ''
