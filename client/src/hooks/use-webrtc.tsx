@@ -723,7 +723,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       // Different redirect behavior for inspectors vs coordinators
       setTimeout(() => {
         if (userRole === "inspector") {
-          window.location.href = `/join/${callId}`;
+          // Redirect inspector to home page to avoid re-requesting camera access
+          window.location.href = "/";
         } else {
           window.location.href = "/";
         }
@@ -740,7 +741,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       });
       setTimeout(() => {
         if (userRole === "inspector") {
-          window.location.href = `/join/${callId}`;
+          // Redirect inspector to home page to avoid re-requesting camera access
+          window.location.href = "/";
         } else {
           window.location.href = "/";
         }
