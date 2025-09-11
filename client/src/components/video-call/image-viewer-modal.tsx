@@ -24,11 +24,38 @@ export default function ImageViewerModal({ images, selectedImage, onClose }: Ima
 
   useEffect(() => {
     if (selectedImage && images.length > 0) {
-      const index = images.findIndex(img => 
-        (img.id && selectedImage.id && img.id === selectedImage.id) ||
-        (img.filename && selectedImage.filename && img.filename === selectedImage.filename) ||
-        img === selectedImage
-      );
+      // Try to find the index using multiple strategies
+      let index = -1;
+      
+      // Strategy 1: Match by ID
+      if (selectedImage.id) {
+        index = images.findIndex(img => img.id === selectedImage.id);
+      }
+      
+      // Strategy 2: Match by filename if ID match failed
+      if (index === -1 && selectedImage.filename) {
+        index = images.findIndex(img => img.filename === selectedImage.filename);
+      }
+      
+      // Strategy 3: Match by originalUrl if filename match failed
+      if (index === -1 && selectedImage.originalUrl) {
+        index = images.findIndex(img => img.originalUrl === selectedImage.originalUrl);
+      }
+      
+      // Strategy 4: Match by object reference
+      if (index === -1) {
+        index = images.findIndex(img => img === selectedImage);
+      }
+      
+      // Strategy 5: Match by timestamp (for newly created items)
+      if (index === -1 && (selectedImage.capturedAt || selectedImage.recordedAt)) {
+        const selectedTimestamp = selectedImage.capturedAt || selectedImage.recordedAt;
+        index = images.findIndex(img => 
+          (img.capturedAt && img.capturedAt === selectedTimestamp) ||
+          (img.recordedAt && img.recordedAt === selectedTimestamp)
+        );
+      }
+      
       setCurrentIndex(index >= 0 ? index : 0);
     }
   }, [selectedImage, images]);
