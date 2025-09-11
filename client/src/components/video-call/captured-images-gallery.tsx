@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Download, Share, Plus, Check } from "lucide-react";
+import { Download, Share, Plus, Check, Play, Video } from "lucide-react";
 import { useState } from "react";
 
 // Helper function to get rotation class for captured images
@@ -73,7 +73,7 @@ export default function CapturedImagesGallery({ images, onImageClick }: Captured
   return (
     <div className="border-t border-border pt-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium text-foreground">Captured Images</h3>
+        <h3 className="text-sm font-medium text-foreground">Captured Media</h3>
         <div className="flex items-center space-x-2">
           {isSelectionMode && (
             <span className="text-xs text-muted-foreground">
@@ -81,7 +81,7 @@ export default function CapturedImagesGallery({ images, onImageClick }: Captured
             </span>
           )}
           <span className="text-xs text-muted-foreground" data-testid="text-captured-count">
-            {images.length} images captured
+            {images.filter(m => m.type === 'image').length} images, {images.filter(m => m.type === 'video').length} videos
           </span>
           <Button
             variant="ghost"
@@ -107,18 +107,36 @@ export default function CapturedImagesGallery({ images, onImageClick }: Captured
               onClick={() => handleImageClick(image, index)}
               data-testid={`image-thumbnail-${index}`}
             >
-              <img 
-                src={image.thumbnailUrl || image.originalUrl}
-                alt={`Captured inspection image ${index + 1}`}
-                className={`w-20 h-20 object-contain rounded border-2 transition-colors bg-gray-100 dark:bg-gray-800 ${
+              {image.type === 'video' ? (
+                <div className={`w-20 h-20 rounded border-2 transition-colors bg-gray-900 flex items-center justify-center ${
                   isSelected 
                     ? 'border-blue-500' 
                     : 'border-border group-hover:border-primary'
-                } ${getImageRotationClass(image.metadata?.videoRotation || 0)}`}
-              />
+                }`}>
+                  <Video className="w-8 h-8 text-white" />
+                </div>
+              ) : (
+                <img 
+                  src={image.thumbnailUrl || image.originalUrl}
+                  alt={`Captured inspection image ${index + 1}`}
+                  className={`w-20 h-20 object-contain rounded border-2 transition-colors bg-gray-100 dark:bg-gray-800 ${
+                    isSelected 
+                      ? 'border-blue-500' 
+                      : 'border-border group-hover:border-primary'
+                  } ${getImageRotationClass(image.metadata?.videoRotation || 0)}`}
+                />
+              )}
               <div className={`absolute inset-0 rounded transition-colors ${
                 isSelected ? 'bg-blue-500/20' : 'bg-black/0 group-hover:bg-black/20'
-              }`}></div>
+              }`}>
+                {image.type === 'video' && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="bg-white/90 rounded-full p-2 group-hover:scale-110 transition-transform">
+                      <Play className="w-6 h-6 text-gray-900" fill="currentColor" />
+                    </div>
+                  </div>
+                )}
+              </div>
               
               {/* Selection checkbox */}
               {isSelectionMode && (
@@ -147,7 +165,7 @@ export default function CapturedImagesGallery({ images, onImageClick }: Captured
       {/* Image Actions */}
       <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
         <div>
-          {isSelectionMode ? 'Select images to download' : 'Click images to view full size'}
+          {isSelectionMode ? 'Select media to download' : 'Click to view full size'}
         </div>
         <div className="flex space-x-4">
           {isSelectionMode && (

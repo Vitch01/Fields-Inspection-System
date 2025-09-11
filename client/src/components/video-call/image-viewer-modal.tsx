@@ -1,6 +1,6 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, Edit, X } from "lucide-react";
+import { Download, Edit, X, Play } from "lucide-react";
 
 // Helper function to get rotation class for captured images
 function getImageRotationClass(videoRotation: number): string {
@@ -20,9 +20,21 @@ interface ImageViewerModalProps {
 export default function ImageViewerModal({ image, onClose }: ImageViewerModalProps) {
   if (!image) return null;
 
-  const handleDownload = () => {
-    // TODO: Implement image download
-    console.log("Downloading image:", image);
+  const handleDownload = async () => {
+    try {
+      const response = await fetch(image.originalUrl || image.videoUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = image.filename || `media-${Date.now()}.${image.type === 'video' ? 'webm' : 'jpg'}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download:', error);
+    }
   };
 
   const handleAnnotate = () => {
@@ -45,15 +57,26 @@ export default function ImageViewerModal({ image, onClose }: ImageViewerModalPro
           </Button>
           
           <div className="w-full h-full flex items-center justify-center p-4">
-            <img 
-              src={image.originalUrl}
-              alt={`Inspection image - ${image.filename}`}
-              className={`max-w-full max-h-full object-contain transition-transform ${
-                getImageRotationClass(image.metadata?.videoRotation || 0)
-              }`}
-              style={{ maxHeight: '85vh', maxWidth: '90vw' }}
-              data-testid="image-full-size"
-            />
+            {image.type === 'video' ? (
+              <video
+                src={image.videoUrl}
+                controls
+                autoPlay
+                className="max-w-full max-h-full object-contain"
+                style={{ maxHeight: '85vh', maxWidth: '90vw' }}
+                data-testid="video-full-size"
+              />
+            ) : (
+              <img 
+                src={image.originalUrl}
+                alt={`Inspection image - ${image.filename}`}
+                className={`max-w-full max-h-full object-contain transition-transform ${
+                  getImageRotationClass(image.metadata?.videoRotation || 0)
+                }`}
+                style={{ maxHeight: '85vh', maxWidth: '90vw' }}
+                data-testid="image-full-size"
+              />
+            )}
           </div>
           
           {/* Image Info and Actions */}
@@ -61,10 +84,10 @@ export default function ImageViewerModal({ image, onClose }: ImageViewerModalPro
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-medium" data-testid="text-image-title">
-                  {image.filename || "Inspection Image"}
+                  {image.filename || (image.type === 'video' ? "Inspection Video" : "Inspection Image")}
                 </div>
                 <div className="text-sm opacity-80" data-testid="text-image-timestamp">
-                  Captured at {image.capturedAt ? new Date(image.capturedAt).toLocaleTimeString() : "Unknown time"}
+                  {image.type === 'video' ? 'Recorded' : 'Captured'} at {(image.capturedAt || image.recordedAt) ? new Date(image.capturedAt || image.recordedAt).toLocaleTimeString() : "Unknown time"}
                 </div>
               </div>
               <div className="flex space-x-3">
@@ -77,15 +100,17 @@ export default function ImageViewerModal({ image, onClose }: ImageViewerModalPro
                   <Download className="w-4 h-4 mr-2" />
                   Download
                 </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleAnnotate}
-                  data-testid="button-annotate-image"
-                >
-                  <Edit className="w-4 h-4 mr-2" />
-                  Annotate
-                </Button>
+                {image.type !== 'video' && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleAnnotate}
+                    data-testid="button-annotate-image"
+                  >
+                    <Edit className="w-4 h-4 mr-2" />
+                    Annotate
+                  </Button>
+                )}
               </div>
             </div>
           </div>

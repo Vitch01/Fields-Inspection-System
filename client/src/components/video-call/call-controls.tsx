@@ -31,6 +31,7 @@ interface CallControlsProps {
   isRecording?: boolean;
   onStartRecording?: () => void;
   onStopRecording?: () => void;
+  hasStreamToRecord?: boolean;
 }
 
 export default function CallControls({
@@ -50,6 +51,7 @@ export default function CallControls({
   isRecording = false,
   onStartRecording,
   onStopRecording,
+  hasStreamToRecord = false,
 }: CallControlsProps) {
   return (
     <div className={`border-t p-4 ${
@@ -125,6 +127,8 @@ export default function CallControls({
               variant={isRecording ? "destructive" : "secondary"}
               onClick={isRecording ? onStopRecording : onStartRecording}
               data-testid="button-toggle-recording"
+              disabled={!hasStreamToRecord && !isRecording}
+              title={!hasStreamToRecord ? "No video stream available for recording" : ""}
             >
               {isRecording ? (
                 <>

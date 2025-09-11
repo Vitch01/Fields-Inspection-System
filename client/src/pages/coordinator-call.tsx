@@ -59,6 +59,21 @@ export default function CoordinatorCall() {
     enabled: !!callId,
   });
 
+  const { data: capturedVideos = [], refetch: refetchVideos } = useQuery<any[]>({
+    queryKey: ["/api/calls", callId, "recordings"],
+    enabled: !!callId,
+  });
+
+  // Combine images and videos into a single media array
+  const capturedMedia = [
+    ...capturedImages.map(img => ({ ...img, type: 'image' })),
+    ...capturedVideos.map(vid => ({ ...vid, type: 'video' }))
+  ].sort((a, b) => {
+    const dateA = new Date(a.capturedAt || a.recordedAt || 0).getTime();
+    const dateB = new Date(b.capturedAt || b.recordedAt || 0).getTime();
+    return dateB - dateA; // Sort by most recent first
+  });
+
   // Enhanced capture function that refreshes images immediately
   const captureImage = async (rotation = 0) => {
     try {
@@ -68,6 +83,15 @@ export default function CoordinatorCall() {
     } catch (error) {
       console.error("Failed to capture and refresh:", error);
     }
+  };
+
+  // Enhanced stop recording function that refreshes videos immediately
+  const handleStopRecording = async () => {
+    await stopRecording();
+    // Wait a bit for server to process the video
+    setTimeout(() => {
+      refetchVideos();
+    }, 1000);
   };
 
   // Call duration timer based on call start time
@@ -181,7 +205,7 @@ export default function CoordinatorCall() {
       <CallControls
         isMuted={isMuted}
         isVideoEnabled={isVideoEnabled}
-        capturedImages={capturedImages}
+        capturedImages={capturedMedia}
         onToggleMute={toggleMute}
         onToggleVideo={toggleVideo}
         onOpenSettings={() => setShowSettings(true)}
@@ -197,7 +221,8 @@ export default function CoordinatorCall() {
         unreadCount={unreadCount}
         isRecording={isRecording}
         onStartRecording={startRecording}
-        onStopRecording={stopRecording}
+        onStopRecording={handleStopRecording}
+        hasStreamToRecord={!!(remoteStream || localStream)}
       />
 
       {/* Chat Panel */}
