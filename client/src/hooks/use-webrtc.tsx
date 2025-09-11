@@ -21,10 +21,60 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [unreadCount, setUnreadCount] = useState(0);
   const [hasPeerJoined, setHasPeerJoined] = useState(false);
   const [isConnectionEstablished, setIsConnectionEstablished] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isRecordingSupported, setIsRecordingSupported] = useState(false);
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
   const { toast } = useToast();
+
+  // Helper function to get supported mimeType
+  const getSupportedMimeType = useCallback(() => {
+    if (!window.MediaRecorder) {
+      return null;
+    }
+
+    const types = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus', 
+      'video/webm;codecs=h264,opus',
+      'video/webm',
+      'video/mp4;codecs=h264,aac',
+      'video/mp4'
+    ];
+
+    for (const type of types) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        return type;
+      }
+    }
+    return null;
+  }, []);
+
+  // Check MediaRecorder support on mount
+  useEffect(() => {
+    const checkRecordingSupport = () => {
+      if (!window.MediaRecorder) {
+        setIsRecordingSupported(false);
+        return;
+      }
+
+      const supportedMimeType = getSupportedMimeType();
+      setIsRecordingSupported(supportedMimeType !== null);
+      
+      if (!supportedMimeType && userRole === "coordinator") {
+        toast({
+          title: "Recording Not Supported",
+          description: "Your browser doesn't support video recording. Recording features will be disabled.",
+          variant: "destructive"
+        });
+      }
+    };
+
+    checkRecordingSupport();
+  }, [getSupportedMimeType, userRole, toast]);
 
   // Create notification sound function
   const playNotificationSound = useCallback(() => {
@@ -396,31 +446,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, [callId, userRole, remoteStream, sendMessage, toast]);
 
-  const endCall = useCallback(async () => {
-    try {
-      // Update call status
-      await apiRequest("PATCH", `/api/calls/${callId}/status`, { status: "ended" });
-      
-      // Notify other participants
-      sendMessage({
-        type: "leave-call",
-        callId,
-        userId: userRole,
-      });
-
-      // Cleanup and redirect
-      cleanup();
-      // Different redirect behavior for inspectors vs coordinators
-      if (userRole === "inspector") {
-        window.location.href = `/join/${callId}`;
-      } else {
-        window.location.href = "/";
-      }
-    } catch (error) {
-      console.error("Failed to end call:", error);
-    }
-  }, [callId, userRole, sendMessage]);
-
   const sendChatMessage = useCallback((text: string) => {
     const messageData = {
       id: Date.now().toString(),
@@ -450,7 +475,214 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     setUnreadCount(0);
   }, []);
 
+  const startRecording = useCallback(async () => {
+    if (!remoteStream || userRole !== "coordinator") {
+      toast({
+        title: "Recording Error",
+        description: "Cannot record without an active connection",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!isRecordingSupported) {
+      toast({
+        title: "Recording Not Supported",
+        description: "Your browser doesn't support video recording",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (isRecording) {
+      toast({
+        title: "Already Recording",
+        description: "Recording is already in progress",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      // Create a combined stream with remote video and local audio
+      const combinedStream = new MediaStream();
+      
+      // Add remote video tracks
+      if (remoteStream) {
+        remoteStream.getVideoTracks().forEach(track => {
+          combinedStream.addTrack(track);
+        });
+      }
+      
+      // Add local audio track if available
+      if (localStreamRef.current) {
+        localStreamRef.current.getAudioTracks().forEach(track => {
+          combinedStream.addTrack(track);
+        });
+      }
+
+      const supportedMimeType = getSupportedMimeType();
+      if (!supportedMimeType) {
+        throw new Error('No supported video format found');
+      }
+
+      const mediaRecorder = new MediaRecorder(combinedStream, {
+        mimeType: supportedMimeType
+      });
+      
+      recordedChunksRef.current = [];
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+      
+      mediaRecorder.onstop = async () => {
+        const supportedMimeType = getSupportedMimeType();
+        const mimeTypeForBlob = supportedMimeType || 'video/webm';
+        const blob = new Blob(recordedChunksRef.current, { type: mimeTypeForBlob });
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const extension = mimeTypeForBlob.includes('mp4') ? 'mp4' : 'webm';
+        const filename = `inspection-${callId}-${timestamp}.${extension}`;
+        
+        // Save recording to server
+        try {
+          const formData = new FormData();
+          formData.append('video', blob, filename);
+          formData.append('callId', callId);
+          formData.append('timestamp', new Date().toISOString());
+          
+          const response = await fetch('/api/recordings', {
+            method: 'POST',
+            body: formData,
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => 'Unknown server error');
+            throw new Error(`Upload failed: ${response.status} ${response.statusText}. ${errorText}`);
+          }
+          
+          // Try to parse response, but don't fail if it's not JSON
+          let responseData;
+          try {
+            responseData = await response.json();
+          } catch {
+            responseData = { success: true };
+          }
+          
+          toast({
+            title: "Recording Saved",
+            description: "Inspection video has been saved successfully",
+            variant: "default"
+          });
+        } catch (error) {
+          console.error('Failed to save recording:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+          toast({
+            title: "Save Failed",
+            description: `Failed to save recording: ${errorMessage}`,
+            variant: "destructive"
+          });
+        }
+      };
+      
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start(1000); // Collect data every second
+      setIsRecording(true);
+      
+      toast({
+        title: "Recording Started",
+        description: "Inspection recording has begun",
+        variant: "default"
+      });
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      toast({
+        title: "Recording Error",
+        description: `Failed to start recording: ${errorMessage}`,
+        variant: "destructive"
+      });
+      // Reset recording state if it was set
+      setIsRecording(false);
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current = null;
+      }
+    }
+  }, [remoteStream, localStreamRef, userRole, callId, toast, isRecordingSupported, isRecording, getSupportedMimeType]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current) {
+      try {
+        // Only stop if not already stopping/stopped
+        if (mediaRecorderRef.current.state === 'recording') {
+          mediaRecorderRef.current.stop();
+        }
+      } catch (error) {
+        console.error('Error stopping recording:', error);
+      }
+      mediaRecorderRef.current = null;
+    }
+    
+    if (isRecording) {
+      setIsRecording(false);
+      toast({
+        title: "Recording Stopped",
+        description: "Recording has been stopped and will be saved",
+        variant: "default"
+      });
+    }
+  }, [isRecording, toast]);
+
+  const endCall = useCallback(async () => {
+    try {
+      // Stop recording first if it's active
+      if (isRecording) {
+        stopRecording();
+      }
+      
+      // Update call status
+      await apiRequest("PATCH", `/api/calls/${callId}/status`, { status: "ended" });
+      
+      // Notify other participants
+      sendMessage({
+        type: "leave-call",
+        callId,
+        userId: userRole,
+      });
+
+      // Cleanup and redirect
+      cleanup();
+      // Different redirect behavior for inspectors vs coordinators
+      if (userRole === "inspector") {
+        window.location.href = `/join/${callId}`;
+      } else {
+        window.location.href = "/";
+      }
+    } catch (error) {
+      console.error("Failed to end call:", error);
+    }
+  }, [callId, userRole, sendMessage, isRecording, stopRecording]);
+
   function cleanup() {
+    // Always stop recording if MediaRecorder exists, regardless of isRecording state
+    if (mediaRecorderRef.current) {
+      try {
+        if (mediaRecorderRef.current.state === 'recording') {
+          mediaRecorderRef.current.stop();
+        }
+      } catch (error) {
+        console.error('Error stopping MediaRecorder during cleanup:', error);
+      }
+      mediaRecorderRef.current = null;
+    }
+    
+    // Always reset recording state
+    if (isRecording) {
+      setIsRecording(false);
+    }
+    
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
     }
@@ -478,5 +710,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     sendChatMessage,
     unreadCount,
     clearUnreadCount,
+    isRecording,
+    isRecordingSupported,
+    startRecording,
+    stopRecording,
   };
 }

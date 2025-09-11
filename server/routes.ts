@@ -3,14 +3,38 @@ import express from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertCallSchema, insertCapturedImageSchema, signalingMessageSchema } from "@shared/schema";
+import { insertCallSchema, insertCapturedImageSchema, signalingMessageSchema, videoRecordingSchema, allowedVideoMimeTypes, allowedVideoExtensions } from "@shared/schema";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 
-const upload = multer({ 
+// Multer configuration for image uploads (10MB limit)
+const imageUpload = multer({ 
   dest: 'uploads/',
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit for images
+  fileFilter: (req, file, cb) => {
+    // Allow common image types for image uploads
+    const allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (allowedImageTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only JPEG, PNG, and WebP images are allowed.'));
+    }
+  }
+});
+
+// Multer configuration for video uploads (100MB limit)
+const videoUpload = multer({
+  dest: 'uploads/',
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit for videos
+  fileFilter: (req, file, cb) => {
+    // Strict MIME type validation for video files
+    if (allowedVideoMimeTypes.includes(file.mimetype as any)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Invalid video format. Only ${allowedVideoMimeTypes.join(', ')} are allowed.`));
+    }
+  }
 });
 
 // Ensure uploads directory exists
@@ -198,7 +222,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Image capture routes
-  app.post('/api/calls/:callId/images', upload.single('image'), async (req, res) => {
+  app.post('/api/calls/:callId/images', imageUpload.single('image'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: 'No image file provided' });
@@ -248,8 +272,195 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Serve uploaded files
-  app.use('/uploads', express.static('uploads'));
+  // Video recording routes with comprehensive security validation
+  app.post('/api/recordings', videoUpload.single('video'), async (req, res) => {
+    try {
+      // Validate uploaded file exists
+      if (!req.file) {
+        return res.status(400).json({ 
+          message: 'No video file provided',
+          details: 'A video file is required for upload'
+        });
+      }
+
+      // Validate request body using Zod schema
+      const validationResult = videoRecordingSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        // Clean up uploaded file on validation error
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (cleanupError) {
+          console.error('Failed to cleanup invalid upload:', cleanupError);
+        }
+        return res.status(400).json({
+          message: 'Invalid request data',
+          details: validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`)
+        });
+      }
+
+      const { callId, timestamp } = validationResult.data;
+
+      // Double-check MIME type (defense in depth)
+      if (!allowedVideoMimeTypes.includes(req.file.mimetype as any)) {
+        // Clean up uploaded file
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (cleanupError) {
+          console.error('Failed to cleanup invalid upload:', cleanupError);
+        }
+        return res.status(400).json({
+          message: 'Invalid video format',
+          details: `Only ${allowedVideoMimeTypes.join(', ')} formats are allowed. Received: ${req.file.mimetype}`
+        });
+      }
+
+      // Server-controlled file extension based on MIME type
+      let serverExtension: string;
+      switch (req.file.mimetype) {
+        case 'video/webm':
+          serverExtension = '.webm';
+          break;
+        case 'video/mp4':
+          serverExtension = '.mp4';
+          break;
+        default:
+          // This should never happen due to multer filtering, but included for safety
+          try {
+            fs.unlinkSync(req.file.path);
+          } catch (cleanupError) {
+            console.error('Failed to cleanup invalid upload:', cleanupError);
+          }
+          return res.status(400).json({
+            message: 'Unsupported video format',
+            details: `MIME type ${req.file.mimetype} is not supported`
+          });
+      }
+
+      // Generate secure, server-controlled filename
+      const sanitizedCallId = callId.replace(/[^a-zA-Z0-9-_]/g, '');
+      const uniqueFilename = `recording-${sanitizedCallId}-${Date.now()}${serverExtension}`;
+      const finalPath = path.join('uploads', uniqueFilename);
+
+      // Move the file to the final location with proper name
+      try {
+        fs.renameSync(req.file.path, finalPath);
+      } catch (moveError) {
+        console.error('Failed to move uploaded file:', moveError);
+        // Attempt to clean up the temporary file
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (cleanupError) {
+          console.error('Failed to cleanup temp file after move error:', cleanupError);
+        }
+        return res.status(500).json({
+          message: 'Failed to process video file',
+          details: 'Internal server error during file processing'
+        });
+      }
+      
+      console.log(`Recording saved securely: ${uniqueFilename} for call ${callId}, size: ${req.file.size} bytes`);
+      
+      res.json({ 
+        success: true, 
+        filename: uniqueFilename,
+        callId,
+        timestamp,
+        url: `/uploads/${uniqueFilename}`,
+        size: req.file.size,
+        mimetype: req.file.mimetype
+      });
+    } catch (error) {
+      console.error('Failed to save recording:', error);
+      
+      // Clean up uploaded file on any error
+      if (req.file?.path) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (cleanupError) {
+          console.error('Failed to cleanup file after error:', cleanupError);
+        }
+      }
+      
+      // Check if error is from multer (file upload errors)
+      if (error instanceof multer.MulterError) {
+        if (error.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({
+            message: 'File too large',
+            details: 'Video file must be smaller than 100MB'
+          });
+        }
+        return res.status(400).json({
+          message: 'Upload error',
+          details: error.message
+        });
+      }
+      
+      res.status(500).json({ 
+        message: 'Failed to save recording',
+        details: 'An unexpected error occurred during video processing'
+      });
+    }
+  });
+
+  // Serve uploaded files with proper Content-Type headers
+  app.use('/uploads', (req, res, next) => {
+    // Get file extension to determine content type
+    const ext = path.extname(req.path).toLowerCase();
+    
+    // Set appropriate Content-Type headers based on file extension
+    switch (ext) {
+      case '.webm':
+        res.setHeader('Content-Type', 'video/webm');
+        break;
+      case '.mp4':
+        res.setHeader('Content-Type', 'video/mp4');
+        break;
+      case '.jpg':
+      case '.jpeg':
+        res.setHeader('Content-Type', 'image/jpeg');
+        break;
+      case '.png':
+        res.setHeader('Content-Type', 'image/png');
+        break;
+      case '.webp':
+        res.setHeader('Content-Type', 'image/webp');
+        break;
+      default:
+        // For security, only serve known file types
+        return res.status(404).json({ message: 'File not found or unsupported file type' });
+    }
+    
+    // Add security headers
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    
+    next();
+  }, express.static('uploads'));
+
+  // Error handling middleware for multer errors
+  app.use((error: any, req: any, res: any, next: any) => {
+    if (error instanceof multer.MulterError) {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          message: 'File too large',
+          details: error.field === 'video' ? 'Video file must be smaller than 100MB' : 'Image file must be smaller than 10MB'
+        });
+      }
+      return res.status(400).json({
+        message: 'Upload error',
+        details: error.message
+      });
+    }
+    
+    if (error.message && error.message.includes('Invalid file type')) {
+      return res.status(400).json({
+        message: 'Invalid file type',
+        details: error.message
+      });
+    }
+    
+    next(error);
+  });
 
   return httpServer;
 }

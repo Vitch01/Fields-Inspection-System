@@ -9,7 +9,9 @@ import {
   Settings, 
   MessageCircle, 
   PhoneOff,
-  Camera 
+  Camera,
+  Circle,
+  Square
 } from "lucide-react";
 
 interface CallControlsProps {
@@ -26,6 +28,9 @@ interface CallControlsProps {
   isCoordinator: boolean;
   videoRotation?: number;
   unreadCount?: number;
+  isRecording?: boolean;
+  onStartRecording?: () => void;
+  onStopRecording?: () => void;
 }
 
 export default function CallControls({
@@ -42,6 +47,9 @@ export default function CallControls({
   isCoordinator,
   videoRotation = 0,
   unreadCount = 0,
+  isRecording = false,
+  onStartRecording,
+  onStopRecording,
 }: CallControlsProps) {
   return (
     <div className={`border-t p-4 ${
@@ -109,6 +117,26 @@ export default function CallControls({
             >
               <Camera className="w-4 h-4 mr-2" />
               Capture Photo
+            </Button>
+          )}
+
+          {isCoordinator && (
+            <Button 
+              variant={isRecording ? "destructive" : "secondary"}
+              onClick={isRecording ? onStopRecording : onStartRecording}
+              data-testid="button-toggle-recording"
+            >
+              {isRecording ? (
+                <>
+                  <Square className="w-4 h-4 mr-2" />
+                  Stop Recording
+                </>
+              ) : (
+                <>
+                  <Circle className="w-4 h-4 mr-2" />
+                  Start Recording
+                </>
+              )}
             </Button>
           )}
           

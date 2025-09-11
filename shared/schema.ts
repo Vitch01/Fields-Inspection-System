@@ -66,3 +66,14 @@ export const signalingMessageSchema = z.object({
 });
 
 export type SignalingMessage = z.infer<typeof signalingMessageSchema>;
+
+// Video recording validation schema
+export const videoRecordingSchema = z.object({
+  callId: z.string().min(1, "Call ID is required"),
+  timestamp: z.string().optional(),
+});
+
+export const allowedVideoMimeTypes = ["video/webm", "video/mp4"] as const;
+export const allowedVideoExtensions = [".webm", ".mp4"] as const;
+
+export type VideoRecording = z.infer<typeof videoRecordingSchema>;
