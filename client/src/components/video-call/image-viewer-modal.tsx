@@ -59,7 +59,7 @@ export default function ImageViewerModal({ image, onClose }: ImageViewerModalPro
           <div className="w-full h-full flex items-center justify-center p-4">
             {image.type === 'video' ? (
               <video
-                src={image.videoUrl}
+                src={image.originalUrl}
                 controls
                 autoPlay
                 className="max-w-full max-h-full object-contain"

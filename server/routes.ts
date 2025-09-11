@@ -497,7 +497,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.setHeader('Cache-Control', 'private, max-age=3600');
     
     next();
-  }, express.static('uploads'));
+  }, express.static('uploads'), (req, res, next) => {
+    // If express.static didn't handle the request (file not found), return 404
+    if (!res.headersSent) {
+      res.status(404).json({ message: 'File not found' });
+    }
+  });
 
   // Get video recordings for a call
   app.get('/api/calls/:callId/recordings', async (req, res) => {
