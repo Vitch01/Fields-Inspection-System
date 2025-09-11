@@ -1,6 +1,7 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, Edit, X, Play } from "lucide-react";
+import { Download, Edit, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useEffect } from "react";
 
 // Helper function to get rotation class for captured images
 function getImageRotationClass(videoRotation: number): string {
@@ -13,21 +14,45 @@ function getImageRotationClass(videoRotation: number): string {
 }
 
 interface ImageViewerModalProps {
-  image: any;
+  images: any[];
+  selectedImage: any;
   onClose: () => void;
 }
 
-export default function ImageViewerModal({ image, onClose }: ImageViewerModalProps) {
-  if (!image) return null;
+export default function ImageViewerModal({ images, selectedImage, onClose }: ImageViewerModalProps) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    if (selectedImage && images.length > 0) {
+      const index = images.findIndex(img => 
+        (img.id && selectedImage.id && img.id === selectedImage.id) ||
+        (img.filename && selectedImage.filename && img.filename === selectedImage.filename) ||
+        img === selectedImage
+      );
+      setCurrentIndex(index >= 0 ? index : 0);
+    }
+  }, [selectedImage, images]);
+
+  if (!selectedImage || images.length === 0) return null;
+
+  const currentImage = images[currentIndex];
+
+  const goToPrevious = () => {
+    setCurrentIndex((prev) => prev === 0 ? images.length - 1 : prev - 1);
+  };
+
+  const goToNext = () => {
+    setCurrentIndex((prev) => prev === images.length - 1 ? 0 : prev + 1);
+  };
 
   const handleDownload = async () => {
     try {
-      const response = await fetch(image.originalUrl || image.videoUrl);
+      const response = await fetch(currentImage.originalUrl || currentImage.videoUrl);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = image.filename || `media-${Date.now()}.${image.type === 'video' ? 'webm' : 'jpg'}`;
+      a.download = currentImage.filename || `media-${Date.now()}.${currentImage.type === 'video' ? 'webm' : 'jpg'}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -39,11 +64,11 @@ export default function ImageViewerModal({ image, onClose }: ImageViewerModalPro
 
   const handleAnnotate = () => {
     // TODO: Implement image annotation
-    console.log("Opening annotation for image:", image);
+    console.log("Opening annotation for image:", currentImage);
   };
 
   return (
-    <Dialog open={!!image} onOpenChange={onClose}>
+    <Dialog open={!!selectedImage} onOpenChange={onClose}>
       <DialogContent className="max-w-[95vw] max-h-[95vh] w-full h-full p-0" data-testid="modal-image-viewer">
         <div className="relative w-full h-full flex items-center justify-center bg-black min-h-[80vh]">
           <Button
@@ -55,11 +80,35 @@ export default function ImageViewerModal({ image, onClose }: ImageViewerModalPro
           >
             <X className="w-6 h-6" />
           </Button>
+
+          {/* Navigation arrows */}
+          {images.length > 1 && (
+            <>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-10"
+                onClick={goToPrevious}
+                data-testid="button-previous-image"
+              >
+                <ChevronLeft className="w-8 h-8" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-10"
+                onClick={goToNext}
+                data-testid="button-next-image"
+              >
+                <ChevronRight className="w-8 h-8" />
+              </Button>
+            </>
+          )}
           
           <div className="w-full h-full flex items-center justify-center p-4">
-            {image.type === 'video' ? (
+            {currentImage.type === 'video' ? (
               <video
-                src={image.originalUrl}
+                src={currentImage.originalUrl}
                 controls
                 autoPlay
                 className="max-w-full max-h-full object-contain"
@@ -68,10 +117,10 @@ export default function ImageViewerModal({ image, onClose }: ImageViewerModalPro
               />
             ) : (
               <img 
-                src={image.originalUrl}
-                alt={`Inspection image - ${image.filename}`}
+                src={currentImage.originalUrl}
+                alt={`Inspection image - ${currentImage.filename}`}
                 className={`max-w-full max-h-full object-contain transition-transform ${
-                  getImageRotationClass(image.metadata?.videoRotation || 0)
+                  getImageRotationClass(currentImage.metadata?.videoRotation || 0)
                 }`}
                 style={{ maxHeight: '85vh', maxWidth: '90vw' }}
                 data-testid="image-full-size"
@@ -84,10 +133,15 @@ export default function ImageViewerModal({ image, onClose }: ImageViewerModalPro
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-medium" data-testid="text-image-title">
-                  {image.filename || (image.type === 'video' ? "Inspection Video" : "Inspection Image")}
+                  {currentImage.filename || (currentImage.type === 'video' ? "Inspection Video" : "Inspection Image")}
+                  {images.length > 1 && (
+                    <span className="ml-2 text-sm opacity-70">
+                      ({currentIndex + 1} of {images.length})
+                    </span>
+                  )}
                 </div>
                 <div className="text-sm opacity-80" data-testid="text-image-timestamp">
-                  {image.type === 'video' ? 'Recorded' : 'Captured'} at {(image.capturedAt || image.recordedAt) ? new Date(image.capturedAt || image.recordedAt).toLocaleTimeString() : "Unknown time"}
+                  {currentImage.type === 'video' ? 'Recorded' : 'Captured'} at {(currentImage.capturedAt || currentImage.recordedAt) ? new Date(currentImage.capturedAt || currentImage.recordedAt).toLocaleTimeString() : "Unknown time"}
                 </div>
               </div>
               <div className="flex space-x-3">
@@ -100,7 +154,7 @@ export default function ImageViewerModal({ image, onClose }: ImageViewerModalPro
                   <Download className="w-4 h-4 mr-2" />
                   Download
                 </Button>
-                {image.type !== 'video' && (
+                {currentImage.type !== 'video' && (
                   <Button
                     variant="secondary"
                     size="sm"
@@ -114,6 +168,39 @@ export default function ImageViewerModal({ image, onClose }: ImageViewerModalPro
               </div>
             </div>
           </div>
+
+          {/* Thumbnail strip for quick navigation */}
+          {images.length > 1 && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/70 rounded-lg p-2 z-10">
+              <div className="flex space-x-2 max-w-md overflow-x-auto">
+                {images.map((img, index) => (
+                  <button
+                    key={index}
+                    className={`w-12 h-12 rounded border-2 overflow-hidden flex-shrink-0 transition-colors ${
+                      index === currentIndex ? 'border-white' : 'border-transparent hover:border-gray-400'
+                    }`}
+                    onClick={() => setCurrentIndex(index)}
+                    data-testid={`thumbnail-${index}`}
+                  >
+                    {img.type === 'video' ? (
+                      <video 
+                        src={img.originalUrl}
+                        className="w-full h-full object-cover"
+                        preload="metadata"
+                        muted
+                      />
+                    ) : (
+                      <img 
+                        src={img.thumbnailUrl || img.originalUrl}
+                        alt={`Thumbnail ${index + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

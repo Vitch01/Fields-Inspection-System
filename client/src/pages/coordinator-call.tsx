@@ -241,7 +241,8 @@ export default function CoordinatorCall() {
       />
 
       <ImageViewerModal
-        image={selectedImage}
+        images={capturedMedia}
+        selectedImage={selectedImage}
         onClose={() => setSelectedImage(null)}
       />
     </div>
