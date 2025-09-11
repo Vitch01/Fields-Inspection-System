@@ -582,8 +582,25 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         
         // Save recording to server
         try {
+          console.log('Preparing to upload video:', {
+            blobSize: blob.size,
+            blobType: blob.type,
+            filename: filename
+          });
+          
+          // Create a File object from the blob to ensure proper MIME type
+          const videoFile = new File([blob], filename, { 
+            type: blob.type || 'video/webm' 
+          });
+          
+          console.log('Created video file:', {
+            fileSize: videoFile.size,
+            fileType: videoFile.type,
+            fileName: videoFile.name
+          });
+          
           const formData = new FormData();
-          formData.append('video', blob, filename);
+          formData.append('video', videoFile);
           formData.append('callId', callId);
           formData.append('timestamp', new Date().toISOString());
           

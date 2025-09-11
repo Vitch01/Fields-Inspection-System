@@ -56,10 +56,14 @@ const videoUpload = multer({
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit for videos
   fileFilter: (req, file, cb) => {
     // Check if MIME type starts with allowed video types (handles codec info)
+    console.log('Video upload - received MIME type:', file.mimetype);
     const baseType = file.mimetype.split(';')[0]; // Remove codec information
+    console.log('Video upload - base type:', baseType);
     if (allowedVideoMimeTypes.includes(baseType as any)) {
+      console.log('Video upload - MIME type accepted');
       cb(null, true);
     } else {
+      console.log('Video upload - MIME type rejected');
       cb(new Error(`Invalid video format. Only ${allowedVideoMimeTypes.join(', ')} are allowed.`));
     }
   }
@@ -531,7 +535,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
     
-    if (error.message && error.message.includes('Invalid file type')) {
+    if (error.message && (error.message.includes('Invalid file type') || error.message.includes('Invalid video format'))) {
       return res.status(400).json({
         message: 'Invalid file type',
         details: error.message
