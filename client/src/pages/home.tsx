@@ -28,7 +28,7 @@ export default function Home() {
 
   // Call creation state
   const [inspectorId, setInspectorId] = useState("");
-  const [inspectionReference, setInspectionReference] = useState("INS-2024-001"); // Default value for testing
+  const [inspectionReference, setInspectionReference] = useState("");
 
   const handleLogin = async () => {
     setIsLoading(true);
@@ -163,10 +163,7 @@ export default function Home() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="inspector" className="text-black">Inspector</Label>
-                  <Select value={inspectorId} onValueChange={(value) => {
-                    console.log('Inspector selected:', value);
-                    setInspectorId(value);
-                  }}>
+                  <Select value={inspectorId} onValueChange={setInspectorId}>
                     <SelectTrigger 
                       data-testid="select-inspector"
                       className="bg-white text-black border-black focus:ring-black focus:border-black"
@@ -191,19 +188,13 @@ export default function Home() {
                   />
                 </div>
                 <Button 
-                  onClick={() => {
-                    console.log('Button clicked. InspectorId:', inspectorId, 'Reference:', inspectionReference);
-                    handleStartCall();
-                  }} 
+                  onClick={handleStartCall} 
                   className="w-full bg-black text-white hover:bg-gray-800 border border-black" 
                   disabled={isLoading || !inspectorId || !inspectionReference}
                   data-testid="button-start-call"
                 >
                   {isLoading ? "Starting..." : "Start Inspection Call"}
                 </Button>
-                <div className="text-xs text-gray-600 mt-2">
-                  Debug: Inspector ID: {inspectorId || "None"}, Reference: {inspectionReference || "None"}
-                </div>
                 <div className="text-center text-sm text-black mt-4">
                   IFS Video Inspection System
                 </div>
