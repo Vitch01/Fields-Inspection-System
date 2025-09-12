@@ -52,7 +52,6 @@ export default function CoordinatorCall() {
     isRecording,
     startRecording,
     stopRecording,
-    startMediaStream,
   } = useWebRTC(callId!, "coordinator");
 
   const { data: capturedImages = [], refetch: refetchImages } = useQuery<any[]>({
@@ -94,17 +93,6 @@ export default function CoordinatorCall() {
       refetchVideos();
     }, 1000);
   };
-
-  // Initialize media stream when component mounts
-  useEffect(() => {
-    // Start media stream for coordinator to enable peer connection
-    const initializeMedia = async () => {
-      console.log("Coordinator initializing media stream");
-      await startMediaStream();
-    };
-    
-    initializeMedia();
-  }, []); // Run once on mount
 
   // Call duration timer based on call start time
   useEffect(() => {
