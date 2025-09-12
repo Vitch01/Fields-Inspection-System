@@ -7,8 +7,6 @@ This is a real-time video calling application built for remote site inspections.
 - Enhanced home page with dual interface: coordinator call creation and inspector call joining
 - Improved camera permission cleanup to fully revoke access when inspectors end calls
 - Removed time display from inspector interface per user preference
-- Implemented adaptive video quality system for mobile/poor connection support
-- Added TURN servers for cross-network connectivity (WiFi to mobile data)
 
 # User Preferences
 
