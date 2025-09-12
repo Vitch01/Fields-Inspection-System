@@ -93,7 +93,6 @@ export const signalingMessageSchema = z.object({
   ]),
   callId: z.string(),
   userId: z.string(),
-  role: z.string().optional(),
   data: z.any().optional(),
 });
 
