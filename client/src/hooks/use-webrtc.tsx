@@ -169,6 +169,76 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, [wsConnected, hasJoined]);
 
+  // Add tracks to existing peer connection when local stream becomes available
+  useEffect(() => {
+    if (localStream && peerConnectionRef.current) {
+      const pc = peerConnectionRef.current;
+      
+      // Check if we already have senders
+      const senders = pc.getSenders();
+      const hasVideoSender = senders.some(s => s.track?.kind === 'video');
+      const hasAudioSender = senders.some(s => s.track?.kind === 'audio');
+      
+      if (!hasVideoSender || !hasAudioSender) {
+        console.log(`[${userRole}] Adding local tracks to existing peer connection`);
+        
+        localStream.getTracks().forEach((track) => {
+          // Find sender for this track kind
+          const existingSender = senders.find(s => s.track?.kind === track.kind);
+          
+          if (existingSender) {
+            // Replace existing track with new track
+            console.log(`[${userRole}] Replacing existing ${track.kind} track`);
+            existingSender.replaceTrack(track).catch(error => {
+              console.error(`Failed to replace ${track.kind} track:`, error);
+            });
+          } else {
+            // Check if there's a sender without a track that we can use
+            const emptySender = senders.find(s => !s.track);
+            if (emptySender) {
+              console.log(`[${userRole}] Replacing null track with ${track.kind} track`);
+              emptySender.replaceTrack(track).catch(error => {
+                console.error(`Failed to replace ${track.kind} track:`, error);
+              });
+            } else {
+              // Add new track
+              console.log(`[${userRole}] Adding new ${track.kind} track`);
+              const sender = pc.addTrack(track, localStream);
+              
+              // Apply bitrate limits for mobile
+              if (track.kind === 'video' && isMobile) {
+                sender.setParameters({
+                  encodings: [{
+                    maxBitrate: 300000, // 300kbps for slow cellular
+                    maxFramerate: 15,
+                    scaleResolutionDownBy: 2
+                  }],
+                  degradationPreference: 'maintain-framerate'
+                } as RTCRtpSendParameters).catch((error) => {
+                  console.warn('Failed to set video bitrate parameters:', error);
+                });
+              } else if (track.kind === 'audio' && isMobile) {
+                sender.setParameters({
+                  encodings: [{
+                    maxBitrate: 24000 // 24kbps for audio on mobile
+                  }]
+                } as RTCRtpSendParameters).catch((error) => {
+                  console.warn('Failed to set audio bitrate parameters:', error);
+                });
+              }
+            }
+          }
+        });
+        
+        // Trigger renegotiation if we're connected and the inspector has joined
+        if (userRole === 'coordinator' && hasPeerJoined) {
+          console.log(`[${userRole}] Triggering renegotiation after adding tracks`);
+          createOffer();
+        }
+      }
+    }
+  }, [localStream, userRole, hasPeerJoined, isMobile]);
+
   async function initializeLocalStream() {
     try {
       // Use lower resolution for mobile devices to reduce bandwidth
@@ -292,24 +362,33 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         }
       });
     } else {
-      // Add recvonly transceivers if no local stream (e.g., when camera/mic access denied)
-      console.log(`[${userRole}] No local stream available, adding recvonly transceivers`);
-      pc.addTransceiver('audio', { direction: 'recvonly' });
-      pc.addTransceiver('video', { direction: 'recvonly' });
+      // No local stream yet, add transceivers that can be upgraded later
+      console.log(`[${userRole}] No local stream yet, adding sendrecv transceivers`);
+      pc.addTransceiver('audio', { direction: 'sendrecv' });
+      pc.addTransceiver('video', { direction: 'sendrecv' });
       
-      // Inform user that they can still receive media
-      if (userRole === "inspector") {
-        toast({
-          title: "Receive-Only Mode",
-          description: "You can still receive video from the coordinator.",
-          variant: "default"
-        });
-      }
+      // Note that tracks can be added later when stream becomes available
+      console.log(`[${userRole}] Transceivers added, tracks will be added when stream is available`);
     }
 
     // Handle remote stream
     pc.ontrack = (event) => {
-      setRemoteStream(event.streams[0]);
+      console.log(`[${userRole}] Track received:`, event.track.kind);
+      
+      // Handle both event.streams[0] and manual stream construction
+      if (event.streams && event.streams[0]) {
+        setRemoteStream(event.streams[0]);
+        console.log(`[${userRole}] Remote stream set from event.streams[0]`);
+      } else {
+        // Some browsers don't provide streams, construct manually
+        // We need to construct a new stream and add the track
+        const newStream = new MediaStream();
+        newStream.addTrack(event.track);
+        setRemoteStream(newStream);
+        console.log(`[${userRole}] Created new MediaStream and added track`);
+      }
+      
+      console.log(`[${userRole}] Remote stream updated with ${event.track.kind} track`);
     };
 
     // Set connection timeout for mobile (longer for slow cellular)
