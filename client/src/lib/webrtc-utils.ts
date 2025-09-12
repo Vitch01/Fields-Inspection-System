@@ -1,60 +1,130 @@
-export function createPeerConnection(): RTCPeerConnection {
+// Helper function to detect if running on mobile device
+export function isMobileDevice(): boolean {
+  const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+  
+  // Check for mobile user agents
+  const mobileRegex = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i;
+  const isMobileUA = mobileRegex.test(userAgent.toLowerCase());
+  
+  // Check for touch support
+  const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  
+  // Check screen size (mobile devices typically < 768px)
+  const isSmallScreen = window.innerWidth < 768;
+  
+  return isMobileUA || (hasTouch && isSmallScreen);
+}
+
+// Get ICE servers configuration with working TURN servers
+export function getICEServers(): RTCIceServer[] {
+  return [
+    // STUN servers for NAT traversal
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    
+    // ============================================================
+    // METERED OPEN RELAY PROJECT - FREE TURN SERVERS (20GB/month)
+    // ============================================================
+    // These are functional public TURN servers from Metered's Open Relay Project
+    // They provide 20GB/month free usage and are maintained for public use
+    // 
+    // IMPORTANT NOTES:
+    // - These servers actually work unlike the fake Cloudflare "public" servers
+    // - They support both UDP and TCP/TLS for better mobile connectivity
+    // - TURNS (TLS on port 443) bypasses most corporate/mobile firewalls
+    // - Username/password are static but functional
+    //
+    // PRODUCTION RECOMMENDATIONS:
+    // - Consider upgrading to paid Metered plan for more bandwidth
+    // - Or implement your own TURN server with dynamic credentials
+    // - Services to consider: Twilio, Xirsys, self-hosted CoTURN
+    //
+    // Multiple servers are provided for redundancy and load balancing
+    // ============================================================
+    
+    // TURN servers with UDP (fastest, but may be blocked on some networks)
+    { 
+      urls: 'turn:a.relay.metered.ca:80',
+      username: 'e8dd65c92c62d3e36cafb807',
+      credential: 'uWdWNmkhvyqTEEQr'
+    },
+    { 
+      urls: 'turn:b.relay.metered.ca:80',
+      username: 'e8dd65c92c62d3e36cafb807',
+      credential: 'uWdWNmkhvyqTEEQr'
+    },
+    
+    // TURN servers with TCP (fallback when UDP is blocked)
+    { 
+      urls: 'turn:a.relay.metered.ca:80?transport=tcp',
+      username: 'e8dd65c92c62d3e36cafb807',
+      credential: 'uWdWNmkhvyqTEEQr'
+    },
+    { 
+      urls: 'turn:b.relay.metered.ca:80?transport=tcp',
+      username: 'e8dd65c92c62d3e36cafb807',
+      credential: 'uWdWNmkhvyqTEEQr'
+    },
+    
+    // TURNS servers with TLS on port 443 (best for restrictive networks/mobile)
+    // Port 443 is rarely blocked as it's used for HTTPS
+    { 
+      urls: 'turns:a.relay.metered.ca:443',
+      username: 'e8dd65c92c62d3e36cafb807',
+      credential: 'uWdWNmkhvyqTEEQr'
+    },
+    { 
+      urls: 'turns:b.relay.metered.ca:443',
+      username: 'e8dd65c92c62d3e36cafb807',
+      credential: 'uWdWNmkhvyqTEEQr'
+    }
+    // ============================================================
+  ];
+}
+
+// Create peer connection with mobile-optimized configuration
+export function createPeerConnection(forceRelay: boolean = false): RTCPeerConnection {
+  const isMobile = isMobileDevice();
+  
   const configuration: RTCConfiguration = {
-    iceServers: [
-      // STUN servers for NAT traversal
-      // Using multiple Google STUN servers for redundancy
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
-      
-      // ============================================================
-      // TEMPORARY PUBLIC TURN SERVERS FOR MOBILE CONNECTIVITY
-      // ============================================================
-      // WARNING: These are public demo TURN servers with public credentials
-      // They enable connectivity for mobile devices on restrictive carrier-grade NAT networks
-      // DO NOT use these in production - they are a temporary stopgap solution
-      // 
-      // PRODUCTION IMPLEMENTATION:
-      // 1. Set up a backend endpoint to generate time-limited credentials (24-hour expiry)
-      // 2. Use per-user authentication tokens for credential generation
-      // 3. Implement secure credential rotation mechanism
-      // 4. Consider using services like:
-      //    - Twilio Network Traversal Service
-      //    - Xirsys TURN servers
-      //    - Self-hosted CoTURN server
-      //    - Cloudflare Calls TURN service
-      //
-      // LIMITATIONS OF THESE PUBLIC SERVERS:
-      // - May have usage limits or bandwidth restrictions
-      // - Could be shut down at any time without notice
-      // - No guarantee of availability or performance
-      // - Shared with other users (potential congestion)
-      //
-      // These Cloudflare public TURN servers use "public" credentials intentionally
-      // for demo/development purposes only
-      { 
-        urls: 'turn:turn.cloudflare.com:3478',
-        username: 'public',
-        credential: 'public'
-      },
-      { 
-        urls: 'turn:turn.cloudflare.com:443?transport=tcp',
-        username: 'public',
-        credential: 'public'
-      }
-      // ============================================================
-    ],
-    // Improve ICE gathering on mobile networks
-    iceCandidatePoolSize: 10,
-    // Force all traffic through TURN for mobile connections if needed
-    iceTransportPolicy: 'all', // Use 'all' to allow both STUN and TURN
-    // Better handling of network changes
+    iceServers: getICEServers(),
+    
+    // Increase candidate pool for better mobile connectivity
+    iceCandidatePoolSize: isMobile ? 20 : 10,
+    
+    // ICE transport policy
+    // 'relay' forces all traffic through TURN (for failed direct connections)
+    // 'all' allows both direct and relay connections
+    iceTransportPolicy: forceRelay ? 'relay' : 'all',
+    
+    // Better handling of network changes (important for mobile)
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require'
   };
 
+  // Log configuration for debugging
+  console.log('Creating peer connection:', {
+    isMobile,
+    forceRelay,
+    iceTransportPolicy: configuration.iceTransportPolicy,
+    serverCount: configuration.iceServers?.length
+  });
+
+  return new RTCPeerConnection(configuration);
+}
+
+// Create a mobile-optimized peer connection with relay fallback
+export function createMobilePeerConnection(): RTCPeerConnection {
+  // For mobile devices, start with relay-preferred configuration
+  const configuration: RTCConfiguration = {
+    iceServers: getICEServers(),
+    iceCandidatePoolSize: 20, // More candidates for mobile
+    iceTransportPolicy: 'all', // Start with all, but monitor for failures
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require',
+  };
+  
   return new RTCPeerConnection(configuration);
 }
 
@@ -151,6 +221,31 @@ export async function capturePhotoFromCamera(): Promise<Blob> {
   } catch (error) {
     throw new Error(`Camera access failed: ${error}`);
   }
+}
+
+// Get bandwidth constraints for better mobile performance
+export function getBandwidthConstraints(isMobile: boolean = false) {
+  if (isMobile) {
+    return {
+      video: {
+        maxBitrate: 500000, // 500 kbps for mobile video
+        maxFramerate: 24    // 24 fps for mobile
+      },
+      audio: {
+        maxBitrate: 32000   // 32 kbps for audio
+      }
+    };
+  }
+  
+  return {
+    video: {
+      maxBitrate: 2000000,  // 2 Mbps for desktop video
+      maxFramerate: 30      // 30 fps for desktop
+    },
+    audio: {
+      maxBitrate: 64000     // 64 kbps for audio
+    }
+  };
 }
 
 export function getMediaConstraints(quality: 'low' | 'medium' | 'high') {

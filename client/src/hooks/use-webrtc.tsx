@@ -1,6 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useWebSocket } from "./use-websocket";
-import { createPeerConnection, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream } from "@/lib/webrtc-utils";
+import { 
+  createPeerConnection, 
+  captureImageFromStream, 
+  capturePhotoFromCamera, 
+  createRotatedRecordingStream,
+  isMobileDevice,
+  getBandwidthConstraints 
+} from "@/lib/webrtc-utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -24,6 +31,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingSupported, setIsRecordingSupported] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isRelayOnly, setIsRelayOnly] = useState(false);
+  const [connectionAttempts, setConnectionAttempts] = useState(0);
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -33,7 +42,12 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const captureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const captureRequestIdRef = useRef<string | null>(null);
   const iceRestartInProgressRef = useRef<boolean>(false);
+  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
+  
+  // Detect if mobile or inspector on mobile
+  const isMobile = isMobileDevice();
+  const shouldPreferRelay = isMobile || userRole === "inspector";
 
   // Helper function to get supported mimeType
   const getSupportedMimeType = useCallback(() => {
@@ -182,9 +196,29 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }
 
-  function initializePeerConnection() {
-    const pc = createPeerConnection();
+  function initializePeerConnection(forceRelay: boolean = false) {
+    // Use relay mode for mobile inspectors or after connection failures
+    const useRelay = forceRelay || (shouldPreferRelay && connectionAttempts > 0);
+    
+    console.log('Initializing peer connection:', {
+      userRole,
+      isMobile,
+      forceRelay,
+      useRelay,
+      connectionAttempts
+    });
+    
+    const pc = createPeerConnection(useRelay);
     peerConnectionRef.current = pc;
+    
+    if (useRelay) {
+      setIsRelayOnly(true);
+      toast({
+        title: "Using Relay Mode",
+        description: "Connecting through TURN relay for better mobile connectivity",
+        variant: "default"
+      });
+    }
 
     // Add local stream tracks
     if (localStreamRef.current) {
@@ -198,23 +232,68 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       setRemoteStream(event.streams[0]);
     };
 
+    // Set connection timeout for mobile
+    if (shouldPreferRelay && !forceRelay) {
+      // Give direct connection 10 seconds to establish on mobile
+      connectionTimeoutRef.current = setTimeout(() => {
+        if (!isConnected && pc.connectionState !== "connected") {
+          console.log("Direct connection timeout - switching to relay mode");
+          handleConnectionFailure();
+        }
+      }, 10000);
+    }
+    
     // Handle connection state changes with better diagnostics
     pc.onconnectionstatechange = () => {
       console.log(`Connection state changed to: ${pc.connectionState}`);
       const connected = pc.connectionState === "connected";
       setIsConnected(connected);
+      
       if (connected) {
         setIsConnectionEstablished(true);
+        setConnectionAttempts(0); // Reset attempts on success
+        
+        // Clear connection timeout
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = null;
+        }
+        
+        // Log connection details for debugging
+        pc.getStats().then(stats => {
+          stats.forEach(report => {
+            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+              const isRelay = report.remoteCandidateType === 'relay' || 
+                             report.localCandidateType === 'relay';
+              console.log('Connection established:', {
+                local: report.localCandidateType,
+                remote: report.remoteCandidateType,
+                isRelay
+              });
+              
+              if (isRelay) {
+                toast({
+                  title: "Connected via Relay",
+                  description: "Using TURN relay for optimal connectivity",
+                  variant: "default"
+                });
+              }
+            }
+          });
+        });
+        
         console.log("WebRTC connection established successfully");
       } else if (pc.connectionState === "failed") {
-        console.error("WebRTC connection failed - likely network issue");
-        toast({
-          title: "Connection Failed",
-          description: "Unable to establish connection. If on mobile data, ensure you have a stable connection.",
-          variant: "destructive",
-        });
+        console.error("WebRTC connection failed - attempting recovery");
+        handleConnectionFailure();
       } else if (pc.connectionState === "disconnected") {
         console.warn("WebRTC connection disconnected");
+        // Give it a moment to reconnect before taking action
+        setTimeout(() => {
+          if (pc.connectionState === "disconnected") {
+            handleConnectionFailure();
+          }
+        }, 3000);
       }
     };
 
@@ -226,13 +305,41 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     // Handle ICE connection state changes with improved restart logic
     pc.oniceconnectionstatechange = () => {
       console.log(`ICE connection state: ${pc.iceConnectionState}`);
-      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
-        console.error(`ICE connection ${pc.iceConnectionState} - attempting restart`);
-        // Attempt ICE restart with proper offer/answer negotiation
-        handleIceRestart();
+      
+      if (pc.iceConnectionState === "checking") {
+        // Log ICE candidates being checked
+        pc.getStats().then(stats => {
+          let candidateCount = 0;
+          stats.forEach(report => {
+            if (report.type === 'local-candidate' || report.type === 'remote-candidate') {
+              candidateCount++;
+            }
+          });
+          console.log(`Checking ${candidateCount} ICE candidates...`);
+        });
+      } else if (pc.iceConnectionState === "failed") {
+        console.error(`ICE connection failed - attempting recovery`);
+        
+        // For mobile/inspector, try relay mode if not already using it
+        if (shouldPreferRelay && !isRelayOnly) {
+          console.log("Switching to relay-only mode for mobile/inspector");
+          handleConnectionFailure();
+        } else {
+          // Otherwise attempt ICE restart
+          handleIceRestart();
+        }
+      } else if (pc.iceConnectionState === "disconnected") {
+        console.warn("ICE disconnected - monitoring...");
+        // Give it time to reconnect
+        setTimeout(() => {
+          if (pc.iceConnectionState === "disconnected") {
+            handleIceRestart();
+          }
+        }, 5000);
       } else if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
         // Reset restart flag when connection is restored
         iceRestartInProgressRef.current = false;
+        console.log("ICE connection successful");
       }
     };
 
@@ -282,6 +389,59 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }
 
+  // Handle connection failure with relay fallback
+  const handleConnectionFailure = useCallback(() => {
+    const attempts = connectionAttempts + 1;
+    setConnectionAttempts(attempts);
+    
+    console.log(`Connection failure - attempt ${attempts}`);
+    
+    // Clear existing connection
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    
+    // For mobile/inspector, switch to relay mode after first failure
+    if (shouldPreferRelay && attempts === 1 && !isRelayOnly) {
+      console.log("Switching to relay-only mode");
+      toast({
+        title: "Switching to Relay Mode",
+        description: "Direct connection failed. Using TURN relay for better connectivity.",
+        variant: "default"
+      });
+      
+      // Reinitialize with relay mode
+      setTimeout(() => {
+        initializePeerConnection(true);
+        if (userRole === "coordinator") {
+          createOffer();
+        }
+      }, 1000);
+    } else if (attempts < 3) {
+      // Try reconnecting with current mode
+      toast({
+        title: "Reconnecting...",
+        description: `Attempt ${attempts} of 3`,
+        variant: "default"
+      });
+      
+      setTimeout(() => {
+        initializePeerConnection(isRelayOnly);
+        if (userRole === "coordinator") {
+          createOffer();
+        }
+      }, 2000);
+    } else {
+      // Give up after 3 attempts
+      toast({
+        title: "Connection Failed",
+        description: "Unable to establish connection. Please check your network and try again.",
+        variant: "destructive"
+      });
+    }
+  }, [connectionAttempts, shouldPreferRelay, isRelayOnly, userRole, toast]);
+  
   // Handle ICE restart with proper offer/answer negotiation
   const handleIceRestart = useCallback(async () => {
     if (iceRestartInProgressRef.current) {
@@ -315,8 +475,13 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     } catch (error) {
       console.error("Failed to initiate ICE restart:", error);
       iceRestartInProgressRef.current = false;
+      
+      // Fall back to full reconnection if ICE restart fails
+      if (shouldPreferRelay && !isRelayOnly) {
+        handleConnectionFailure();
+      }
     }
-  }, [userRole, callId, sendMessage]);
+  }, [userRole, callId, sendMessage, shouldPreferRelay, isRelayOnly, handleConnectionFailure]);
 
   async function createAnswer(offer: RTCSessionDescriptionInit) {
     const pc = peerConnectionRef.current;
@@ -1031,10 +1196,15 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }, [callId, userRole, sendMessage, isRecording, stopRecording, toast]);
 
   function cleanup() {
-    // Clean up capture timeout
+    // Clean up timeouts
     if (captureTimeoutRef.current) {
       clearTimeout(captureTimeoutRef.current);
       captureTimeoutRef.current = null;
+    }
+    
+    if (connectionTimeoutRef.current) {
+      clearTimeout(connectionTimeoutRef.current);
+      connectionTimeoutRef.current = null;
     }
     
     // Clean up canvas recording elements first
@@ -1099,6 +1269,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     setIsConnected(false);
     setHasPeerJoined(false);
     setIsConnectionEstablished(false);
+    setIsRelayOnly(false);
+    setConnectionAttempts(0);
   }
 
   return {
