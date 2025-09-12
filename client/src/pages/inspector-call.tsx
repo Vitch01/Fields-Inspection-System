@@ -5,12 +5,16 @@ import CallControls from "@/components/video-call/call-controls";
 import ChatPanel from "@/components/video-call/chat-panel";
 import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
+import ConnectionDiagnostics from "@/components/connection-diagnostics";
+import TroubleshootingGuide from "@/components/troubleshooting-guide";
 import { useWebRTC } from "@/hooks/use-webrtc";
 import type { ConnectionState, ConnectionError } from "@/hooks/use-websocket";
 import { useState, useEffect } from "react";
-import { Clock, Signal, Video, UserCheck, Wifi, WifiOff, AlertTriangle, RefreshCw, XCircle } from "lucide-react";
+import { Clock, Signal, Video, UserCheck, Wifi, WifiOff, AlertTriangle, RefreshCw, XCircle, HelpCircle, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 export default function InspectorCall() {
   const { callId } = useParams();
@@ -20,6 +24,9 @@ export default function InspectorCall() {
   const [callDuration, setCallDuration] = useState(942);
   const [hasJoined, setHasJoined] = useState(false);
   const [inspectorName, setInspectorName] = useState("");
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showTroubleshooting, setShowTroubleshooting] = useState(false);
+  const [showDiagnosticsPanel, setShowDiagnosticsPanel] = useState(false);
 
   const { data: call } = useQuery({
     queryKey: ["/api/calls", callId],
@@ -202,6 +209,59 @@ export default function InspectorCall() {
               </p>
             </div>
 
+            {/* Connection Diagnostics Panel */}
+            {(connectionState === 'failed' || connectionState === 'maximum-retries-exceeded' || showDiagnosticsPanel) && (
+              <div className="space-y-3">
+                <Collapsible open={showDiagnosticsPanel} onOpenChange={setShowDiagnosticsPanel}>
+                  <CollapsibleTrigger className="flex items-center w-full justify-between p-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded" data-testid="toggle-diagnostics-panel">
+                    <span className="flex items-center space-x-2">
+                      <Activity className="w-4 h-4 text-blue-600" />
+                      <span className="text-sm font-medium text-blue-800">Connection Diagnostics</span>
+                    </span>
+                    <span className="text-xs text-blue-600">
+                      {showDiagnosticsPanel ? 'Hide' : 'Show'} Details
+                    </span>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-2">
+                    <ConnectionDiagnostics
+                      connectionState={connectionState}
+                      connectionStats={connectionStats}
+                      networkQuality={networkQuality}
+                      showFullDiagnostics={true}
+                      className="border-0 bg-white"
+                    />
+                  </CollapsibleContent>
+                </Collapsible>
+                
+                {(connectionState === 'failed' || connectionState === 'maximum-retries-exceeded') && (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => setShowTroubleshooting(true)}
+                    className="w-full text-blue-600 border-blue-200 hover:bg-blue-50"
+                    data-testid="button-show-troubleshooting"
+                  >
+                    <HelpCircle className="w-4 h-4 mr-2" />
+                    Get Help Troubleshooting
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* Quick Diagnostic Toggle */}
+            {connectionState === 'connected' && !showDiagnosticsPanel && (
+              <Button 
+                size="sm" 
+                variant="ghost" 
+                onClick={() => setShowDiagnosticsPanel(true)}
+                className="w-full text-gray-600 hover:bg-gray-50"
+                data-testid="button-show-diagnostics"
+              >
+                <Activity className="w-4 h-4 mr-2" />
+                Show Connection Details
+              </Button>
+            )}
+
             <Button 
               onClick={handleJoinCall} 
               className="w-full bg-black text-white hover:bg-gray-800 border-black disabled:bg-gray-400 disabled:cursor-not-allowed" 
@@ -343,6 +403,38 @@ export default function InspectorCall() {
         selectedImage={selectedImage}
         onClose={() => setSelectedImage(null)}
       />
+
+      {/* Diagnostic Modals */}
+      <Dialog open={showDiagnostics} onOpenChange={setShowDiagnostics}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-connection-diagnostics">
+          <DialogHeader>
+            <DialogTitle>Connection Diagnostics</DialogTitle>
+          </DialogHeader>
+          <ConnectionDiagnostics
+            connectionState={connectionState}
+            connectionStats={connectionStats}
+            networkQuality={networkQuality}
+            showFullDiagnostics={true}
+            onRefresh={() => window.location.reload()}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showTroubleshooting} onOpenChange={setShowTroubleshooting}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto" data-testid="dialog-troubleshooting-guide">
+          <DialogHeader>
+            <DialogTitle>Troubleshooting Guide</DialogTitle>
+          </DialogHeader>
+          <TroubleshootingGuide
+            currentIssue={
+              connectionState === 'failed' || connectionState === 'maximum-retries-exceeded' ? 'websocket' :
+              !navigator.mediaDevices ? 'media' :
+              null
+            }
+            onClose={() => setShowTroubleshooting(false)}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

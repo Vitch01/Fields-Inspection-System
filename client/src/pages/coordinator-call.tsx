@@ -7,10 +7,12 @@ import InspectorLocation from "@/components/video-call/inspector-location";
 import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import QRCodeDisplay from "@/components/video-call/qr-code-display";
+import ConnectionDiagnostics from "@/components/connection-diagnostics";
+import TroubleshootingGuide from "@/components/troubleshooting-guide";
 import { useWebRTC } from "@/hooks/use-webrtc";
 import type { ConnectionState, ConnectionError } from "@/hooks/use-websocket";
 import { useState, useEffect } from "react";
-import { Clock, Signal, Users, Copy, ExternalLink, QrCode, Wifi, WifiOff, AlertTriangle, RefreshCw, XCircle } from "lucide-react";
+import { Clock, Signal, Users, Copy, ExternalLink, QrCode, Wifi, WifiOff, AlertTriangle, RefreshCw, XCircle, Activity, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -23,6 +25,8 @@ export default function CoordinatorCall() {
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [callDuration, setCallDuration] = useState(0); // seconds
   const [videoRotation, setVideoRotation] = useState(0); // Track video rotation state
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showTroubleshooting, setShowTroubleshooting] = useState(false);
   const { toast } = useToast();
 
   // Inspector name mapping
@@ -220,6 +224,15 @@ export default function CoordinatorCall() {
             <Button 
               size="sm" 
               variant="outline"
+              onClick={() => setShowDiagnostics(true)}
+              data-testid="button-show-connection-diagnostics"
+            >
+              <Activity className="w-3 h-3 mr-1" />
+              Diagnostics
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline"
               onClick={() => setShowQRCode(true)}
               data-testid="button-show-qr-code"
             >
@@ -326,6 +339,38 @@ export default function CoordinatorCall() {
               size={250}
             />
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diagnostic Modals */}
+      <Dialog open={showDiagnostics} onOpenChange={setShowDiagnostics}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-connection-diagnostics">
+          <DialogHeader>
+            <DialogTitle>Connection Diagnostics</DialogTitle>
+          </DialogHeader>
+          <ConnectionDiagnostics
+            connectionState={connectionState}
+            connectionStats={connectionStats}
+            networkQuality={networkQuality}
+            showFullDiagnostics={true}
+            onRefresh={() => window.location.reload()}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showTroubleshooting} onOpenChange={setShowTroubleshooting}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto" data-testid="dialog-troubleshooting-guide">
+          <DialogHeader>
+            <DialogTitle>Troubleshooting Guide</DialogTitle>
+          </DialogHeader>
+          <TroubleshootingGuide
+            currentIssue={
+              connectionState === 'failed' || connectionState === 'maximum-retries-exceeded' ? 'websocket' :
+              !navigator.mediaDevices ? 'media' :
+              null
+            }
+            onClose={() => setShowTroubleshooting(false)}
+          />
         </DialogContent>
       </Dialog>
     </div>
