@@ -174,59 +174,35 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     if (localStream && peerConnectionRef.current) {
       const pc = peerConnectionRef.current;
       
-      console.log(`[${userRole}] Local stream available with tracks:`, 
-        localStream.getTracks().map(t => ({ 
-          kind: t.kind, 
-          enabled: t.enabled, 
-          id: t.id,
-          readyState: t.readyState,
-          label: t.label 
-        }))
-      );
+      // Check if we already have senders
+      const senders = pc.getSenders();
+      const hasVideoSender = senders.some(s => s.track?.kind === 'video');
+      const hasAudioSender = senders.some(s => s.track?.kind === 'audio');
       
-      // Get transceivers to properly handle track addition
-      const transceivers = pc.getTransceivers();
-      console.log(`[${userRole}] Current transceivers:`, 
-        transceivers.map(t => ({
-          mid: t.mid,
-          direction: t.direction,
-          hasTrack: !!t.sender.track,
-          trackKind: t.receiver.track?.kind
-        }))
-      );
-      
-      localStream.getTracks().forEach((track) => {
-        // Find a transceiver for this track kind that's recvonly or doesn't have a sender track
-        const transceiver = transceivers.find(t => 
-          (t.sender && !t.sender.track && t.receiver) && 
-          (t.receiver.track?.kind === track.kind || t.mid?.includes(track.kind))
-        );
+      if (!hasVideoSender || !hasAudioSender) {
+        console.log(`[${userRole}] Adding local tracks to existing peer connection`);
         
-        if (transceiver) {
-          console.log(`[${userRole}] Found transceiver for ${track.kind}, upgrading from recvonly to sendrecv...`);
-          transceiver.sender.replaceTrack(track).then(() => {
-            console.log(`[${userRole}] Successfully added ${track.kind} track to transceiver`);
-            // Upgrade direction from recvonly to sendrecv
-            if (transceiver.direction === 'recvonly' || transceiver.direction === 'inactive') {
-              transceiver.direction = 'sendrecv';
-              console.log(`[${userRole}] Updated transceiver direction to sendrecv`);
-            }
-          }).catch(error => {
-            console.error(`[${userRole}] Failed to add ${track.kind} track to transceiver:`, error);
-          });
-        } else {
-          // Check if we already have this exact track
-          const existingSender = pc.getSenders().find(s => s.track?.id === track.id);
-          if (!existingSender) {
-            // Check if we have a sender for this kind of track
-            const senderForKind = pc.getSenders().find(s => s.track?.kind === track.kind);
-            if (senderForKind && senderForKind.track) {
-              console.log(`[${userRole}] Replacing existing ${track.kind} track`);
-              senderForKind.replaceTrack(track).catch(error => {
-                console.error(`[${userRole}] Failed to replace ${track.kind} track:`, error);
+        localStream.getTracks().forEach((track) => {
+          // Find sender for this track kind
+          const existingSender = senders.find(s => s.track?.kind === track.kind);
+          
+          if (existingSender) {
+            // Replace existing track with new track
+            console.log(`[${userRole}] Replacing existing ${track.kind} track`);
+            existingSender.replaceTrack(track).catch(error => {
+              console.error(`Failed to replace ${track.kind} track:`, error);
+            });
+          } else {
+            // Check if there's a sender without a track that we can use
+            const emptySender = senders.find(s => !s.track);
+            if (emptySender) {
+              console.log(`[${userRole}] Replacing null track with ${track.kind} track`);
+              emptySender.replaceTrack(track).catch(error => {
+                console.error(`Failed to replace ${track.kind} track:`, error);
               });
             } else {
-              console.log(`[${userRole}] Adding new ${track.kind} track to peer connection`);
+              // Add new track
+              console.log(`[${userRole}] Adding new ${track.kind} track`);
               const sender = pc.addTrack(track, localStream);
               
               // Apply bitrate limits for mobile
@@ -251,66 +227,19 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
                 });
               }
             }
-          } else {
-            console.log(`[${userRole}] Track ${track.kind} already added, skipping`);
           }
+        });
+        
+        // Trigger renegotiation if we're connected and the inspector has joined
+        if (userRole === 'coordinator' && hasPeerJoined) {
+          console.log(`[${userRole}] Triggering renegotiation after adding tracks`);
+          createOffer();
         }
-      });
-      
-      // Log final state
-      const finalSenders = pc.getSenders();
-      console.log(`[${userRole}] Final senders after track addition:`,
-        finalSenders.map(s => ({
-          trackKind: s.track?.kind,
-          trackId: s.track?.id,
-          hasTrack: !!s.track
-        }))
-      );
-      
-      // Trigger renegotiation if we're the coordinator and peer has joined
-      if (userRole === 'coordinator' && hasPeerJoined && pc.signalingState === 'stable') {
-        console.log(`[${userRole}] Triggering renegotiation after adding tracks`);
-        createOffer();
       }
     }
   }, [localStream, userRole, hasPeerJoined, isMobile]);
 
   async function initializeLocalStream() {
-    console.log(`[${userRole}] Starting initializeLocalStream...`);
-    
-    // Check if media devices are available
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      console.warn(`[${userRole}] Media devices API not available in this environment`);
-      setLocalStream(null);
-      localStreamRef.current = null;
-      // Continue without local stream - connection can still work for receiving
-      return;
-    }
-    
-    // Try to enumerate devices first to check availability
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const hasVideo = devices.some(d => d.kind === 'videoinput');
-      const hasAudio = devices.some(d => d.kind === 'audioinput');
-      
-      console.log(`[${userRole}] Available media devices:`, { 
-        hasVideo, 
-        hasAudio, 
-        deviceCount: devices.length 
-      });
-      
-      if (!hasVideo && !hasAudio) {
-        console.warn(`[${userRole}] No media input devices found, proceeding without local stream`);
-        setLocalStream(null);
-        localStreamRef.current = null;
-        // Still allow connection for receiving
-        return;
-      }
-    } catch (enumError) {
-      console.warn(`[${userRole}] Could not enumerate devices:`, enumError);
-      // Continue anyway - might still work
-    }
-    
     try {
       // Use lower resolution for mobile devices to reduce bandwidth
       const videoConstraints = userRole === "inspector" 
@@ -339,36 +268,15 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
               facingMode: "user" // Front camera
             };
 
-      console.log(`[${userRole}] Requesting getUserMedia with constraints:`, {
-        video: videoConstraints,
-        audio: { echoCancellation: true, noiseSuppression: true }
-      });
-
       const stream = await navigator.mediaDevices.getUserMedia({
         video: videoConstraints,
         audio: { echoCancellation: true, noiseSuppression: true },
       });
       
-      console.log(`[${userRole}] Successfully obtained local stream:`, {
-        id: stream.id,
-        videoTracks: stream.getVideoTracks().map(t => ({ 
-          id: t.id, 
-          label: t.label, 
-          enabled: t.enabled,
-          readyState: t.readyState 
-        })),
-        audioTracks: stream.getAudioTracks().map(t => ({ 
-          id: t.id, 
-          label: t.label, 
-          enabled: t.enabled,
-          readyState: t.readyState 
-        }))
-      });
-      
       setLocalStream(stream);
       localStreamRef.current = stream;
-    } catch (error: any) {
-      console.error(`[${userRole}] Failed to get user media:`, error?.name, error?.message);
+    } catch (error) {
+      console.error("Failed to get local stream:", error);
       
       // Fallback for inspector if rear camera fails
       if (userRole === "inspector") {
@@ -393,23 +301,11 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         }
       }
       
-      // Handle specific error types
-      if (error?.name === 'NotFoundError' || error?.name === 'DevicesNotFoundError') {
-        console.warn(`[${userRole}] No camera/microphone found, continuing without local stream`);
-      } else if (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError') {
-        console.warn(`[${userRole}] Camera/microphone permission denied`);
-        toast({
-          title: "Camera/Microphone Access Denied",
-          description: "Camera/microphone is optional. You can still receive video.",
-          variant: "default",
-        });
-      } else {
-        console.error(`[${userRole}] Unexpected getUserMedia error:`, error);
-      }
-      
-      // Set stream to null but continue - can still receive remote stream
-      setLocalStream(null);
-      localStreamRef.current = null;
+      toast({
+        title: "Camera/Microphone Access Denied",
+        description: "Please allow camera and microphone access to join the call",
+        variant: "destructive",
+      });
     }
   }
 
@@ -466,69 +362,33 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         }
       });
     } else {
-      // No local stream, create transceivers for receiving
-      console.log(`[${userRole}] No local stream, creating transceivers for receiving`);
+      // No local stream yet, add transceivers that can be upgraded later
+      console.log(`[${userRole}] No local stream yet, adding sendrecv transceivers`);
+      pc.addTransceiver('audio', { direction: 'sendrecv' });
+      pc.addTransceiver('video', { direction: 'sendrecv' });
       
-      // Create transceivers that can receive media
-      const audioTransceiver = pc.addTransceiver('audio', { 
-        direction: 'recvonly' // Start as receive-only
-      });
-      const videoTransceiver = pc.addTransceiver('video', { 
-        direction: 'recvonly' // Start as receive-only  
-      });
-      
-      console.log(`[${userRole}] Created receive-only transceivers, can be upgraded when stream available`);
+      // Note that tracks can be added later when stream becomes available
+      console.log(`[${userRole}] Transceivers added, tracks will be added when stream is available`);
     }
 
     // Handle remote stream
     pc.ontrack = (event) => {
-      console.log(`[${userRole}] Track received:`, {
-        kind: event.track.kind,
-        id: event.track.id,
-        label: event.track.label,
-        enabled: event.track.enabled,
-        readyState: event.track.readyState,
-        streams: event.streams?.length || 0
-      });
+      console.log(`[${userRole}] Track received:`, event.track.kind);
       
       // Handle both event.streams[0] and manual stream construction
       if (event.streams && event.streams[0]) {
-        const stream = event.streams[0];
-        setRemoteStream(stream);
-        console.log(`[${userRole}] Remote stream set from event.streams[0]:`, {
-          id: stream.id,
-          videoTracks: stream.getVideoTracks().length,
-          audioTracks: stream.getAudioTracks().length,
-          active: stream.active
-        });
+        setRemoteStream(event.streams[0]);
+        console.log(`[${userRole}] Remote stream set from event.streams[0]`);
       } else {
         // Some browsers don't provide streams, construct manually
         // We need to construct a new stream and add the track
-        console.log(`[${userRole}] No streams provided, creating new MediaStream`);
-        
-        // Get or create a stream for this peer
-        let stream = remoteStream;
-        if (!stream) {
-          stream = new MediaStream();
-        }
-        
-        // Add the track if it's not already there
-        const existingTrack = stream.getTracks().find(t => t.id === event.track.id);
-        if (!existingTrack) {
-          stream.addTrack(event.track);
-          console.log(`[${userRole}] Added ${event.track.kind} track to remote stream`);
-        }
-        
-        setRemoteStream(stream);
-        console.log(`[${userRole}] Remote stream updated:`, {
-          id: stream.id,
-          videoTracks: stream.getVideoTracks().length,
-          audioTracks: stream.getAudioTracks().length,
-          active: stream.active
-        });
+        const newStream = new MediaStream();
+        newStream.addTrack(event.track);
+        setRemoteStream(newStream);
+        console.log(`[${userRole}] Created new MediaStream and added track`);
       }
       
-      console.log(`[${userRole}] Remote stream now has ${event.track.kind} track`);
+      console.log(`[${userRole}] Remote stream updated with ${event.track.kind} track`);
     };
 
     // Set connection timeout for mobile (longer for slow cellular)
@@ -670,26 +530,11 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
 
     try {
-      // Ensure transceivers exist - handle both no stream and stream available cases
+      // Ensure at least one transceiver exists for BUNDLE group
       if (pc.getTransceivers().length === 0) {
-        console.log(`[${userRole}] No transceivers found, adding transceivers`);
-        // If we have local stream, use sendrecv, otherwise use recvonly
-        const direction = localStreamRef.current ? 'sendrecv' : 'recvonly';
-        pc.addTransceiver('audio', { direction });
-        pc.addTransceiver('video', { direction });
-        
-        // If we have local stream, add the tracks
-        if (localStreamRef.current) {
-          const transceivers = pc.getTransceivers();
-          localStreamRef.current.getTracks().forEach(track => {
-            const transceiver = transceivers.find(t => t.receiver.track?.kind === track.kind || t.mid?.includes(track.kind));
-            if (transceiver && !transceiver.sender.track) {
-              transceiver.sender.replaceTrack(track).catch(e => 
-                console.error(`[${userRole}] Failed to add ${track.kind} track to transceiver:`, e)
-              );
-            }
-          });
-        }
+        console.log(`[${userRole}] No transceivers found, adding sendrecv transceivers`);
+        pc.addTransceiver('audio', { direction: 'sendrecv' });
+        pc.addTransceiver('video', { direction: 'sendrecv' });
       }
       
       const offerOptions: RTCOfferOptions = {};
@@ -762,8 +607,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           const pc = peerConnectionRef.current;
           if (pc && pc.getTransceivers().length === 0) {
             console.log(`[${userRole}] Adding transceivers before reconnection offer`);
-            pc.addTransceiver('audio', { direction: 'recvonly' });
-            pc.addTransceiver('video', { direction: 'recvonly' });
+            pc.addTransceiver('audio', { direction: 'sendrecv' });
+            pc.addTransceiver('video', { direction: 'sendrecv' });
           }
           createOffer();
         } else {
@@ -787,8 +632,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           const pc = peerConnectionRef.current;
           if (pc && pc.getTransceivers().length === 0) {
             console.log(`[${userRole}] Adding transceivers before reconnection offer`);
-            pc.addTransceiver('audio', { direction: 'recvonly' });
-            pc.addTransceiver('video', { direction: 'recvonly' });
+            pc.addTransceiver('audio', { direction: 'sendrecv' });
+            pc.addTransceiver('video', { direction: 'sendrecv' });
           }
           createOffer();
         } else {
@@ -915,8 +760,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         // Ensure transceivers exist before creating offer for ICE restart
         if (pc.getTransceivers().length === 0) {
           console.log(`[${userRole}] Adding transceivers before ICE restart offer`);
-          pc.addTransceiver('audio', { direction: 'recvonly' });
-          pc.addTransceiver('video', { direction: 'recvonly' });
+          pc.addTransceiver('audio', { direction: 'sendrecv' });
+          pc.addTransceiver('video', { direction: 'sendrecv' });
         }
         await createOffer(true);
       } else {
@@ -1068,8 +913,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
                 const pc = peerConnectionRef.current;
                 if (pc && pc.getTransceivers().length === 0) {
                   console.log(`[${userRole}] Adding transceivers before offer to inspector`);
-                  pc.addTransceiver('audio', { direction: 'recvonly' });
-                  pc.addTransceiver('video', { direction: 'recvonly' });
+                  pc.addTransceiver('audio', { direction: 'sendrecv' });
+                  pc.addTransceiver('video', { direction: 'sendrecv' });
                 }
                 createOffer();
               }, 1000);

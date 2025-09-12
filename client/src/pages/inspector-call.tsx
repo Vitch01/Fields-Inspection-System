@@ -170,7 +170,7 @@ export default function InspectorCall() {
               onClick={handleJoinCall} 
               className="w-full bg-black text-white hover:bg-gray-800 border-black disabled:bg-gray-400 disabled:cursor-not-allowed" 
               disabled={!wsConnected || !inspectorName.trim()}
-              data-testid="button-join-call"
+              data-testid="button-join-inspection-call"
             >
               {!wsConnected ? 'Connecting...' : 'Join Inspection Call'}
             </Button>
@@ -190,14 +190,22 @@ export default function InspectorCall() {
 
   return (
     <div className="flex flex-col h-screen bg-black relative">
-      {/* Main View - Shows remote stream (Coordinator's video) or local stream */}
+      {/* Full Screen Camera View for Inspector */}
       <div className="absolute inset-0 z-0">
-        <VideoDisplay
-          localStream={localStream}
-          remoteStream={remoteStream}
-          isCoordinator={false}
-          onCaptureImage={() => {}} // Inspector doesn't capture directly
-        />
+        {localStream && (
+          <video
+            autoPlay
+            muted
+            playsInline
+            ref={(video) => {
+              if (video && localStream) {
+                video.srcObject = localStream;
+              }
+            }}
+            className="w-full h-full object-cover"
+            data-testid="video-local-fullscreen"
+          />
+        )}
       </div>
 
       {/* Header Overlay */}
