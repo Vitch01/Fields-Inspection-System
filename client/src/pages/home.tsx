@@ -16,10 +16,15 @@ export default function Home() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
-  // Login state - coordinators now need to login too
+  // Login state (skip login for coordinators)
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<any>({
+    id: "coordinator-default",
+    username: "coordinator",
+    role: "coordinator",
+    name: "Site Coordinator"
+  });
 
   // Call creation state
   const [inspectorId, setInspectorId] = useState("");
@@ -79,10 +84,10 @@ export default function Home() {
 
 
 
-  // Show login form if user is not logged in
-  const showLogin = !user;
+  // Show inspector login if needed
+  const showInspectorLogin = user.role !== "coordinator" && !user.id;
 
-  if (showLogin) {
+  if (showInspectorLogin) {
     return (
       <div className="min-h-screen bg-slate-800 flex items-center justify-center p-4">
         <Card className="w-full max-w-md bg-white border border-white">
@@ -94,7 +99,7 @@ export default function Home() {
             </div>
             <CardTitle className="text-2xl text-black" data-testid="title-login">Field Inspection System</CardTitle>
             <p className="text-gray-600">
-              Login Required
+              Inspector Login Required
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -132,16 +137,10 @@ export default function Home() {
             </Button>
             
             <div className="pt-4 border-t border-gray-300 space-y-2">
-              <p className="text-sm text-gray-600 text-center">Demo accounts:</p>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="text-center">
-                  <Badge variant="outline" className="text-black border-black">coordinator1</Badge>
-                  <p className="text-gray-600">Coordinator</p>
-                </div>
-                <div className="text-center">
-                  <Badge variant="outline" className="text-black border-black">inspector1</Badge>
-                  <p className="text-gray-600">Inspector</p>
-                </div>
+              <p className="text-sm text-gray-600 text-center">Demo account:</p>
+              <div className="text-center text-xs">
+                <Badge variant="outline" className="text-black border-black">inspector1</Badge>
+                <p className="text-gray-600">Inspector</p>
               </div>
             </div>
           </CardContent>
@@ -150,48 +149,6 @@ export default function Home() {
     );
   }
 
-  // Handle routing based on user role after login
-  if (user && user.role === "inspector") {
-    return (
-      <div className="min-h-screen bg-slate-800 flex items-center justify-center p-4">
-        <main className="w-full max-w-md">
-          <div className="flex justify-center mb-8">
-            <img 
-              src={logoImage} 
-              alt="Company Logo" 
-              className="h-20 w-auto"
-            />
-          </div>
-          <Card className="bg-white border border-white">
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2 text-black">
-                <Users className="w-5 h-5 text-black" />
-                <span>Inspector Dashboard</span>
-              </CardTitle>
-              <p className="text-gray-600">Welcome, {user.name}</p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="text-center space-y-2">
-                <Shield className="w-12 h-12 text-black mx-auto" />
-                <p className="text-gray-600">
-                  Waiting for coordinator to start an inspection call...
-                </p>
-              </div>
-              <Button 
-                onClick={() => window.location.reload()} 
-                className="w-full bg-black text-white hover:bg-gray-800 border border-black"
-                data-testid="button-refresh"
-              >
-                Refresh Status
-              </Button>
-            </CardContent>
-          </Card>
-        </main>
-      </div>
-    );
-  }
-
-  // Coordinator interface
   return (
     <div className="min-h-screen bg-slate-800 flex items-center justify-center p-4">
       <main className="w-full max-w-md">
@@ -211,7 +168,6 @@ export default function Home() {
               <Video className="w-5 h-5 text-black" />
               <span>Start New Inspection</span>
             </CardTitle>
-            <p className="text-gray-600">Welcome, {user?.name}</p>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -243,7 +199,7 @@ export default function Home() {
             <Button 
               onClick={handleStartCall} 
               className="w-full bg-black text-white hover:bg-gray-800 border border-black" 
-              disabled={isLoading || !inspectorId || !inspectionReference || !user}
+              disabled={isLoading || !inspectorId || !inspectionReference}
               data-testid="button-start-call"
             >
               {isLoading ? "Starting..." : "Start Inspection Call"}

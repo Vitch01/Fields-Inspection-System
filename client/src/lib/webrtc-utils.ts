@@ -10,10 +10,11 @@ export function createPeerConnection(): RTCPeerConnection {
       { urls: 'stun:stun4.l.google.com:19302' },
       
       // ============================================================
-      // WORKING TURN SERVERS FOR CELLULAR CONNECTIVITY
+      // TEMPORARY PUBLIC TURN SERVERS FOR MOBILE CONNECTIVITY
       // ============================================================
-      // Using OpenRelay public TURN servers which are reliable for development
-      // These servers work well with carrier-grade NAT and cellular networks
+      // WARNING: These are public demo TURN servers with public credentials
+      // They enable connectivity for mobile devices on restrictive carrier-grade NAT networks
+      // DO NOT use these in production - they are a temporary stopgap solution
       // 
       // PRODUCTION IMPLEMENTATION:
       // 1. Set up a backend endpoint to generate time-limited credentials (24-hour expiry)
@@ -25,66 +26,36 @@ export function createPeerConnection(): RTCPeerConnection {
       //    - Self-hosted CoTURN server
       //    - Cloudflare Calls TURN service
       //
-      // OpenRelay servers are tested and working for cellular connections
-      {
-        urls: [
-          'turn:openrelay.metered.ca:80',
-          'turn:openrelay.metered.ca:443?transport=tcp',
-          'turns:openrelay.metered.ca:443'
-        ],
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
+      // LIMITATIONS OF THESE PUBLIC SERVERS:
+      // - May have usage limits or bandwidth restrictions
+      // - Could be shut down at any time without notice
+      // - No guarantee of availability or performance
+      // - Shared with other users (potential congestion)
+      //
+      // These Cloudflare public TURN servers use "public" credentials intentionally
+      // for demo/development purposes only
+      { 
+        urls: 'turn:turn.cloudflare.com:3478',
+        username: 'public',
+        credential: 'public'
+      },
+      { 
+        urls: 'turn:turn.cloudflare.com:443?transport=tcp',
+        username: 'public',
+        credential: 'public'
       }
       // ============================================================
     ],
-    // Optimize ICE gathering for mobile connections (reduced for better performance)
-    iceCandidatePoolSize: 2, // Reduced from 20 to improve mobile performance and connection stability
-    // Allow both STUN and TURN for maximum compatibility
-    iceTransportPolicy: 'all',
-    // Optimize for network changes and mobile connections
+    // Improve ICE gathering on mobile networks
+    iceCandidatePoolSize: 10,
+    // Force all traffic through TURN for mobile connections if needed
+    iceTransportPolicy: 'all', // Use 'all' to allow both STUN and TURN
+    // Better handling of network changes
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require'
-    // Note: Extended timeouts for slow networks are handled in the hook logic
-    // Enhanced ICE settings for network transitions
-    // Note: iceGatheringPolicy is not a standard RTCConfiguration property
   };
 
-  const pc = new RTCPeerConnection(configuration);
-  
-  // Enhanced logging for debugging network transitions
-  pc.onicegatheringstatechange = () => {
-    console.log(`[WebRTC] ICE gathering state: ${pc.iceGatheringState}`);
-  };
-  
-  pc.oniceconnectionstatechange = () => {
-    console.log(`[WebRTC] ICE connection state: ${pc.iceConnectionState}`);
-    if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-      console.warn(`[WebRTC] ICE connection ${pc.iceConnectionState} - may need restart`);
-    }
-  };
-  
-  pc.onconnectionstatechange = () => {
-    console.log(`[WebRTC] Connection state: ${pc.connectionState}`);
-    if (pc.connectionState === 'failed') {
-      console.error('[WebRTC] Connection failed - likely network transition issue');
-    }
-  };
-  
-  // Log ICE candidates for debugging network transitions
-  const originalIceCandidateHandler = pc.onicecandidate;
-  pc.onicecandidate = (event) => {
-    if (event.candidate) {
-      console.log(`[WebRTC] ICE candidate: ${event.candidate.type} (${event.candidate.protocol}) - ${event.candidate.candidate.substring(0, 50)}...`);
-    } else {
-      console.log('[WebRTC] ICE candidate gathering complete');
-    }
-    // Call the original handler if it exists
-    if (originalIceCandidateHandler) {
-      originalIceCandidateHandler.call(pc, event);
-    }
-  };
-  
-  return pc;
+  return new RTCPeerConnection(configuration);
 }
 
 export async function captureImageFromStream(stream: MediaStream): Promise<Blob> {
@@ -182,277 +153,29 @@ export async function capturePhotoFromCamera(): Promise<Blob> {
   }
 }
 
-// Enhanced peer connection creation specifically for network recovery
-export function createRecoveredPeerConnection(originalPC?: RTCPeerConnection): RTCPeerConnection {
-  // If we have an original peer connection, copy some settings
-  const pc = createPeerConnection();
-  
-  console.log('[WebRTC] Created recovered peer connection for network transition');
-  
-  return pc;
-}
-
-// Enhanced network quality types
-export type NetworkQuality = 'excellent' | 'good' | 'fair' | 'poor' | 'offline';
-export type VideoQuality = 'high' | 'medium' | 'low' | 'audio-only';
-
-export interface NetworkCapabilities {
-  supportsWebRTC: boolean;
-  hasReliableConnection: boolean;
-  networkType?: string;
-  estimatedBandwidth?: number;
-  latency: number;
-  quality: NetworkQuality;
-  recommendedVideoQuality: VideoQuality;
-  canHandleVideo: boolean;
-}
-
-// Comprehensive bandwidth detection with multiple tests
-export async function checkNetworkCapabilities(): Promise<NetworkCapabilities> {
-  const capabilities: NetworkCapabilities = {
-    supportsWebRTC: !!window.RTCPeerConnection,
-    hasReliableConnection: navigator.onLine,
-    latency: 0,
-    quality: 'offline',
-    recommendedVideoQuality: 'audio-only',
-    canHandleVideo: false
-  };
-
-  // Get network information if available
-  const connection = (navigator as any).connection || 
-                   (navigator as any).mozConnection || 
-                   (navigator as any).webkitConnection;
-  
-  if (connection) {
-    capabilities.networkType = connection.effectiveType;
-    capabilities.estimatedBandwidth = connection.downlink;
-  }
-
-  if (!navigator.onLine) {
-    return capabilities;
-  }
-
-  try {
-    // Enhanced connectivity test with multiple metrics
-    const testResults = await performBandwidthTest();
-    capabilities.latency = testResults.latency;
-    capabilities.estimatedBandwidth = testResults.bandwidth;
-    capabilities.hasReliableConnection = testResults.reliable;
-    
-    // Determine network quality and video capability
-    const quality = determineNetworkQuality(testResults, connection);
-    capabilities.quality = quality.networkQuality;
-    capabilities.recommendedVideoQuality = quality.videoQuality;
-    capabilities.canHandleVideo = quality.videoQuality !== 'audio-only';
-    
-  } catch (error) {
-    console.warn('Network test failed:', error);
-    capabilities.hasReliableConnection = false;
-    capabilities.quality = 'poor';
-  }
-
-  return capabilities;
-}
-
-// Perform comprehensive bandwidth and latency testing
-async function performBandwidthTest(): Promise<{
-  latency: number;
-  bandwidth: number;
-  reliable: boolean;
-  packetLoss: number;
-}> {
-  const results = {
-    latency: 0,
-    bandwidth: 0,
-    reliable: false,
-    packetLoss: 0
-  };
-
-  // Test 1: Basic latency test
-  const latencyStart = performance.now();
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // Increased for slow networks
-    
-    await fetch(window.location.origin + '/api', {
-      method: 'HEAD',
-      cache: 'no-cache',
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-    results.latency = performance.now() - latencyStart;
-    results.reliable = results.latency < 10000; // 10 second threshold for slow networks
-  } catch (error) {
-    results.latency = 15000; // Max timeout
-    results.reliable = false;
-  }
-
-  // Test 2: Small data transfer test for bandwidth estimation
-  if (results.reliable) {
-    try {
-      const dataSize = 50 * 1024; // 50KB test
-      const testData = new Array(dataSize).fill('a').join('');
-      
-      const bandwidthStart = performance.now();
-      const response = await fetch(window.location.origin + '/api', {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: testData,
-        cache: 'no-cache'
-      });
-      
-      if (response.ok) {
-        const duration = (performance.now() - bandwidthStart) / 1000; // seconds
-        results.bandwidth = (dataSize * 8) / (1024 * 1024 * duration); // Mbps
-      }
-    } catch (error) {
-      console.warn('Bandwidth test failed:', error);
-      results.bandwidth = 0.1; // Assume very slow connection
-    }
-  }
-
-  // Test 3: Stability test with multiple small requests
-  if (results.reliable) {
-    const stabilityTests = [];
-    for (let i = 0; i < 3; i++) {
-      stabilityTests.push(
-        fetch(window.location.origin + '/api', {
-          method: 'HEAD',
-          cache: 'no-cache'
-        }).then(
-          () => true,
-          () => false
-        )
-      );
-    }
-    
-    try {
-      const stabilityResults = await Promise.all(stabilityTests);
-      const successRate = stabilityResults.filter(Boolean).length / stabilityResults.length;
-      results.packetLoss = (1 - successRate) * 100;
-      results.reliable = results.reliable && successRate >= 0.7; // 70% success rate
-    } catch (error) {
-      results.packetLoss = 50;
-      results.reliable = false;
-    }
-  }
-
-  return results;
-}
-
-// Determine network quality and recommended video settings
-function determineNetworkQuality(
-  testResults: { latency: number; bandwidth: number; reliable: boolean; packetLoss: number },
-  connection?: any
-): { networkQuality: NetworkQuality; videoQuality: VideoQuality } {
-  const { latency, bandwidth, reliable, packetLoss } = testResults;
-  
-  // Use connection API data if available for cross-validation
-  let effectiveBandwidth = bandwidth;
-  if (connection && connection.downlink) {
-    effectiveBandwidth = Math.min(bandwidth, connection.downlink);
-  }
-  
-  // Network quality determination based on multiple factors
-  if (!reliable || packetLoss > 30) {
-    return { networkQuality: 'offline', videoQuality: 'audio-only' };
-  }
-  
-  if (latency > 8000 || effectiveBandwidth < 0.2 || packetLoss > 20) {
-    return { networkQuality: 'poor', videoQuality: 'audio-only' };
-  }
-  
-  if (latency > 3000 || effectiveBandwidth < 0.5 || packetLoss > 10) {
-    return { networkQuality: 'fair', videoQuality: 'low' };
-  }
-  
-  if (latency > 1000 || effectiveBandwidth < 2.0 || packetLoss > 5) {
-    return { networkQuality: 'good', videoQuality: 'medium' };
-  }
-  
-  return { networkQuality: 'excellent', videoQuality: 'high' };
-}
-
-// Adaptive media constraints based on network conditions and device role
-export function getAdaptiveMediaConstraints(
-  videoQuality: VideoQuality,
-  userRole: 'coordinator' | 'inspector',
-  networkCapabilities?: NetworkCapabilities
-): MediaStreamConstraints {
-  // Enhanced audio settings optimized for various network conditions
-  const audioConstraints: MediaTrackConstraints = {
-    echoCancellation: true,
-    noiseSuppression: true,
-    autoGainControl: true
-    // Removed specific audio constraints that could cause failures on some devices
-    // Let browser choose optimal audio settings
-  };
-
-  // Audio-only mode for very poor connections
-  if (videoQuality === 'audio-only') {
-    return {
-      audio: audioConstraints,
-      video: false
-    };
-  }
-
-  // Device-specific camera preferences
-  const baseCameraConstraints = userRole === "inspector" 
-    ? { facingMode: { ideal: "environment" } } // Rear camera for inspections
-    : { facingMode: "user" }; // Front camera for coordinator
-
-  // Video constraints based on quality level - Made more flexible for mobile compatibility
-  let videoConstraints: MediaTrackConstraints;
-  
-  switch (videoQuality) {
-    case 'low':
-      videoConstraints = {
-        ...baseCameraConstraints,
-        width: { ideal: 320 },  // Removed max to allow flexibility
-        height: { ideal: 240 }, // Let browser choose if ideal isn't available
-        frameRate: { ideal: 15 } // Simplified - no strict max
-      };
-      break;
-      
-    case 'medium':
-      videoConstraints = {
-        ...baseCameraConstraints,
-        width: { ideal: 640 },
-        height: { ideal: 480 },
-        frameRate: { ideal: 20 }
-      };
-      break;
-      
-    case 'high':
-    default:
-      videoConstraints = {
-        ...baseCameraConstraints,
-        width: { 
-          ideal: userRole === 'inspector' ? 1280 : 640  // Reduced ideal for mobile compatibility
-        },
-        height: { 
-          ideal: userRole === 'inspector' ? 720 : 480   // More reasonable defaults
-        },
-        frameRate: { ideal: 24 } // Let device choose best available
-      };
-      break;
-  }
-
-  return {
-    audio: audioConstraints,
-    video: videoConstraints
-  };
-}
-
-// Legacy support function
 export function getMediaConstraints(quality: 'low' | 'medium' | 'high') {
-  const videoQualityMap: Record<string, VideoQuality> = {
-    low: 'low',
-    medium: 'medium', 
-    high: 'high'
+  const constraints: MediaStreamConstraints = {
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+    video: true,
   };
-  return getAdaptiveMediaConstraints(videoQualityMap[quality], 'coordinator');
+
+  switch (quality) {
+    case 'low':
+      constraints.video = { width: 640, height: 480 };
+      break;
+    case 'medium':
+      constraints.video = { width: 1280, height: 720 };
+      break;
+    case 'high':
+      constraints.video = { width: 1920, height: 1080 };
+      break;
+  }
+
+  return constraints;
 }
 
 // Utility function to get rotation class for images based on video rotation

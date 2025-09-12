@@ -6,7 +6,7 @@ import ChatPanel from "@/components/video-call/chat-panel";
 import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import { useWebRTC } from "@/hooks/use-webrtc";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Clock, Signal, Video, UserCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,6 @@ export default function InspectorCall() {
   const [callDuration, setCallDuration] = useState(942);
   const [hasJoined, setHasJoined] = useState(false);
   const [inspectorName, setInspectorName] = useState("");
-  const videoRef = useRef<HTMLVideoElement>(null);
 
   const { data: call } = useQuery({
     queryKey: ["/api/calls", callId],
@@ -40,7 +39,6 @@ export default function InspectorCall() {
     sendChatMessage,
     unreadCount,
     clearUnreadCount,
-    startLocalMedia,
   } = useWebRTC(callId!, "inspector");
 
   // Inspector doesn't need to fetch captured images
@@ -53,52 +51,16 @@ export default function InspectorCall() {
     return () => clearInterval(interval);
   }, []);
 
-  // Properly assign video stream when localStream becomes available
-  useEffect(() => {
-    if (videoRef.current && localStream) {
-      console.log('[Inspector] Assigning localStream to video element:', localStream);
-      videoRef.current.srcObject = localStream;
-      
-      // Add explicit video.play() call for iOS autoplay policy compliance
-      const playVideo = async () => {
-        try {
-          await videoRef.current?.play();
-          console.log('[Inspector] Video.play() successful');
-        } catch (error) {
-          console.warn('[Inspector] Video.play() failed (may be expected on some browsers):', error);
-        }
-      };
-      
-      // Play immediately if metadata is already loaded, otherwise wait for metadata
-      if (videoRef.current.readyState >= 1) {
-        playVideo();
-      } else {
-        videoRef.current.onloadedmetadata = () => {
-          playVideo();
-        };
-      }
-    }
-  }, [localStream]);
-
   const formatDuration = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleJoinCall = async () => {
+  const handleJoinCall = () => {
     if (inspectorName.trim()) {
       // Join the call immediately
       setHasJoined(true);
-      
-      // MOBILE FIX: Start media after user interaction (required for mobile cameras)
-      try {
-        console.log('[Inspector] Starting media after user interaction...');
-        await startLocalMedia();
-        console.log('[Inspector] Media initialization successful');
-      } catch (error) {
-        console.error('[Inspector] Media initialization failed:', error);
-      }
       
       // Capture inspector's location as fire-and-forget (don't block UI)
       if (navigator.geolocation) {
@@ -196,26 +158,19 @@ export default function InspectorCall() {
     <div className="flex flex-col h-screen bg-black relative">
       {/* Full Screen Camera View for Inspector */}
       <div className="absolute inset-0 z-0">
-        <video
-          ref={videoRef}
-          autoPlay
-          muted
-          playsInline
-          className="w-full h-full object-cover"
-          data-testid="video-local-fullscreen"
-        />
-        
-        {/* No Video Fallback for Inspector */}
-        {!localStream && (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-800">
-            <div className="text-center text-white">
-              <div className="w-16 h-16 bg-slate-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Video className="w-8 h-8" />
-              </div>
-              <p className="text-lg font-medium">Initializing camera...</p>
-              <p className="text-sm opacity-75">Please allow camera access</p>
-            </div>
-          </div>
+        {localStream && (
+          <video
+            autoPlay
+            muted
+            playsInline
+            ref={(video) => {
+              if (video && localStream) {
+                video.srcObject = localStream;
+              }
+            }}
+            className="w-full h-full object-cover"
+            data-testid="video-local-fullscreen"
+          />
         )}
       </div>
 

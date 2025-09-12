@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useWebSocket } from "./use-websocket";
-import { useNetworkMonitor } from "./use-network-monitor";
-import { createPeerConnection, createRecoveredPeerConnection, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream, checkNetworkCapabilities, getAdaptiveMediaConstraints, type NetworkCapabilities, type VideoQuality } from "@/lib/webrtc-utils";
+import { createPeerConnection, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream } from "@/lib/webrtc-utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -26,13 +25,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [isRecordingSupported, setIsRecordingSupported] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   
-  // New adaptive quality states
-  const [networkCapabilities, setNetworkCapabilities] = useState<NetworkCapabilities | null>(null);
-  const [currentVideoQuality, setCurrentVideoQuality] = useState<VideoQuality>('medium');
-  const [isAdaptiveQualityEnabled, setIsAdaptiveQualityEnabled] = useState(true);
-  const [connectionAttempts, setConnectionAttempts] = useState(0);
-  const [isNetworkTesting, setIsNetworkTesting] = useState(false);
-  
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -41,12 +33,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const captureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const captureRequestIdRef = useRef<string | null>(null);
   const iceRestartInProgressRef = useRef<boolean>(false);
-  const connectionRestoreInProgressRef = useRef<boolean>(false);
-  const networkChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastConnectionAttemptRef = useRef<number>(0);
-  const networkTestTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const qualityDowngradeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const connectionRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
   // Helper function to get supported mimeType
@@ -129,89 +115,13 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, []);
 
-  const { sendMessage, isConnected: wsConnected, wsRef } = useWebSocket(callId, userRole, {
+  const { sendMessage, isConnected: wsConnected } = useWebSocket(callId, userRole, {
     onMessage: handleSignalingMessage,
   });
 
-  // Enhanced network change handler (declared before useNetworkMonitor)
-  const handleNetworkChange = useCallback(async (newNetworkInfo: any) => {
-    console.log('[WebRTC] Network change detected:', newNetworkInfo);
-    
-    // Don't trigger recovery too frequently
-    const now = Date.now();
-    const minInterval = 8000; // Fixed interval to avoid dependency issues
-    if (now - lastConnectionAttemptRef.current < minInterval) {
-      console.log('[WebRTC] Network change ignored - too frequent');
-      return;
-    }
-    
-    // If we're offline, wait for connection to restore
-    if (!newNetworkInfo.isOnline) {
-      console.log('[WebRTC] Going offline, waiting for connection restore');
-      return;
-    }
-    
-    // Check if we have an active peer connection that might be affected
-    const pc = peerConnectionRef.current;
-    if (!pc || pc.connectionState === 'closed') {
-      console.log('[WebRTC] No active peer connection, network change ignored');
-      return;
-    }
-    
-    // If connection is already good, no need to restart
-    if (pc.connectionState === 'connected' && pc.iceConnectionState === 'connected') {
-      console.log('[WebRTC] Connection is healthy, network change ignored');
-      return;
-    }
-    
-    console.log('[WebRTC] Network change may have affected WebRTC connection, scheduling ICE restart');
-    
-    // Clear any existing network change timeout
-    if (networkChangeTimeoutRef.current) {
-      clearTimeout(networkChangeTimeoutRef.current);
-    }
-    
-    // Fixed delay to avoid dependency on networkCapabilities
-    const stabilizationDelay = 5000;
-    networkChangeTimeoutRef.current = setTimeout(() => {
-      handleIceRestart();
-    }, stabilizationDelay);
-    
-  }, []); // Keep empty deps to prevent infinite loops
-  
-  // Handle connection restoration after network comes back online (declared before useNetworkMonitor)
-  const handleConnectionRestore = useCallback(async () => {
-    console.log('[WebRTC] Connection restored, checking if reconnection needed');
-    
-    const pc = peerConnectionRef.current;
-    if (!pc) {
-      console.log('[WebRTC] No peer connection, attempting to reinitialize');
-      // Use refs to avoid dependencies
-      if (wsRef.current && localStreamRef.current) {
-        console.log('[WebRTC] Reinitializing peer connection after network restore');
-        initializePeerConnection();
-      }
-      return;
-    }
-    
-    // Check if connection needs recovery
-    if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' ||
-        pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-      console.log('[WebRTC] Connection needs recovery after network restore');
-      await handleConnectionRecovery();
-    }
-  }, []); // Remove dependencies to prevent loops
-
-  // Monitor network changes and trigger connection recovery
-  const { isOnline, networkInfo, isNetworkStable } = useNetworkMonitor({
-    onNetworkChange: handleNetworkChange,
-    onConnectionRestore: handleConnectionRestore,
-  });
-
-  // Initialize network detection but DON'T initialize media on mount for mobile compatibility
+  // Initialize local media stream
   useEffect(() => {
-    // Only initialize network testing, not media stream
-    initializeNetworkCapabilitiesOnly();
+    initializeLocalStream();
     return () => {
       cleanup();
     };
@@ -224,170 +134,52 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, [wsConnected, localStream]);
 
-  // Initialize network capabilities only (not media stream) - for mobile compatibility
-  async function initializeNetworkCapabilitiesOnly() {
-    setIsNetworkTesting(true);
-    
+  async function initializeLocalStream() {
     try {
-      console.log('[WebRTC] Starting network capability detection...');
-      const capabilities = await checkNetworkCapabilities();
-      console.log('[WebRTC] Network capabilities detected:', capabilities);
-      
-      setNetworkCapabilities(capabilities);
-      
-      // Set initial video quality based on network capabilities
-      let initialQuality = capabilities.recommendedVideoQuality;
-      
-      // For very slow connections, be more conservative
-      if (capabilities.quality === 'poor' || capabilities.latency > 5000) {
-        initialQuality = userRole === 'inspector' ? 'audio-only' : 'low';
-        toast({
-          title: "Slow Network Detected",
-          description: `Starting with ${initialQuality === 'audio-only' ? 'audio-only' : 'low quality video'} mode for better connection`,
-          variant: "default"
-        });
-      } else if (capabilities.quality === 'fair') {
-        initialQuality = 'low';
-      }
-      
-      setCurrentVideoQuality(initialQuality);
-      // DON'T initialize media stream here - wait for user interaction
-      
-    } catch (error) {
-      console.error('Network detection failed, using medium quality:', error);
-      setCurrentVideoQuality('medium');
-      // DON'T initialize media stream here - wait for user interaction
-    } finally {
-      setIsNetworkTesting(false);
-    }
-  }
+      // Use rear camera for inspector, front camera for coordinator
+      const videoConstraints = userRole === "inspector" 
+        ? { 
+            width: { ideal: 1920 }, 
+            height: { ideal: 1080 },
+            facingMode: { exact: "environment" } // Rear camera
+          }
+        : { 
+            width: 1280, 
+            height: 720,
+            facingMode: "user" // Front camera
+          };
 
-  // Initialize with network detection for adaptive quality (called after user interaction)
-  async function initializeWithNetworkDetection() {
-    const capabilities = networkCapabilities;
-    const quality = currentVideoQuality;
-    
-    try {
-      console.log('[WebRTC] Starting media initialization after user interaction...');
-      await initializeLocalStream(quality, capabilities || undefined);
-    } catch (error) {
-      console.error('Media initialization failed:', error);
-      await initializeLocalStream('medium');
-    }
-  }
-
-  async function initializeLocalStream(videoQuality?: VideoQuality, capabilities?: NetworkCapabilities) {
-    const quality = videoQuality || currentVideoQuality;
-    const caps = capabilities || networkCapabilities;
-    
-    try {
-      console.log(`[WebRTC] Initializing local stream with quality: ${quality}`);
-      
-      // Get adaptive media constraints based on network and role
-      const mediaConstraints = getAdaptiveMediaConstraints(quality, userRole, caps || undefined);
-      
-      console.log('[WebRTC] Using media constraints:', mediaConstraints);
-      const stream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: videoConstraints,
+        audio: { echoCancellation: true, noiseSuppression: true },
+      });
       
       setLocalStream(stream);
       localStreamRef.current = stream;
-      
-      // Log actual stream settings for debugging
-      const videoTrack = stream.getVideoTracks()[0];
-      if (videoTrack) {
-        const settings = videoTrack.getSettings();
-        console.log(`[WebRTC] Actual video settings: ${settings.width}x${settings.height} @ ${settings.frameRate}fps`);
-      }
-      
     } catch (error) {
       console.error("Failed to get local stream:", error);
-      await handleMediaStreamError(error, quality);
-    }
-  }
-  
-  // Enhanced error handling with fallback strategies
-  async function handleMediaStreamError(error: any, attemptedQuality: VideoQuality) {
-    console.log(`[WebRTC] Media stream error with quality ${attemptedQuality}:`, error);
-    
-    // Try progressive fallback strategies
-    if (attemptedQuality === 'high') {
-      console.log('[WebRTC] High quality failed, trying medium...');
-      setCurrentVideoQuality('medium');
-      return initializeLocalStream('medium');
-    } else if (attemptedQuality === 'medium') {
-      console.log('[WebRTC] Medium quality failed, trying low...');
-      setCurrentVideoQuality('low');
-      return initializeLocalStream('low');
-    } else if (attemptedQuality === 'low') {
-      console.log('[WebRTC] Low quality failed, trying audio-only...');
-      setCurrentVideoQuality('audio-only');
-      return initializeLocalStream('audio-only');
-    }
-    
-    // For inspector, try fallback camera without specific facing mode
-    if (userRole === "inspector" && attemptedQuality !== 'audio-only') {
-      try {
-        console.log('[WebRTC] Trying fallback camera without specific facing mode...');
-        // Try very basic constraints without any facing mode restrictions
-        const basicConstraints: MediaStreamConstraints = {
-          audio: { echoCancellation: true },
-          video: { width: { ideal: 640 }, height: { ideal: 480 } } // No facingMode restriction
-        };
-        const fallbackStream = await navigator.mediaDevices.getUserMedia(basicConstraints);
-        setLocalStream(fallbackStream);
-        localStreamRef.current = fallbackStream;
-        setCurrentVideoQuality('low');
-        
-        toast({
-          title: "Camera Fallback",
-          description: "Using available camera for video call",
-          variant: "default"
-        });
-        return;
-      } catch (fallbackError) {
-        console.error("Fallback camera failed:", fallbackError);
-        
-        // Try even more basic constraints
+      
+      // Fallback for inspector if rear camera fails
+      if (userRole === "inspector") {
         try {
-          console.log('[WebRTC] Trying most basic video constraints...');
-          const minimalConstraints: MediaStreamConstraints = {
-            audio: true,
-            video: true // Completely generic video request
-          };
-          const minimalStream = await navigator.mediaDevices.getUserMedia(minimalConstraints);
-          setLocalStream(minimalStream);
-          localStreamRef.current = minimalStream;
-          setCurrentVideoQuality('low');
-          
-          toast({
-            title: "Basic Camera Access",
-            description: "Using basic camera settings",
-            variant: "default"
+          const fallbackStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+            audio: { echoCancellation: true, noiseSuppression: true },
           });
+          setLocalStream(fallbackStream);
+          localStreamRef.current = fallbackStream;
           return;
-        } catch (minimalError) {
-          console.error("Even basic video failed:", minimalError);
+        } catch (fallbackError) {
+          console.error("Fallback camera failed:", fallbackError);
         }
       }
+      
+      toast({
+        title: "Camera/Microphone Access Denied",
+        description: "Please allow camera and microphone access to join the call",
+        variant: "destructive",
+      });
     }
-    
-    // Final fallback: audio-only
-    if (attemptedQuality !== 'audio-only') {
-      try {
-        console.log('[WebRTC] Trying audio-only fallback...');
-        setCurrentVideoQuality('audio-only');
-        return initializeLocalStream('audio-only');
-      } catch (audioError) {
-        console.error("Audio-only fallback failed:", audioError);
-      }
-    }
-    
-    // Complete failure
-    toast({
-      title: "Media Access Failed",
-      description: "Unable to access camera or microphone. Please check permissions and try again.",
-      variant: "destructive",
-    });
   }
 
   function initializePeerConnection() {
@@ -406,54 +198,23 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       setRemoteStream(event.streams[0]);
     };
 
-    // Enhanced connection state changes with network transition handling
+    // Handle connection state changes with better diagnostics
     pc.onconnectionstatechange = () => {
-      console.log(`[WebRTC] Connection state changed to: ${pc.connectionState}`);
+      console.log(`Connection state changed to: ${pc.connectionState}`);
       const connected = pc.connectionState === "connected";
       setIsConnected(connected);
-      
       if (connected) {
         setIsConnectionEstablished(true);
-        // Reset recovery flags when connection is restored
-        iceRestartInProgressRef.current = false;
-        connectionRestoreInProgressRef.current = false;
-        console.log("[WebRTC] Connection established successfully");
-        
-        // Show success toast if this was a recovery
-        if (lastConnectionAttemptRef.current > 0 && Date.now() - lastConnectionAttemptRef.current < 30000) {
-          toast({
-            title: "Connection Restored",
-            description: "Video connection has been restored successfully",
-            variant: "default"
-          });
-        }
+        console.log("WebRTC connection established successfully");
       } else if (pc.connectionState === "failed") {
-        console.error("[WebRTC] Connection failed - attempting recovery");
-        
-        // Don't show error immediately, try recovery first
-        if (isOnline && isNetworkStable && !connectionRestoreInProgressRef.current) {
-          console.log("[WebRTC] Attempting automatic connection recovery");
-          setTimeout(() => handleConnectionRecovery(), 1000);
-        } else {
-          toast({
-            title: "Connection Failed",
-            description: "Unable to establish connection. Checking network...",
-            variant: "destructive"
-          });
-        }
+        console.error("WebRTC connection failed - likely network issue");
+        toast({
+          title: "Connection Failed",
+          description: "Unable to establish connection. If on mobile data, ensure you have a stable connection.",
+          variant: "destructive",
+        });
       } else if (pc.connectionState === "disconnected") {
-        console.warn("[WebRTC] Connection disconnected - monitoring for recovery");
-        
-        // If we're online and network is stable, try to recover
-        if (isOnline && isNetworkStable) {
-          setTimeout(() => {
-            const currentPc = peerConnectionRef.current;
-            if (currentPc && currentPc.connectionState === "disconnected") {
-              console.log("[WebRTC] Connection still disconnected, attempting recovery");
-              handleConnectionRecovery();
-            }
-          }, 3000);
-        }
+        console.warn("WebRTC connection disconnected");
       }
     };
 
@@ -462,37 +223,16 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       console.log(`ICE gathering state: ${pc.iceGatheringState}`);
     };
 
-    // Enhanced ICE connection state changes with network transition handling
+    // Handle ICE connection state changes with improved restart logic
     pc.oniceconnectionstatechange = () => {
-      console.log(`[WebRTC] ICE connection state: ${pc.iceConnectionState}`);
-      
-      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
-        // Reset restart flags when ICE connection is restored
+      console.log(`ICE connection state: ${pc.iceConnectionState}`);
+      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+        console.error(`ICE connection ${pc.iceConnectionState} - attempting restart`);
+        // Attempt ICE restart with proper offer/answer negotiation
+        handleIceRestart();
+      } else if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        // Reset restart flag when connection is restored
         iceRestartInProgressRef.current = false;
-        connectionRestoreInProgressRef.current = false;
-        console.log("[WebRTC] ICE connection established");
-      } else if (pc.iceConnectionState === "failed") {
-        console.error("[WebRTC] ICE connection failed - attempting recovery");
-        
-        if (isOnline && !iceRestartInProgressRef.current) {
-          // Try ICE restart first
-          setTimeout(() => handleIceRestart(), 1000);
-        }
-      } else if (pc.iceConnectionState === "disconnected") {
-        console.warn("[WebRTC] ICE connection disconnected");
-        
-        // If we're online and network seems stable, monitor for recovery
-        if (isOnline && isNetworkStable) {
-          setTimeout(() => {
-            const currentPc = peerConnectionRef.current;
-            if (currentPc && currentPc.iceConnectionState === "disconnected") {
-              console.log("[WebRTC] ICE still disconnected, attempting restart");
-              if (!iceRestartInProgressRef.current) {
-                handleIceRestart();
-              }
-            }
-          }, 5000);
-        }
       }
     };
 
@@ -542,169 +282,38 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }
 
-  // Comprehensive connection recovery
-  const handleConnectionRecovery = useCallback(async () => {
-    if (connectionRestoreInProgressRef.current) {
-      console.log('[WebRTC] Connection recovery already in progress');
-      return;
-    }
-    
-    connectionRestoreInProgressRef.current = true;
-    lastConnectionAttemptRef.current = Date.now();
-    
-    try {
-      console.log('[WebRTC] Starting connection recovery process');
-      
-      // Simplified recovery without network capability checks to avoid deps
-      const pc = peerConnectionRef.current;
-      
-      if (!pc || pc.connectionState === 'closed') {
-        // Create new peer connection
-        console.log('[WebRTC] Creating new peer connection for recovery');
-        initializePeerConnection();
-      } else {
-        // Try ICE restart first
-        console.log('[WebRTC] Attempting ICE restart for recovery');
-        await handleIceRestart();
-        
-        // If ICE restart doesn't work after 10 seconds, recreate connection
-        setTimeout(() => {
-          const currentPc = peerConnectionRef.current;
-          if (currentPc && 
-              (currentPc.connectionState === 'failed' || currentPc.iceConnectionState === 'failed')) {
-            console.log('[WebRTC] ICE restart failed, recreating peer connection');
-            
-            // Close old connection
-            currentPc.close();
-            peerConnectionRef.current = null;
-            
-            // Create new connection using refs
-            if (wsRef.current && localStreamRef.current) {
-              initializePeerConnection();
-            }
-          }
-        }, 10000);
-      }
-      
-      toast({
-        title: "Reconnecting",
-        description: "Attempting to restore video connection after network change",
-        variant: "default"
-      });
-      
-    } catch (error) {
-      console.error('[WebRTC] Connection recovery failed:', error);
-      toast({
-        title: "Connection Issue",
-        description: "Having trouble reconnecting. Please check your network connection.",
-        variant: "destructive"
-      });
-    } finally {
-      connectionRestoreInProgressRef.current = false;
-    }
-  }, []); // Remove all dependencies to prevent loops
-  
-  // Manual quality controls for users
-  const changeVideoQuality = useCallback(async (newQuality: VideoQuality) => {
-    if (newQuality === currentVideoQuality) return;
-    
-    console.log(`[WebRTC] Changing video quality from ${currentVideoQuality} to ${newQuality}`);
-    setCurrentVideoQuality(newQuality);
-    
-    // Stop current stream
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
-    }
-    
-    // Initialize with new quality
-    try {
-      await initializeLocalStream(newQuality);
-      
-      // Update peer connection with new stream
-      const pc = peerConnectionRef.current;
-      if (pc && localStreamRef.current) {
-        // Remove old tracks
-        pc.getSenders().forEach(sender => {
-          if (sender.track) {
-            pc.removeTrack(sender);
-          }
-        });
-        
-        // Add new tracks
-        localStreamRef.current.getTracks().forEach(track => {
-          pc.addTrack(track, localStreamRef.current!);
-        });
-        
-        // Renegotiate if coordinator
-        if (userRole === 'coordinator') {
-          await createOffer();
-        }
-      }
-      
-      toast({
-        title: "Quality Changed",
-        description: `Video quality changed to ${newQuality === 'audio-only' ? 'audio-only' : newQuality} mode`,
-        variant: "default"
-      });
-      
-    } catch (error) {
-      console.error('Failed to change video quality:', error);
-      toast({
-        title: "Quality Change Failed",
-        description: "Unable to change video quality. Please try again.",
-        variant: "destructive"
-      });
-    }
-  }, [currentVideoQuality, userRole, toast]);
-  
-  // Enhanced ICE restart with better error handling
+  // Handle ICE restart with proper offer/answer negotiation
   const handleIceRestart = useCallback(async () => {
     if (iceRestartInProgressRef.current) {
-      console.log("[WebRTC] ICE restart already in progress");
+      console.log("ICE restart already in progress");
       return;
     }
     
     const pc = peerConnectionRef.current;
     if (!pc || pc.connectionState === "closed") {
-      console.log("[WebRTC] Cannot restart ICE - peer connection is closed");
+      console.log("Cannot restart ICE - peer connection is closed");
       return;
     }
     
     iceRestartInProgressRef.current = true;
     
     try {
-      console.log(`[WebRTC] Starting ICE restart - current connection state: ${pc.connectionState}, ICE state: ${pc.iceConnectionState}`);
-      
       if (userRole === "coordinator") {
         // Coordinator initiates ICE restart with new offer
-        console.log("[WebRTC] Coordinator initiating ICE restart with new offer");
+        console.log("Coordinator initiating ICE restart");
         await createOffer(true);
       } else {
         // Inspector requests coordinator to initiate restart
-        console.log("[WebRTC] Inspector requesting ICE restart from coordinator");
+        console.log("Inspector requesting ICE restart from coordinator");
         sendMessage({
           type: "ice-restart-request",
           callId,
           userId: userRole,
-          data: { 
-            timestamp: Date.now(),
-            reason: 'network-change',
-            connectionState: pc.connectionState,
-            iceConnectionState: pc.iceConnectionState
-          },
+          data: { timestamp: Date.now() },
         });
       }
-      
-      // Reset ICE restart flag after timeout if not manually reset
-      setTimeout(() => {
-        if (iceRestartInProgressRef.current) {
-          console.log('[WebRTC] ICE restart timeout, resetting flag');
-          iceRestartInProgressRef.current = false;
-        }
-      }, 15000);
-      
     } catch (error) {
-      console.error("[WebRTC] Failed to initiate ICE restart:", error);
+      console.error("Failed to initiate ICE restart:", error);
       iceRestartInProgressRef.current = false;
     }
   }, [userRole, callId, sendMessage]);
@@ -1037,11 +646,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }, [callId, userRole, sendMessage, toast]);
 
   const captureImage = useCallback(async (videoRotation = 0, retryCount = 0) => {
-    const MAX_RETRIES = networkCapabilities?.quality === 'poor' ? 4 : 2; // More retries for poor networks
-    // Dynamic timeout based on network quality - much longer for slow networks
-    const CAPTURE_TIMEOUT = networkCapabilities?.quality === 'poor' ? 30000 : // 30 seconds for poor networks
-                           networkCapabilities?.quality === 'fair' ? 20000 : // 20 seconds for fair networks
-                           15000; // 15 seconds for good/excellent networks
+    const MAX_RETRIES = 2;
+    const CAPTURE_TIMEOUT = 10000; // 10 seconds timeout for mobile networks
     
     try {
       if (userRole === "coordinator") {
@@ -1431,17 +1037,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       captureTimeoutRef.current = null;
     }
     
-    // Clean up network change timeout
-    if (networkChangeTimeoutRef.current) {
-      clearTimeout(networkChangeTimeoutRef.current);
-      networkChangeTimeoutRef.current = null;
-    }
-    
-    // Reset recovery flags
-    iceRestartInProgressRef.current = false;
-    connectionRestoreInProgressRef.current = false;
-    lastConnectionAttemptRef.current = 0;
-    
     // Clean up canvas recording elements first
     if (canvasCleanupRef.current) {
       try {
@@ -1525,7 +1120,5 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     isCapturing,
     startRecording,
     stopRecording,
-    // Expose function to start media after user interaction (mobile fix)
-    startLocalMedia: initializeWithNetworkDetection,
   };
 }
