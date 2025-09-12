@@ -177,12 +177,12 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
               width: { ideal: 640, max: 640 },
               height: { ideal: 360, max: 360 },
               frameRate: { ideal: 15, max: 15 },
-              facingMode: { exact: "environment" } // Rear camera
+              facingMode: { ideal: "environment" } // Rear camera
             }
           : { 
               width: { ideal: 1920 }, 
               height: { ideal: 1080 },
-              facingMode: { exact: "environment" } // Rear camera
+              facingMode: { ideal: "environment" } // Rear camera
             }
         : isMobile
           ? {
