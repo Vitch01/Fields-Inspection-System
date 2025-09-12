@@ -7,7 +7,6 @@ import { insertCallSchema, insertCapturedImageSchema, insertVideoRecordingSchema
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import twilio from "twilio";
 
 // Multer configuration for image uploads (10MB limit)
 // Configure multer storage for images
@@ -83,13 +82,7 @@ interface WebSocketClient extends WebSocket {
   callId?: string;
 }
 
-interface MiddlewareOptions {
-  requireAuth: any;
-  requireRole: any;
-  rateLimitTurnRequests: any;
-}
-
-export async function registerRoutes(app: Express, middleware?: MiddlewareOptions): Promise<Server> {
+export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
   // WebSocket server for signaling
@@ -231,125 +224,6 @@ export async function registerRoutes(app: Express, middleware?: MiddlewareOption
     res.status(200).end();
   });
 
-  // TURN server credentials endpoint for WebRTC - now secured with authentication and rate limiting
-  app.get('/api/turn-credentials', 
-    middleware?.requireAuth || ((req: any, res: any, next: any) => next()), 
-    middleware?.rateLimitTurnRequests || ((req: any, res: any, next: any) => next()), 
-    async (req, res) => {
-    console.log('TURN credentials endpoint hit - generating credentials...');
-    try {
-      const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env;
-      
-      // Check if production TURN credentials are configured
-      if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
-        try {
-          // Use Twilio Network Traversal Service for production
-          const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-          
-          // Generate time-limited token (24 hours) using correct Twilio v5 API
-          const token = await client.tokens.create({
-            ttl: 86400 // 24 hours in seconds
-          });
-
-          // Return production-ready ICE server configuration using only Twilio's provided servers
-          const iceServers = [
-            // Multiple STUN servers for NAT traversal redundancy
-            { urls: 'stun:global.stun.twilio.com:3478' },
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            
-            // Use only Twilio's token.iceServers which already contain proper TURN endpoints
-            // with correct credentials and ports (including 443 for mobile networks)
-            ...token.iceServers.map((server: any) => ({
-              urls: server.urls,
-              username: server.username,
-              credential: server.credential,
-            }))
-          ];
-
-          res.json({
-            iceServers,
-            ttl: 86400,
-            timestamp: new Date().toISOString()
-          });
-
-        } catch (twilioError) {
-          console.error('Twilio TURN credential generation failed:', twilioError);
-          
-          // Fall back to backup TURN servers if Twilio fails
-          const fallbackServers = [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun.stunprotocol.org:3478' },
-            {
-              urls: 'turn:openrelay.metered.ca:80',
-              username: 'openrelayproject',
-              credential: 'openrelayproject'
-            },
-            {
-              urls: 'turn:openrelay.metered.ca:443',
-              username: 'openrelayproject',
-              credential: 'openrelayproject'
-            }
-          ];
-
-          res.json({
-            iceServers: fallbackServers,
-            ttl: 3600, // 1 hour for fallback
-            timestamp: new Date().toISOString(),
-            fallback: true
-          });
-        }
-      } else {
-        // Development mode - use free TURN servers with warning
-        // In production, this fallback should be disabled to prevent abuse
-        if (process.env.NODE_ENV === 'production') {
-          console.error('Production TURN credentials not configured in production environment');
-          return res.status(503).json({ 
-            message: 'TURN service unavailable',
-            error: 'Production credentials not configured'
-          });
-        }
-        
-        console.warn('Production TURN credentials not configured. Using development TURN servers.');
-        
-        const devServers = [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun.stunprotocol.org:3478' },
-          {
-            urls: 'turn:openrelay.metered.ca:80',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-          },
-          {
-            urls: 'turn:openrelay.metered.ca:443',
-            username: 'openrelayproject', 
-            credential: 'openrelayproject'
-          },
-          {
-            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-          }
-        ];
-
-        res.json({
-          iceServers: devServers,
-          ttl: 3600,
-          timestamp: new Date().toISOString(),
-          development: true
-        });
-      }
-    } catch (error) {
-      console.error('TURN credentials endpoint error:', error);
-      res.status(500).json({ 
-        message: 'Failed to generate TURN credentials',
-        error: process.env.NODE_ENV === 'development' ? (error as Error).message : 'Internal server error'
-      });
-    }
-  });
-
   // Auth routes
   app.post('/api/auth/login', async (req, res) => {
     try {
@@ -360,43 +234,9 @@ export async function registerRoutes(app: Express, middleware?: MiddlewareOption
         return res.status(401).json({ message: 'Invalid credentials' });
       }
 
-      // Store user session data
-      req.session.userId = user.id;
-      req.session.role = user.role;
-      
-      // Log successful authentication for security monitoring
-      console.log(`User ${user.username} (${user.role}) authenticated successfully`);
-
       res.json({ user: { id: user.id, username: user.username, role: user.role, name: user.name } });
     } catch (error) {
-      console.error('Login error:', error);
       res.status(500).json({ message: 'Login failed' });
-    }
-  });
-
-  // Logout endpoint
-  app.post('/api/auth/logout', (req, res) => {
-    req.session.destroy((err) => {
-      if (err) {
-        console.error('Session destruction error:', err);
-        return res.status(500).json({ message: 'Logout failed' });
-      }
-      res.clearCookie('connect.sid');
-      res.json({ message: 'Logged out successfully' });
-    });
-  });
-
-  // Get current user session
-  app.get('/api/auth/me', middleware?.requireAuth || ((req: any, res: any, next: any) => next()), async (req, res) => {
-    try {
-      const user = await storage.getUser(req.session.userId!);
-      if (!user) {
-        return res.status(404).json({ message: 'User not found' });
-      }
-      res.json({ user: { id: user.id, username: user.username, role: user.role, name: user.name } });
-    } catch (error) {
-      console.error('Get user error:', error);
-      res.status(500).json({ message: 'Failed to get user' });
     }
   });
 

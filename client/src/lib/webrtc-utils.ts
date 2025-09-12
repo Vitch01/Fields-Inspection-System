@@ -1,163 +1,61 @@
-// Cache for ICE server credentials with timestamp
-interface ICECredentialsCache {
-  iceServers: RTCIceServer[];
-  timestamp: number;
-  ttl: number;
-}
-
-let iceCredentialsCache: ICECredentialsCache | null = null;
-
-// Fetch dynamic ICE server credentials from backend
-export async function fetchICEServers(): Promise<RTCIceServer[]> {
-  try {
-    // Check if cached credentials are still valid (with 5 minute buffer)
-    const now = Date.now();
-    if (iceCredentialsCache && 
-        (now - iceCredentialsCache.timestamp) < (iceCredentialsCache.ttl * 1000 - 300000)) {
-      console.log('Using cached ICE server credentials');
-      return iceCredentialsCache.iceServers;
-    }
-
-    console.log('Fetching fresh ICE server credentials from backend');
-    const response = await fetch('/api/turn-credentials', {
-      credentials: 'include', // Include session cookies for authentication
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    });
-    
-    if (!response.ok) {
-      if (response.status === 401) {
-        console.warn('Authentication required for TURN credentials, falling back to public servers');
-        throw new Error('Authentication required for TURN credentials');
-      }
-      throw new Error(`Failed to fetch TURN credentials: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    // Cache the credentials with TTL
-    iceCredentialsCache = {
-      iceServers: data.iceServers,
-      timestamp: now,
-      ttl: data.ttl || 3600 // Default 1 hour if not provided
-    };
-    
-    // Log the credential source
-    if (data.development) {
-      console.warn('Using development TURN servers - not suitable for production');
-    } else if (data.fallback) {
-      console.warn('Using fallback TURN servers - primary service unavailable');
-    } else {
-      console.log('Using production TURN credentials with dynamic authentication');
-    }
-    
-    return data.iceServers;
-  } catch (error) {
-    console.error('Failed to fetch ICE servers, using hardcoded fallback:', error);
-    
-    // Fallback to reliable public TURN servers
-    return [
+export function createPeerConnection(): RTCPeerConnection {
+  const configuration: RTCConfiguration = {
+    iceServers: [
+      // STUN servers for NAT traversal
+      // Using multiple Google STUN servers for redundancy
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun.stunprotocol.org:3478' },
-      {
-        urls: 'turn:openrelay.metered.ca:80',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      
+      // ============================================================
+      // TEMPORARY PUBLIC TURN SERVERS FOR MOBILE CONNECTIVITY
+      // ============================================================
+      // WARNING: These are public demo TURN servers with public credentials
+      // They enable connectivity for mobile devices on restrictive carrier-grade NAT networks
+      // DO NOT use these in production - they are a temporary stopgap solution
+      // 
+      // PRODUCTION IMPLEMENTATION:
+      // 1. Set up a backend endpoint to generate time-limited credentials (24-hour expiry)
+      // 2. Use per-user authentication tokens for credential generation
+      // 3. Implement secure credential rotation mechanism
+      // 4. Consider using services like:
+      //    - Twilio Network Traversal Service
+      //    - Xirsys TURN servers
+      //    - Self-hosted CoTURN server
+      //    - Cloudflare Calls TURN service
+      //
+      // LIMITATIONS OF THESE PUBLIC SERVERS:
+      // - May have usage limits or bandwidth restrictions
+      // - Could be shut down at any time without notice
+      // - No guarantee of availability or performance
+      // - Shared with other users (potential congestion)
+      //
+      // These Cloudflare public TURN servers use "public" credentials intentionally
+      // for demo/development purposes only
+      { 
+        urls: 'turn:turn.cloudflare.com:3478',
+        username: 'public',
+        credential: 'public'
       },
-      {
-        urls: 'turn:openrelay.metered.ca:443',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
+      { 
+        urls: 'turn:turn.cloudflare.com:443?transport=tcp',
+        username: 'public',
+        credential: 'public'
       }
-    ];
-  }
-}
-
-// Create a peer connection with dynamic ICE configuration
-export async function createPeerConnection(forceRelay: boolean = false): Promise<RTCPeerConnection> {
-  console.log(`Creating peer connection - Force Relay: ${forceRelay}`);
-  
-  // Fetch dynamic ICE servers from backend
-  const iceServers = await fetchICEServers();
-  
-  const configuration: RTCConfiguration = {
-    iceServers,
-    // Adaptive ICE configuration based on connection attempts
-    iceCandidatePoolSize: forceRelay ? 15 : 10,
-    
-    // Use relay mode only when explicitly requested after failure
-    iceTransportPolicy: forceRelay ? 'relay' : 'all',
-    
-    // Optimize for connection reliability
+      // ============================================================
+    ],
+    // Improve ICE gathering on mobile networks
+    iceCandidatePoolSize: 10,
+    // Force all traffic through TURN for mobile connections if needed
+    iceTransportPolicy: 'all', // Use 'all' to allow both STUN and TURN
+    // Better handling of network changes
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require'
   };
 
-  const pc = new RTCPeerConnection(configuration);
-  
-  // Add connection event logging
-  pc.oniceconnectionstatechange = () => {
-    console.log(`ICE connection state: ${pc.iceConnectionState}`);
-  };
-  
-  pc.onicegatheringstatechange = () => {
-    console.log(`ICE gathering state: ${pc.iceGatheringState}`);
-  };
-  
-  pc.onconnectionstatechange = () => {
-    console.log(`Connection state: ${pc.connectionState}`);
-  };
-
-  return pc;
-}
-
-// Legacy sync version for backward compatibility - creates connection with cached or fallback servers
-export function createPeerConnectionSync(forceRelay: boolean = false): RTCPeerConnection {
-  console.log(`Creating peer connection (sync) - Force Relay: ${forceRelay}`);
-  
-  // Use cached credentials if available, otherwise fallback servers
-  const iceServers = iceCredentialsCache?.iceServers || [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun.stunprotocol.org:3478' },
-    {
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    }
-  ];
-  
-  const configuration: RTCConfiguration = {
-    iceServers,
-    iceCandidatePoolSize: forceRelay ? 15 : 10,
-    iceTransportPolicy: forceRelay ? 'relay' : 'all',
-    bundlePolicy: 'max-bundle',
-    rtcpMuxPolicy: 'require'
-  };
-
-  const pc = new RTCPeerConnection(configuration);
-  
-  // Add connection event logging
-  pc.oniceconnectionstatechange = () => {
-    console.log(`ICE connection state: ${pc.iceConnectionState}`);
-  };
-  
-  pc.onicegatheringstatechange = () => {
-    console.log(`ICE gathering state: ${pc.iceGatheringState}`);
-  };
-  
-  pc.onconnectionstatechange = () => {
-    console.log(`Connection state: ${pc.connectionState}`);
-  };
-
-  return pc;
+  return new RTCPeerConnection(configuration);
 }
 
 export async function captureImageFromStream(stream: MediaStream): Promise<Blob> {
