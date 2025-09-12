@@ -208,9 +208,10 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     onConnectionRestore: handleConnectionRestore,
   });
 
-  // Initialize network detection and local media stream
+  // Initialize network detection but DON'T initialize media on mount for mobile compatibility
   useEffect(() => {
-    initializeWithNetworkDetection();
+    // Only initialize network testing, not media stream
+    initializeNetworkCapabilitiesOnly();
     return () => {
       cleanup();
     };
@@ -223,8 +224,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, [wsConnected, localStream]);
 
-  // Initialize with network detection for adaptive quality
-  async function initializeWithNetworkDetection() {
+  // Initialize network capabilities only (not media stream) - for mobile compatibility
+  async function initializeNetworkCapabilitiesOnly() {
     setIsNetworkTesting(true);
     
     try {
@@ -250,14 +251,28 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       }
       
       setCurrentVideoQuality(initialQuality);
-      await initializeLocalStream(initialQuality, capabilities);
+      // DON'T initialize media stream here - wait for user interaction
       
     } catch (error) {
       console.error('Network detection failed, using medium quality:', error);
       setCurrentVideoQuality('medium');
-      await initializeLocalStream('medium');
+      // DON'T initialize media stream here - wait for user interaction
     } finally {
       setIsNetworkTesting(false);
+    }
+  }
+
+  // Initialize with network detection for adaptive quality (called after user interaction)
+  async function initializeWithNetworkDetection() {
+    const capabilities = networkCapabilities;
+    const quality = currentVideoQuality;
+    
+    try {
+      console.log('[WebRTC] Starting media initialization after user interaction...');
+      await initializeLocalStream(quality, capabilities || undefined);
+    } catch (error) {
+      console.error('Media initialization failed:', error);
+      await initializeLocalStream('medium');
     }
   }
 
@@ -1528,5 +1543,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     isCapturing,
     startRecording,
     stopRecording,
+    // Expose function to start media after user interaction (mobile fix)
+    startLocalMedia: initializeWithNetworkDetection,
   };
 }

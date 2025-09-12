@@ -40,6 +40,7 @@ export default function InspectorCall() {
     sendChatMessage,
     unreadCount,
     clearUnreadCount,
+    startLocalMedia,
   } = useWebRTC(callId!, "inspector");
 
   // Inspector doesn't need to fetch captured images
@@ -57,6 +58,25 @@ export default function InspectorCall() {
     if (videoRef.current && localStream) {
       console.log('[Inspector] Assigning localStream to video element:', localStream);
       videoRef.current.srcObject = localStream;
+      
+      // Add explicit video.play() call for iOS autoplay policy compliance
+      const playVideo = async () => {
+        try {
+          await videoRef.current?.play();
+          console.log('[Inspector] Video.play() successful');
+        } catch (error) {
+          console.warn('[Inspector] Video.play() failed (may be expected on some browsers):', error);
+        }
+      };
+      
+      // Play immediately if metadata is already loaded, otherwise wait for metadata
+      if (videoRef.current.readyState >= 1) {
+        playVideo();
+      } else {
+        videoRef.current.onloadedmetadata = () => {
+          playVideo();
+        };
+      }
     }
   }, [localStream]);
 
@@ -66,10 +86,19 @@ export default function InspectorCall() {
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleJoinCall = () => {
+  const handleJoinCall = async () => {
     if (inspectorName.trim()) {
       // Join the call immediately
       setHasJoined(true);
+      
+      // MOBILE FIX: Start media after user interaction (required for mobile cameras)
+      try {
+        console.log('[Inspector] Starting media after user interaction...');
+        await startLocalMedia();
+        console.log('[Inspector] Media initialization successful');
+      } catch (error) {
+        console.error('[Inspector] Media initialization failed:', error);
+      }
       
       // Capture inspector's location as fire-and-forget (don't block UI)
       if (navigator.geolocation) {

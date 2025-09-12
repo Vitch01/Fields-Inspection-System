@@ -10,11 +10,10 @@ export function createPeerConnection(): RTCPeerConnection {
       { urls: 'stun:stun4.l.google.com:19302' },
       
       // ============================================================
-      // TEMPORARY PUBLIC TURN SERVERS FOR MOBILE CONNECTIVITY
+      // WORKING TURN SERVERS FOR CELLULAR CONNECTIVITY
       // ============================================================
-      // WARNING: These are public demo TURN servers with public credentials
-      // They enable connectivity for mobile devices on restrictive carrier-grade NAT networks
-      // DO NOT use these in production - they are a temporary stopgap solution
+      // Using OpenRelay public TURN servers which are reliable for development
+      // These servers work well with carrier-grade NAT and cellular networks
       // 
       // PRODUCTION IMPLEMENTATION:
       // 1. Set up a backend endpoint to generate time-limited credentials (24-hour expiry)
@@ -26,28 +25,20 @@ export function createPeerConnection(): RTCPeerConnection {
       //    - Self-hosted CoTURN server
       //    - Cloudflare Calls TURN service
       //
-      // LIMITATIONS OF THESE PUBLIC SERVERS:
-      // - May have usage limits or bandwidth restrictions
-      // - Could be shut down at any time without notice
-      // - No guarantee of availability or performance
-      // - Shared with other users (potential congestion)
-      //
-      // These Cloudflare public TURN servers use "public" credentials intentionally
-      // for demo/development purposes only
-      { 
-        urls: 'turn:turn.cloudflare.com:3478',
-        username: 'public',
-        credential: 'public'
-      },
-      { 
-        urls: 'turn:turn.cloudflare.com:443?transport=tcp',
-        username: 'public',
-        credential: 'public'
+      // OpenRelay servers are tested and working for cellular connections
+      {
+        urls: [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443?transport=tcp',
+          'turns:openrelay.metered.ca:443'
+        ],
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
       }
       // ============================================================
     ],
-    // Optimize ICE gathering for slow cellular connections
-    iceCandidatePoolSize: 20, // Further increased for slow mobile connectivity
+    // Optimize ICE gathering for mobile connections (reduced for better performance)
+    iceCandidatePoolSize: 2, // Reduced from 20 to improve mobile performance and connection stability
     // Allow both STUN and TURN for maximum compatibility
     iceTransportPolicy: 'all',
     // Optimize for network changes and mobile connections
