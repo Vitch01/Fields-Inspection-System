@@ -1,13 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useWebSocket } from "./use-websocket";
-import { 
-  createPeerConnection, 
-  captureImageFromStream, 
-  capturePhotoFromCamera, 
-  createRotatedRecordingStream,
-  isMobileDevice,
-  getBandwidthConstraints 
-} from "@/lib/webrtc-utils";
+import { createPeerConnection, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream } from "@/lib/webrtc-utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -31,16 +24,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingSupported, setIsRecordingSupported] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
-  const [isRelayOnly, setIsRelayOnly] = useState(false);
-  const [connectionAttempts, setConnectionAttempts] = useState(0);
-  const [hasJoined, setHasJoined] = useState(false);
-  const [networkQuality, setNetworkQuality] = useState<{
-    level: 'excellent' | 'good' | 'fair' | 'poor' | 'disconnected';
-    bars: number; // 0-4
-    rtt?: number;
-    packetLoss?: number;
-    bitrate?: number;
-  }>({ level: 'disconnected', bars: 0 });
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -50,14 +33,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const captureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const captureRequestIdRef = useRef<string | null>(null);
   const iceRestartInProgressRef = useRef<boolean>(false);
-  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const statsIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const iceCandidateQueueRef = useRef<RTCIceCandidateInit[]>([]);
   const { toast } = useToast();
-  
-  // Detect if mobile or inspector on mobile
-  const isMobile = isMobileDevice();
-  const shouldPreferRelay = isMobile || userRole === "inspector";
 
   // Helper function to get supported mimeType
   const getSupportedMimeType = useCallback(() => {
@@ -139,8 +115,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, []);
 
-  // Since handleSignalingMessage is a hoisted function, we can reference it directly
-  const { sendMessage, isConnected: wsConnected, joinCall } = useWebSocket(callId, userRole, {
+  const { sendMessage, isConnected: wsConnected } = useWebSocket(callId, userRole, {
     onMessage: handleSignalingMessage,
   });
 
@@ -152,121 +127,27 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     };
   }, []);
 
-  // Auto-join when WebSocket connects
+  // Initialize peer connection when WebSocket is connected
   useEffect(() => {
-    if (wsConnected && !hasJoined) {
-      console.log(`Auto-joining call as ${userRole} with callId: ${callId}`);
-      joinCall({ role: userRole });
-      setHasJoined(true);
-    }
-  }, [wsConnected, hasJoined, userRole, callId, joinCall]);
-
-  // Initialize peer connection when WebSocket is connected and we've joined the call
-  useEffect(() => {
-    if (wsConnected && hasJoined) {
-      console.log(`Initializing peer connection - wsConnected: ${wsConnected}, hasJoined: ${hasJoined}`);
+    if (wsConnected && localStream) {
       initializePeerConnection();
     }
-  }, [wsConnected, hasJoined]);
-
-  // Add tracks to existing peer connection when local stream becomes available
-  useEffect(() => {
-    if (localStream && peerConnectionRef.current) {
-      const pc = peerConnectionRef.current;
-      
-      // Check if we already have senders
-      const senders = pc.getSenders();
-      const hasVideoSender = senders.some(s => s.track?.kind === 'video');
-      const hasAudioSender = senders.some(s => s.track?.kind === 'audio');
-      
-      if (!hasVideoSender || !hasAudioSender) {
-        console.log(`[${userRole}] Adding local tracks to existing peer connection`);
-        
-        localStream.getTracks().forEach((track) => {
-          // Find sender for this track kind
-          const existingSender = senders.find(s => s.track?.kind === track.kind);
-          
-          if (existingSender) {
-            // Replace existing track with new track
-            console.log(`[${userRole}] Replacing existing ${track.kind} track`);
-            existingSender.replaceTrack(track).catch(error => {
-              console.error(`Failed to replace ${track.kind} track:`, error);
-            });
-          } else {
-            // Check if there's a sender without a track that we can use
-            const emptySender = senders.find(s => !s.track);
-            if (emptySender) {
-              console.log(`[${userRole}] Replacing null track with ${track.kind} track`);
-              emptySender.replaceTrack(track).catch(error => {
-                console.error(`Failed to replace ${track.kind} track:`, error);
-              });
-            } else {
-              // Add new track
-              console.log(`[${userRole}] Adding new ${track.kind} track`);
-              const sender = pc.addTrack(track, localStream);
-              
-              // Apply bitrate limits for mobile
-              if (track.kind === 'video' && isMobile) {
-                sender.setParameters({
-                  encodings: [{
-                    maxBitrate: 300000, // 300kbps for slow cellular
-                    maxFramerate: 15,
-                    scaleResolutionDownBy: 2
-                  }],
-                  degradationPreference: 'maintain-framerate'
-                } as RTCRtpSendParameters).catch((error) => {
-                  console.warn('Failed to set video bitrate parameters:', error);
-                });
-              } else if (track.kind === 'audio' && isMobile) {
-                sender.setParameters({
-                  encodings: [{
-                    maxBitrate: 24000 // 24kbps for audio on mobile
-                  }]
-                } as RTCRtpSendParameters).catch((error) => {
-                  console.warn('Failed to set audio bitrate parameters:', error);
-                });
-              }
-            }
-          }
-        });
-        
-        // Trigger renegotiation if we're connected and the inspector has joined
-        if (userRole === 'coordinator' && hasPeerJoined) {
-          console.log(`[${userRole}] Triggering renegotiation after adding tracks`);
-          createOffer();
-        }
-      }
-    }
-  }, [localStream, userRole, hasPeerJoined, isMobile]);
+  }, [wsConnected, localStream]);
 
   async function initializeLocalStream() {
     try {
-      // Use lower resolution for mobile devices to reduce bandwidth
+      // Use rear camera for inspector, front camera for coordinator
       const videoConstraints = userRole === "inspector" 
-        ? isMobile 
-          ? {
-              width: { ideal: 640, max: 640 },
-              height: { ideal: 360, max: 360 },
-              frameRate: { ideal: 15, max: 15 },
-              facingMode: { ideal: "environment" } // Rear camera
-            }
-          : { 
-              width: { ideal: 1920 }, 
-              height: { ideal: 1080 },
-              facingMode: { ideal: "environment" } // Rear camera
-            }
-        : isMobile
-          ? {
-              width: { ideal: 640, max: 640 },
-              height: { ideal: 360, max: 360 },
-              frameRate: { ideal: 15, max: 15 },
-              facingMode: "user" // Front camera
-            }
-          : { 
-              width: 1280, 
-              height: 720,
-              facingMode: "user" // Front camera
-            };
+        ? { 
+            width: { ideal: 1920 }, 
+            height: { ideal: 1080 },
+            facingMode: { exact: "environment" } // Rear camera
+          }
+        : { 
+            width: 1280, 
+            height: 720,
+            facingMode: "user" // Front camera
+          };
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: videoConstraints,
@@ -281,16 +162,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       // Fallback for inspector if rear camera fails
       if (userRole === "inspector") {
         try {
-          const fallbackConstraints = isMobile 
-            ? { 
-                width: { ideal: 640, max: 640 },
-                height: { ideal: 360, max: 360 },
-                frameRate: { ideal: 15, max: 15 }
-              }
-            : { width: { ideal: 1920 }, height: { ideal: 1080 } };
-          
           const fallbackStream = await navigator.mediaDevices.getUserMedia({
-            video: fallbackConstraints,
+            video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
             audio: { echoCancellation: true, noiseSuppression: true },
           });
           setLocalStream(fallbackStream);
@@ -309,150 +182,39 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }
 
-  function initializePeerConnection(forceRelay: boolean = false) {
-    // Force relay mode immediately for mobile inspectors
-    const useRelay = forceRelay || (userRole === "inspector" && isMobile) || (shouldPreferRelay && connectionAttempts > 0);
-    
-    console.log('Initializing peer connection:', {
-      userRole,
-      isMobile,
-      forceRelay,
-      useRelay,
-      connectionAttempts
-    });
-    
-    const pc = createPeerConnection(useRelay);
+  function initializePeerConnection() {
+    const pc = createPeerConnection();
     peerConnectionRef.current = pc;
-    
-    if (useRelay) {
-      setIsRelayOnly(true);
-      toast({
-        title: "Using Relay Mode",
-        description: "Connecting through TURN relay for better mobile connectivity",
-        variant: "default"
-      });
-    }
 
-    // Add local stream tracks with bitrate limits for mobile
+    // Add local stream tracks
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
-        const sender = pc.addTrack(track, localStreamRef.current!);
-        
-        // Apply aggressive bitrate limits for mobile video
-        if (track.kind === 'video' && isMobile) {
-          sender.setParameters({
-            encodings: [{
-              maxBitrate: 300000, // 300kbps for slow cellular
-              maxFramerate: 15,
-              scaleResolutionDownBy: 2
-            }],
-            degradationPreference: 'maintain-framerate'
-          } as RTCRtpSendParameters).catch((error) => {
-            console.warn('Failed to set video bitrate parameters:', error);
-          });
-        } else if (track.kind === 'audio' && isMobile) {
-          // Reduce audio bitrate for mobile too
-          sender.setParameters({
-            encodings: [{
-              maxBitrate: 24000 // 24kbps for audio on mobile
-            }]
-          } as RTCRtpSendParameters).catch((error) => {
-            console.warn('Failed to set audio bitrate parameters:', error);
-          });
-        }
+        pc.addTrack(track, localStreamRef.current!);
       });
-    } else {
-      // No local stream yet, add transceivers that can be upgraded later
-      console.log(`[${userRole}] No local stream yet, adding sendrecv transceivers`);
-      pc.addTransceiver('audio', { direction: 'sendrecv' });
-      pc.addTransceiver('video', { direction: 'sendrecv' });
-      
-      // Note that tracks can be added later when stream becomes available
-      console.log(`[${userRole}] Transceivers added, tracks will be added when stream is available`);
     }
 
     // Handle remote stream
     pc.ontrack = (event) => {
-      console.log(`[${userRole}] Track received:`, event.track.kind);
-      
-      // Handle both event.streams[0] and manual stream construction
-      if (event.streams && event.streams[0]) {
-        setRemoteStream(event.streams[0]);
-        console.log(`[${userRole}] Remote stream set from event.streams[0]`);
-      } else {
-        // Some browsers don't provide streams, construct manually
-        // We need to construct a new stream and add the track
-        const newStream = new MediaStream();
-        newStream.addTrack(event.track);
-        setRemoteStream(newStream);
-        console.log(`[${userRole}] Created new MediaStream and added track`);
-      }
-      
-      console.log(`[${userRole}] Remote stream updated with ${event.track.kind} track`);
+      setRemoteStream(event.streams[0]);
     };
 
-    // Set connection timeout for mobile (longer for slow cellular)
-    if (shouldPreferRelay && !useRelay) {
-      // Give direct connection 30 seconds to establish on slow cellular
-      connectionTimeoutRef.current = setTimeout(() => {
-        if (!isConnected && pc.connectionState !== "connected") {
-          console.log("Direct connection timeout - switching to relay mode");
-          handleConnectionFailure();
-        }
-      }, 30000); // Extended to 30 seconds for slow cellular connections
-    }
-    
     // Handle connection state changes with better diagnostics
     pc.onconnectionstatechange = () => {
       console.log(`Connection state changed to: ${pc.connectionState}`);
       const connected = pc.connectionState === "connected";
       setIsConnected(connected);
-      
       if (connected) {
         setIsConnectionEstablished(true);
-        setConnectionAttempts(0); // Reset attempts on success
-        
-        // Clear connection timeout
-        if (connectionTimeoutRef.current) {
-          clearTimeout(connectionTimeoutRef.current);
-          connectionTimeoutRef.current = null;
-        }
-        
-        // Log connection details for debugging
-        pc.getStats().then(stats => {
-          stats.forEach(report => {
-            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-              const isRelay = report.remoteCandidateType === 'relay' || 
-                             report.localCandidateType === 'relay';
-              console.log('Connection established:', {
-                local: report.localCandidateType,
-                remote: report.remoteCandidateType,
-                isRelay
-              });
-              
-              if (isRelay) {
-                toast({
-                  title: "Connected via Relay",
-                  description: "Using TURN relay for optimal connectivity",
-                  variant: "default"
-                });
-              }
-            }
-          });
-        });
-        
         console.log("WebRTC connection established successfully");
       } else if (pc.connectionState === "failed") {
-        console.error("WebRTC connection failed - attempting recovery");
-        handleConnectionFailure();
+        console.error("WebRTC connection failed - likely network issue");
+        toast({
+          title: "Connection Failed",
+          description: "Unable to establish connection. If on mobile data, ensure you have a stable connection.",
+          variant: "destructive",
+        });
       } else if (pc.connectionState === "disconnected") {
         console.warn("WebRTC connection disconnected");
-        // Give it a moment to reconnect before taking action
-        setTimeout(() => {
-          if (pc.connectionState === "disconnected") {
-            handleConnectionFailure();
-          }
-        }, 3000);
       }
     };
 
@@ -464,48 +226,20 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     // Handle ICE connection state changes with improved restart logic
     pc.oniceconnectionstatechange = () => {
       console.log(`ICE connection state: ${pc.iceConnectionState}`);
-      
-      if (pc.iceConnectionState === "checking") {
-        // Log ICE candidates being checked
-        pc.getStats().then(stats => {
-          let candidateCount = 0;
-          stats.forEach(report => {
-            if (report.type === 'local-candidate' || report.type === 'remote-candidate') {
-              candidateCount++;
-            }
-          });
-          console.log(`Checking ${candidateCount} ICE candidates...`);
-        });
-      } else if (pc.iceConnectionState === "failed") {
-        console.error(`ICE connection failed - attempting recovery`);
-        
-        // For mobile/inspector, try relay mode if not already using it
-        if (shouldPreferRelay && !isRelayOnly) {
-          console.log("Switching to relay-only mode for mobile/inspector");
-          handleConnectionFailure();
-        } else {
-          // Otherwise attempt ICE restart
-          handleIceRestart();
-        }
-      } else if (pc.iceConnectionState === "disconnected") {
-        console.warn("ICE disconnected - monitoring...");
-        // Give it time to reconnect
-        setTimeout(() => {
-          if (pc.iceConnectionState === "disconnected") {
-            handleIceRestart();
-          }
-        }, 5000);
+      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+        console.error(`ICE connection ${pc.iceConnectionState} - attempting restart`);
+        // Attempt ICE restart with proper offer/answer negotiation
+        handleIceRestart();
       } else if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
         // Reset restart flag when connection is restored
         iceRestartInProgressRef.current = false;
-        console.log("ICE connection successful");
       }
     };
 
     // Handle ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        console.log(`[${userRole}] Sending ICE candidate type: ${event.candidate.type}, protocol: ${event.candidate.protocol}, callId: ${callId}`);
+        console.log(`ICE candidate type: ${event.candidate.type}, protocol: ${event.candidate.protocol}`);
         sendMessage({
           type: "ice-candidate",
           callId,
@@ -513,231 +247,41 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           data: event.candidate,
         });
       } else {
-        console.log(`[${userRole}] ICE candidate gathering complete`);
+        console.log("ICE candidate gathering complete");
       }
     };
 
-    // Do NOT create offer here - wait for inspector to join
-    // The offer will be created in handleSignalingMessage when we receive 'user-joined' from inspector
-    console.log(`[${userRole}] Peer connection initialized, waiting for peer to join`);
+    // Create offer if coordinator
+    if (userRole === "coordinator") {
+      createOffer();
+    }
   }
 
   async function createOffer(iceRestart = false) {
     const pc = peerConnectionRef.current;
-    if (!pc) {
-      console.error(`[${userRole}] Cannot create offer - no peer connection`);
-      return;
-    }
+    if (!pc) return;
 
     try {
-      // Ensure at least one transceiver exists for BUNDLE group
-      if (pc.getTransceivers().length === 0) {
-        console.log(`[${userRole}] No transceivers found, adding sendrecv transceivers`);
-        pc.addTransceiver('audio', { direction: 'sendrecv' });
-        pc.addTransceiver('video', { direction: 'sendrecv' });
-      }
-      
       const offerOptions: RTCOfferOptions = {};
       if (iceRestart) {
         offerOptions.iceRestart = true;
-        console.log(`[${userRole}] Creating offer with ICE restart`);
+        console.log("Creating offer with ICE restart");
       }
       
-      console.log(`[${userRole}] Creating offer for callId: ${callId}`);
       const offer = await pc.createOffer(offerOptions);
       await pc.setLocalDescription(offer);
       
-      const message = {
+      sendMessage({
         type: "offer",
         callId,
         userId: userRole,
         data: offer,
-      };
-      console.log(`[${userRole}] Sending offer message with callId: ${callId}, userId: ${userRole}`);
-      sendMessage(message);
+      });
     } catch (error) {
-      console.error(`[${userRole}] Failed to create offer:`, error);
+      console.error("Failed to create offer:", error);
     }
   }
 
-  // Handle connection failure with relay fallback
-  const handleConnectionFailure = useCallback(() => {
-    const attempts = connectionAttempts + 1;
-    setConnectionAttempts(attempts);
-    
-    console.log(`Connection failure - attempt ${attempts}`);
-    
-    // Clear existing connection properly
-    if (peerConnectionRef.current) {
-      // Stop all transceivers and remove event handlers
-      peerConnectionRef.current.getTransceivers().forEach(transceiver => {
-        transceiver.stop();
-      });
-      peerConnectionRef.current.onicecandidate = null;
-      peerConnectionRef.current.onconnectionstatechange = null;
-      peerConnectionRef.current.oniceconnectionstatechange = null;
-      peerConnectionRef.current.onicegatheringstatechange = null;
-      peerConnectionRef.current.ontrack = null;
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
-    }
-    
-    // Clear any existing timeout
-    if (connectionTimeoutRef.current) {
-      clearTimeout(connectionTimeoutRef.current);
-      connectionTimeoutRef.current = null;
-    }
-    
-    // For mobile/inspector, switch to relay mode after first failure
-    if (shouldPreferRelay && attempts === 1 && !isRelayOnly) {
-      console.log("Switching to relay-only mode");
-      toast({
-        title: "Switching to Relay Mode",
-        description: "Direct connection failed. Using TURN relay for better connectivity.",
-        variant: "default"
-      });
-      
-      // Reinitialize with relay mode
-      setTimeout(() => {
-        initializePeerConnection(true);
-        // Only create offer if we know the inspector is already in the call
-        if (userRole === "coordinator" && hasPeerJoined) {
-          console.log(`[${userRole}] Reconnecting with relay mode, creating offer since peer is in call`);
-          // Ensure transceivers exist before creating offer
-          const pc = peerConnectionRef.current;
-          if (pc && pc.getTransceivers().length === 0) {
-            console.log(`[${userRole}] Adding transceivers before reconnection offer`);
-            pc.addTransceiver('audio', { direction: 'sendrecv' });
-            pc.addTransceiver('video', { direction: 'sendrecv' });
-          }
-          createOffer();
-        } else {
-          console.log(`[${userRole}] Reconnecting with relay mode, waiting for peer to join before offer`);
-        }
-      }, 1000);
-    } else if (attempts < 3) {
-      // Try reconnecting with current mode
-      toast({
-        title: "Reconnecting...",
-        description: `Attempt ${attempts} of 3`,
-        variant: "default"
-      });
-      
-      setTimeout(() => {
-        initializePeerConnection(isRelayOnly);
-        // Only create offer if we know the inspector is already in the call
-        if (userRole === "coordinator" && hasPeerJoined) {
-          console.log(`[${userRole}] Reconnecting attempt ${attempts}, creating offer since peer is in call`);
-          // Ensure transceivers exist before creating offer
-          const pc = peerConnectionRef.current;
-          if (pc && pc.getTransceivers().length === 0) {
-            console.log(`[${userRole}] Adding transceivers before reconnection offer`);
-            pc.addTransceiver('audio', { direction: 'sendrecv' });
-            pc.addTransceiver('video', { direction: 'sendrecv' });
-          }
-          createOffer();
-        } else {
-          console.log(`[${userRole}] Reconnecting attempt ${attempts}, waiting for peer to join before offer`);
-        }
-      }, 2000);
-    } else {
-      // Give up after 3 attempts
-      toast({
-        title: "Connection Failed",
-        description: "Unable to establish connection. Please check your network and try again.",
-        variant: "destructive"
-      });
-    }
-  }, [connectionAttempts, shouldPreferRelay, isRelayOnly, userRole, toast]);
-  
-  // Monitor connection statistics for network quality
-  const monitorConnectionStats = useCallback(async () => {
-    const pc = peerConnectionRef.current;
-    if (!pc || pc.connectionState !== 'connected') {
-      setNetworkQuality({ level: 'disconnected', bars: 0 });
-      return;
-    }
-
-    try {
-      const stats = await pc.getStats();
-      let rtt = 0;
-      let packetLoss = 0;
-      let bytesReceived = 0;
-      let prevBytesReceived = 0;
-      let bitrate = 0;
-
-      stats.forEach((report: any) => {
-        // Get RTT from candidate-pair stats
-        if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-          rtt = (report.currentRoundTripTime || 0) * 1000; // Convert to ms
-        }
-        // Get packet loss and bitrate from inbound-rtp stats
-        if (report.type === 'inbound-rtp' && report.kind === 'video') {
-          const packetsLost = report.packetsLost || 0;
-          const packetsReceived = report.packetsReceived || 0;
-          if (packetsReceived > 0) {
-            packetLoss = (packetsLost / (packetsLost + packetsReceived)) * 100;
-          }
-          bytesReceived = report.bytesReceived || 0;
-          // Calculate bitrate based on bytes received (approximate)
-          if (prevBytesReceived > 0 && bytesReceived > prevBytesReceived) {
-            bitrate = ((bytesReceived - prevBytesReceived) * 8) / 2000; // kbps over 2 seconds
-          }
-        }
-      });
-
-      // Calculate quality level based on metrics
-      let level: 'excellent' | 'good' | 'fair' | 'poor' | 'disconnected';
-      let bars: number;
-
-      if (rtt < 100 && packetLoss < 1) {
-        level = 'excellent';
-        bars = 4;
-      } else if (rtt < 200 && packetLoss < 3) {
-        level = 'good';
-        bars = 3;
-      } else if (rtt < 400 && packetLoss < 5) {
-        level = 'fair';
-        bars = 2;
-      } else {
-        level = 'poor';
-        bars = 1;
-      }
-
-      setNetworkQuality({ level, bars, rtt, packetLoss, bitrate });
-    } catch (error) {
-      console.warn('Failed to get connection stats:', error);
-    }
-  }, []);
-  
-  // Set up network quality monitoring when connected
-  useEffect(() => {
-    if (isConnected && peerConnectionRef.current) {
-      // Clear any existing interval
-      if (statsIntervalRef.current) {
-        clearInterval(statsIntervalRef.current);
-      }
-      
-      // Start monitoring stats every 2 seconds
-      monitorConnectionStats(); // Initial check
-      statsIntervalRef.current = setInterval(monitorConnectionStats, 2000);
-      
-      return () => {
-        if (statsIntervalRef.current) {
-          clearInterval(statsIntervalRef.current);
-          statsIntervalRef.current = null;
-        }
-      };
-    } else {
-      // Clear stats when disconnected
-      setNetworkQuality({ level: 'disconnected', bars: 0 });
-      if (statsIntervalRef.current) {
-        clearInterval(statsIntervalRef.current);
-        statsIntervalRef.current = null;
-      }
-    }
-  }, [isConnected, monitorConnectionStats]);
-  
   // Handle ICE restart with proper offer/answer negotiation
   const handleIceRestart = useCallback(async () => {
     if (iceRestartInProgressRef.current) {
@@ -757,12 +301,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       if (userRole === "coordinator") {
         // Coordinator initiates ICE restart with new offer
         console.log("Coordinator initiating ICE restart");
-        // Ensure transceivers exist before creating offer for ICE restart
-        if (pc.getTransceivers().length === 0) {
-          console.log(`[${userRole}] Adding transceivers before ICE restart offer`);
-          pc.addTransceiver('audio', { direction: 'sendrecv' });
-          pc.addTransceiver('video', { direction: 'sendrecv' });
-        }
         await createOffer(true);
       } else {
         // Inspector requests coordinator to initiate restart
@@ -777,150 +315,65 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     } catch (error) {
       console.error("Failed to initiate ICE restart:", error);
       iceRestartInProgressRef.current = false;
-      
-      // Fall back to full reconnection if ICE restart fails
-      if (shouldPreferRelay && !isRelayOnly) {
-        handleConnectionFailure();
-      }
     }
-  }, [userRole, callId, sendMessage, shouldPreferRelay, isRelayOnly, handleConnectionFailure]);
+  }, [userRole, callId, sendMessage]);
 
   async function createAnswer(offer: RTCSessionDescriptionInit) {
     const pc = peerConnectionRef.current;
-    if (!pc) {
-      console.error(`[${userRole}] Cannot create answer - no peer connection`);
-      return;
-    }
+    if (!pc) return;
 
     try {
-      console.log(`[${userRole}] Setting remote description (offer) for callId: ${callId}`);
       await pc.setRemoteDescription(offer);
-      
-      // Drain queued ICE candidates after setting remote description
-      if (iceCandidateQueueRef.current.length > 0) {
-        console.log(`[${userRole}] Adding ${iceCandidateQueueRef.current.length} queued ICE candidates`);
-        for (const candidate of iceCandidateQueueRef.current) {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate));
-        }
-        iceCandidateQueueRef.current = [];
-      }
-      
-      console.log(`[${userRole}] Creating answer for callId: ${callId}`);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       
-      const message = {
+      sendMessage({
         type: "answer",
         callId,
         userId: userRole,
         data: answer,
-      };
-      console.log(`[${userRole}] Sending answer message with callId: ${callId}, userId: ${userRole}`);
-      sendMessage(message);
+      });
     } catch (error) {
-      console.error(`[${userRole}] Failed to create answer:`, error);
+      console.error("Failed to create answer:", error);
     }
   }
 
-  // Define the signaling message handler as a regular function (gets hoisted)
   async function handleSignalingMessage(message: any) {
     const pc = peerConnectionRef.current;
-    
-    console.log(`[${userRole}] Received signaling message:`, {
-      type: message.type,
-      callId: message.callId,
-      userId: message.userId,
-      hasData: !!message.data,
-      role: message.role
-    });
 
     try {
       switch (message.type) {
         case "offer":
-          console.log(`[${userRole}] Received offer from ${message.userId} for callId: ${message.callId}`);
-          if (!pc) {
-            console.error(`[${userRole}] No peer connection when offer received`);
-            return;
-          }
+          if (!pc) return;
           if (userRole === "inspector") {
-            console.log(`[${userRole}] Inspector processing offer and creating answer`);
             await createAnswer(message.data);
-          } else {
-            console.log(`[${userRole}] Coordinator ignoring offer (not for us)`);
           }
           break;
 
         case "answer":
-          console.log(`[${userRole}] Received answer from ${message.userId} for callId: ${message.callId}`);
-          if (!pc) {
-            console.error(`[${userRole}] No peer connection when answer received`);
-            return;
-          }
+          if (!pc) return;
           if (userRole === "coordinator") {
-            console.log(`[${userRole}] Coordinator setting remote description (answer)`);
             await pc.setRemoteDescription(message.data);
-            console.log(`[${userRole}] Remote description set successfully`);
-            
-            // Drain queued ICE candidates after setting remote description
-            if (iceCandidateQueueRef.current.length > 0) {
-              console.log(`[${userRole}] Adding ${iceCandidateQueueRef.current.length} queued ICE candidates`);
-              for (const candidate of iceCandidateQueueRef.current) {
-                await pc.addIceCandidate(new RTCIceCandidate(candidate));
-              }
-              iceCandidateQueueRef.current = [];
-            }
-          } else {
-            console.log(`[${userRole}] Inspector ignoring answer (not for us)`);
           }
           break;
 
         case "ice-candidate":
-          console.log(`[${userRole}] Received ICE candidate from ${message.userId}`);
-          if (!pc) {
-            console.error(`[${userRole}] No peer connection when ICE candidate received`);
-            return;
-          }
+          if (!pc) return;
           // Only add ICE candidate if we have remote description set
           if (pc.remoteDescription) {
-            console.log(`[${userRole}] Adding ICE candidate`);
-            await pc.addIceCandidate(new RTCIceCandidate(message.data));
-          } else {
-            iceCandidateQueueRef.current.push(message.data);
-            console.log(`[${userRole}] Queued ICE candidate (${iceCandidateQueueRef.current.length} in queue)`);
+            await pc.addIceCandidate(message.data);
           }
           break;
 
         case "user-joined":
-          console.log(`[${userRole}] User joined: userId=${message.userId}, role=${message.role}, callId=${message.callId}`);
+          console.log("User joined:", message.userId);
           // Track that a peer has joined (only if it's not our own join message)
-          if (message.role && message.role !== userRole) {
+          if (message.userId !== userRole) {
             setHasPeerJoined(true);
-            console.log(`[${userRole}] Peer joined - their role: ${message.role}, my role: ${userRole}`);
-            
-            // Coordinator should create offer when inspector joins
-            if (userRole === "coordinator" && message.role === "inspector") {
-              console.log(`[${userRole}] Inspector joined, will create offer in 1 second...`);
-              
-              // Ensure peer connection exists before creating offer
-              if (!peerConnectionRef.current) {
-                console.log(`[${userRole}] No peer connection yet, initializing first...`);
-                initializePeerConnection();
-              }
-              
-              setTimeout(() => {
-                console.log(`[${userRole}] Now creating offer for inspector...`);
-                // Ensure transceivers exist before creating offer
-                const pc = peerConnectionRef.current;
-                if (pc && pc.getTransceivers().length === 0) {
-                  console.log(`[${userRole}] Adding transceivers before offer to inspector`);
-                  pc.addTransceiver('audio', { direction: 'sendrecv' });
-                  pc.addTransceiver('video', { direction: 'sendrecv' });
-                }
-                createOffer();
-              }, 1000);
-            }
-          } else {
-            console.log(`[${userRole}] Ignoring our own join message`);
+          }
+          // Initiate offer when someone joins (for coordinator)
+          if (userRole === "coordinator" && message.userId !== userRole) {
+            setTimeout(() => createOffer(), 1000);
           }
           break;
 
@@ -1578,20 +1031,10 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }, [callId, userRole, sendMessage, isRecording, stopRecording, toast]);
 
   function cleanup() {
-    // Clean up timeouts
+    // Clean up capture timeout
     if (captureTimeoutRef.current) {
       clearTimeout(captureTimeoutRef.current);
       captureTimeoutRef.current = null;
-    }
-    
-    if (connectionTimeoutRef.current) {
-      clearTimeout(connectionTimeoutRef.current);
-      connectionTimeoutRef.current = null;
-    }
-    
-    if (statsIntervalRef.current) {
-      clearInterval(statsIntervalRef.current);
-      statsIntervalRef.current = null;
     }
     
     // Clean up canvas recording elements first
@@ -1656,15 +1099,12 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     setIsConnected(false);
     setHasPeerJoined(false);
     setIsConnectionEstablished(false);
-    setIsRelayOnly(false);
-    setConnectionAttempts(0);
   }
 
   return {
     localStream,
     remoteStream,
-    isConnected, // WebRTC peer connection status
-    wsConnected, // WebSocket connection status
+    isConnected,
     isMuted,
     isVideoEnabled,
     toggleMute,
@@ -1680,7 +1120,5 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     isCapturing,
     startRecording,
     stopRecording,
-    networkQuality,
-    joinCall,
   };
 }

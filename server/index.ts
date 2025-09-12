@@ -38,9 +38,7 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
-    console.log('Starting server initialization...');
     const server = await registerRoutes(app);
-    console.log('HTTP server with WebSocket created successfully');
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -73,11 +71,12 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
     const port = parseInt(process.env.PORT || '5000', 10);
-    console.log(`Attempting to start server on port ${port}...`);
-    // Use proper HTTP server listen syntax
-    server.listen(port, "0.0.0.0", () => {
-      log(`Server with WebSocket support running on port ${port}`);
-      console.log(`WebSocket server available at ws://0.0.0.0:${port}/ws`);
+    server.listen({
+      port,
+      host: "0.0.0.0",
+      reusePort: true,
+    }, () => {
+      log(`serving on port ${port}`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);

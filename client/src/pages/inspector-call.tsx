@@ -7,7 +7,7 @@ import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import { useWebRTC } from "@/hooks/use-webrtc";
 import { useState, useEffect } from "react";
-import { Clock, Signal, Video, UserCheck, Wifi, WifiOff } from "lucide-react";
+import { Clock, Signal, Video, UserCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -29,7 +29,6 @@ export default function InspectorCall() {
     localStream,
     remoteStream,
     isConnected,
-    wsConnected, // WebSocket connection status
     isMuted,
     isVideoEnabled,
     toggleMute,
@@ -40,8 +39,6 @@ export default function InspectorCall() {
     sendChatMessage,
     unreadCount,
     clearUnreadCount,
-    networkQuality,
-    joinCall,
   } = useWebRTC(callId!, "inspector");
 
   // Inspector doesn't need to fetch captured images
@@ -62,13 +59,7 @@ export default function InspectorCall() {
 
   const handleJoinCall = () => {
     if (inspectorName.trim()) {
-      // First, register with server by sending join-call message
-      joinCall({ 
-        role: 'inspector',
-        name: inspectorName 
-      });
-      
-      // Then set local state to show the call UI
+      // Join the call immediately
       setHasJoined(true);
       
       // Capture inspector's location as fire-and-forget (don't block UI)
@@ -123,23 +114,6 @@ export default function InspectorCall() {
             <p className="text-gray-600">
               You've been invited to join an inspection video call
             </p>
-            
-            {/* Connection Status Indicator */}
-            <div className={`flex items-center justify-center space-x-2 mt-3 px-3 py-2 rounded-md ${
-              wsConnected ? 'bg-green-100 border border-green-200' : 'bg-red-100 border border-red-200'
-            }`} data-testid="connection-status">
-              {wsConnected ? (
-                <>
-                  <Wifi className="w-4 h-4 text-green-600" />
-                  <span className="text-sm font-medium text-green-700">Connected - Ready to Join</span>
-                </>
-              ) : (
-                <>
-                  <WifiOff className="w-4 h-4 text-red-600" />
-                  <span className="text-sm font-medium text-red-700">Connecting...</span>
-                </>
-              )}
-            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -168,20 +142,12 @@ export default function InspectorCall() {
 
             <Button 
               onClick={handleJoinCall} 
-              className="w-full bg-black text-white hover:bg-gray-800 border-black disabled:bg-gray-400 disabled:cursor-not-allowed" 
-              disabled={!wsConnected || !inspectorName.trim()}
+              className="w-full bg-black text-white hover:bg-gray-800 border-black" 
+              disabled={!inspectorName.trim()}
               data-testid="button-join-inspection-call"
             >
-              {!wsConnected ? 'Connecting...' : 'Join Inspection Call'}
+              Join Inspection Call
             </Button>
-            
-            {/* Helper text */}
-            <p className="text-xs text-gray-500 text-center mt-2">
-              {!wsConnected 
-                ? 'Please wait while we establish connection...' 
-                : 'Ready to join the call'
-              }
-            </p>
           </CardContent>
         </Card>
       </div>
@@ -224,18 +190,8 @@ export default function InspectorCall() {
             Coordinator: <span className="text-white" data-testid="text-coordinator-name">Sarah Johnson</span>
           </div>
           <div className="flex items-center space-x-1">
-            <Signal 
-              className={`w-4 h-4 ${
-                networkQuality.level === 'excellent' ? 'text-green-500' :
-                networkQuality.level === 'good' ? 'text-green-400' :
-                networkQuality.level === 'fair' ? 'text-yellow-500' :
-                networkQuality.level === 'poor' ? 'text-red-500' :
-                'text-gray-400'
-              }`} 
-            />
-            <span className="text-xs text-white capitalize">
-              {!isConnected ? 'Connecting...' : networkQuality.level}
-            </span>
+            <Signal className="w-4 h-4 text-white" />
+            <span className="text-xs text-white">Excellent</span>
           </div>
         </div>
       </header>
