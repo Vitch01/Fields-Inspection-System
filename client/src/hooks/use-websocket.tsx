@@ -30,33 +30,36 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
 
   function connect() {
     try {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      // More robust WebSocket URL construction
+      const wsUrl = `${window.location.origin.replace(/^http/, 'ws')}/ws`;
+      console.log("[WebSocket] Attempting connection to:", wsUrl);
+      console.log("[WebSocket] Current location:", window.location.href);
       
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log("WebSocket connected");
+        console.log("[WebSocket] Connected successfully");
         setIsConnected(true);
         options.onConnect?.();
 
         // Send buffered join message if exists
         if (pendingJoinMessage) {
-          console.log("Sending buffered join message:", pendingJoinMessage);
+          console.log("[WebSocket] Sending buffered join message:", pendingJoinMessage);
           ws.send(JSON.stringify(pendingJoinMessage));
           setPendingJoinMessage(null);
         }
         
         // Re-join if we were previously joined (after reconnection)
         else if (joinedState && !autoJoin) {
-          console.log("Re-joining call after reconnection:", joinedState);
+          console.log("[WebSocket] Re-joining call after reconnection:", joinedState);
           const rejoinMessage = {
             type: "join-call",
             callId: joinedState.callId,
             userId: joinedState.userId,
             ...joinedState.additionalData
           };
+          console.log("[WebSocket] Sending rejoin message:", rejoinMessage);
           ws.send(JSON.stringify(rejoinMessage));
         }
         
@@ -76,29 +79,34 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
+          console.log("[WebSocket] Message received:", message.type, message);
           options.onMessage?.(message);
         } catch (error) {
-          console.error("Failed to parse WebSocket message:", error);
+          console.error("[WebSocket] Failed to parse message:", error, "Raw data:", event.data);
         }
       };
 
-      ws.onclose = () => {
-        console.log("WebSocket disconnected");
+      ws.onclose = (event) => {
+        console.log("[WebSocket] Disconnected. Code:", event.code, "Reason:", event.reason || "No reason provided");
         setIsConnected(false);
         options.onDisconnect?.();
         
         // Attempt to reconnect after 3 seconds
+        console.log("[WebSocket] Will attempt reconnection in 3 seconds...");
         reconnectTimeoutRef.current = setTimeout(() => {
           connect();
         }, 3000);
       };
 
       ws.onerror = (error) => {
-        console.error("WebSocket error:", error);
+        console.error("[WebSocket] Error occurred:", error);
+        console.error("[WebSocket] Connection state:", ws.readyState);
+        console.error("[WebSocket] URL attempted:", wsUrl);
       };
 
     } catch (error) {
-      console.error("Failed to connect WebSocket:", error);
+      console.error("[WebSocket] Failed to establish connection:", error);
+      setIsConnected(false);
     }
   }
 
@@ -116,9 +124,10 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
 
   function sendMessage(message: any) {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      console.log("[WebSocket] Sending message:", message.type, message);
       wsRef.current.send(JSON.stringify(message));
     } else {
-      console.warn("WebSocket not connected, cannot send message:", message);
+      console.warn("[WebSocket] Not connected, cannot send message. State:", wsRef.current?.readyState, "Message:", message);
     }
   }
 
@@ -130,6 +139,13 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
       ...additionalData
     };
     
+    console.log("[WebSocket] joinCall requested with:", {
+      callId,
+      userRole,
+      additionalData,
+      wsConnected: wsRef.current?.readyState === WebSocket.OPEN
+    });
+    
     // Store join state for re-joining on reconnection
     setJoinedState({
       callId,
@@ -138,10 +154,10 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
     });
     
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      console.log("Sending join message immediately:", message);
+      console.log("[WebSocket] Sending join message immediately:", message);
       wsRef.current.send(JSON.stringify(message));
     } else {
-      console.log("Buffering join message until connected:", message);
+      console.log("[WebSocket] Buffering join message until connected. WS state:", wsRef.current?.readyState);
       setPendingJoinMessage(message);
     }
   }, [callId, userRole]);
