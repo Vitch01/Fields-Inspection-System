@@ -481,6 +481,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
   const handleSignalingMessage = useCallback(async (message: any) => {
     const pc = peerConnectionRef.current;
+    console.log(`[${userRole}] Received signaling message:`, message.type);
+    console.log(`[${userRole}] Current PC state:`, pc ? `exists, signaling=${pc.signalingState}` : 'no peer connection');
 
     try {
       switch (message.type) {
@@ -537,14 +539,22 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           break;
 
         case "user-joined":
-          console.log("User joined:", message.userId);
+          console.log(`[${userRole}] User joined:`, message.userId);
           // Track that a peer has joined (only if it's not our own join message)
           if (message.userId !== userRole) {
+            console.log(`[${userRole}] Peer has joined, setting hasPeerJoined to true`);
             setHasPeerJoined(true);
+          } else {
+            console.log(`[${userRole}] Own join message, ignoring`);
           }
           // Initiate offer when someone joins (for coordinator)
           if (userRole === "coordinator" && message.userId !== userRole) {
-            setTimeout(() => createOffer(), 1000);
+            console.log(`[coordinator] Inspector joined, will create offer in 1 second`);
+            console.log(`[coordinator] Current PC exists: ${!!peerConnectionRef.current}`);
+            setTimeout(() => {
+              console.log(`[coordinator] Now creating offer after delay`);
+              createOffer();
+            }, 1000);
           }
           break;
 
