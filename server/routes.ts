@@ -80,6 +80,8 @@ try {
 interface WebSocketClient extends WebSocket {
   userId?: string;
   callId?: string;
+  isAlive?: boolean;
+  lastHeartbeat?: number;
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -88,10 +90,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // WebSocket server for signaling
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
   const clients = new Map<string, WebSocketClient>();
+  
+  // Heartbeat interval to detect dead connections
+  const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+  const CONNECTION_TIMEOUT = 60000; // 60 seconds
+  
+  // Cleanup function for clients
+  function cleanupClient(ws: WebSocketClient, userId?: string) {
+    if (userId) {
+      clients.delete(userId);
+    }
+    
+    if (ws.callId && ws.userId) {
+      // Notify other participants that user left
+      broadcastToCall(ws.callId, {
+        type: 'user-left',
+        userId: ws.userId,
+        callId: ws.callId
+      }, ws.userId);
+    }
+    
+    // Close connection if still open
+    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      ws.terminate();
+    }
+  }
+  
+  // Cleanup dead connections periodically
+  const heartbeatInterval = setInterval(() => {
+    const now = Date.now();
+    clients.forEach((client, userId) => {
+      if (!client.isAlive || (client.lastHeartbeat && now - client.lastHeartbeat > CONNECTION_TIMEOUT)) {
+        console.log(`Removing dead connection for user: ${userId}`);
+        cleanupClient(client, userId);
+      } else {
+        // Send heartbeat ping
+        client.isAlive = false;
+        if (client.readyState === WebSocket.OPEN) {
+          client.ping();
+        }
+      }
+    });
+  }, HEARTBEAT_INTERVAL);
 
   // WebSocket connection handling
   wss.on('connection', (ws: WebSocketClient) => {
     console.log('New WebSocket connection');
+    
+    // Initialize connection state
+    ws.isAlive = true;
+    ws.lastHeartbeat = Date.now();
+    
+    // Handle heartbeat pong responses
+    ws.on('pong', () => {
+      ws.isAlive = true;
+      ws.lastHeartbeat = Date.now();
+    });
 
     ws.on('message', async (data) => {
       try {
@@ -188,30 +242,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       } catch (error) {
         console.error('WebSocket message error:', error);
+        // On parsing error, cleanup client
+        if (ws.userId) {
+          cleanupClient(ws, ws.userId);
+        }
       }
     });
 
     ws.on('close', () => {
-      if (ws.userId) {
-        clients.delete(ws.userId);
-        if (ws.callId) {
-          broadcastToCall(ws.callId, {
-            type: 'user-left',
-            userId: ws.userId,
-            callId: ws.callId
-          }, ws.userId);
-        }
-      }
+      console.log(`WebSocket connection closed for user: ${ws.userId}`);
+      cleanupClient(ws, ws.userId);
+    });
+    
+    ws.on('error', (error) => {
+      console.error(`WebSocket error for user ${ws.userId}:`, error);
+      cleanupClient(ws, ws.userId);
     });
   });
 
   function broadcastToCall(callId: string, message: any, excludeUserId?: string) {
     clients.forEach((client, userId) => {
       if (client.callId === callId && userId !== excludeUserId && client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify(message));
+        try {
+          client.send(JSON.stringify(message));
+        } catch (error) {
+          console.error(`Failed to send message to ${userId}:`, error);
+          // Clean up client with failed connection
+          cleanupClient(client, userId);
+        }
       }
     });
   }
+  
+  // Cleanup heartbeat on server shutdown
+  process.on('SIGTERM', () => {
+    clearInterval(heartbeatInterval);
+  });
+  
+  process.on('SIGINT', () => {
+    clearInterval(heartbeatInterval);
+  });
 
   // API Routes
 
