@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useWebSocket } from "./use-websocket";
 import { createPeerConnection, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream } from "@/lib/webrtc-utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -18,9 +18,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  
-  // Cap chat message history to prevent unbounded growth
-  const MAX_CHAT_MESSAGES = 100;
   const [unreadCount, setUnreadCount] = useState(0);
   const [hasPeerJoined, setHasPeerJoined] = useState(false);
   const [isConnectionEstablished, setIsConnectionEstablished] = useState(false);
@@ -118,37 +115,26 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, []);
 
-  // Declare early to avoid hoisting issues
-  const handleSignalingMessageRef = useRef<(message: any) => Promise<void>>();
-  
   const { sendMessage, isConnected: wsConnected } = useWebSocket(callId, userRole, {
-    onMessage: (message: any) => handleSignalingMessageRef.current?.(message),
+    onMessage: handleSignalingMessage,
   });
 
-  // Declare early to avoid hoisting issues
-  const initializeLocalStreamRef = useRef<() => Promise<void>>();
-  const cleanupRef = useRef<() => void>();
-  
   // Initialize local media stream
   useEffect(() => {
-    initializeLocalStreamRef.current?.();
+    initializeLocalStream();
     return () => {
-      cleanupRef.current?.();
+      cleanup();
     };
   }, []);
 
-  // Declare early to avoid hoisting issues
-  const initializePeerConnectionRef = useRef<() => void>();
-  const createOfferRef = useRef<(iceRestart?: boolean) => Promise<void>>();
-  
   // Initialize peer connection when WebSocket is connected
   useEffect(() => {
     if (wsConnected && localStream) {
-      initializePeerConnectionRef.current?.();
+      initializePeerConnection();
     }
   }, [wsConnected, localStream]);
 
-  const initializeLocalStream = useCallback(async () => {
+  async function initializeLocalStream() {
     try {
       // Use rear camera for inspector, front camera for coordinator
       const videoConstraints = userRole === "inspector" 
@@ -194,77 +180,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         variant: "destructive",
       });
     }
-  }, [userRole, toast]);
+  }
 
-  const createOffer = useCallback(async (iceRestart = false) => {
-    const pc = peerConnectionRef.current;
-    if (!pc) return;
-
-    try {
-      const offerOptions: RTCOfferOptions = {};
-      if (iceRestart) {
-        offerOptions.iceRestart = true;
-        console.log("Creating offer with ICE restart");
-      }
-      
-      const offer = await pc.createOffer(offerOptions);
-      await pc.setLocalDescription(offer);
-      
-      sendMessage({
-        type: "offer",
-        callId,
-        userId: userRole,
-        data: offer,
-      });
-    } catch (error) {
-      console.error("Failed to create offer:", error);
-    }
-  }, [callId, userRole, sendMessage]);
-
-  // Handle ICE restart with proper offer/answer negotiation
-  const handleIceRestart = useCallback(async () => {
-    if (iceRestartInProgressRef.current) {
-      console.log("ICE restart already in progress");
-      return;
-    }
-    
-    const pc = peerConnectionRef.current;
-    if (!pc || pc.connectionState === "closed") {
-      console.log("Cannot restart ICE - peer connection is closed");
-      return;
-    }
-    
-    iceRestartInProgressRef.current = true;
-    
-    try {
-      if (userRole === "coordinator") {
-        // Coordinator initiates ICE restart with new offer
-        console.log("Coordinator initiating ICE restart");
-        await createOffer(true);
-      } else {
-        // Inspector requests coordinator to initiate restart
-        console.log("Inspector requesting ICE restart from coordinator");
-        sendMessage({
-          type: "ice-restart-request",
-          callId,
-          userId: userRole,
-          data: { timestamp: Date.now() },
-        });
-      }
-    } catch (error) {
-      console.error("Failed to initiate ICE restart:", error);
-      iceRestartInProgressRef.current = false;
-    }
-  }, [userRole, callId, sendMessage, createOffer]);
-
-  const initializePeerConnection = useCallback(() => {
-    // Prevent duplicate peer connection creation
-    if (peerConnectionRef.current) {
-      console.log("Peer connection already exists, cleaning up before creating new one");
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
-    }
-    
+  function initializePeerConnection() {
     const pc = createPeerConnection();
     peerConnectionRef.current = pc;
 
@@ -335,14 +253,72 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
     // Create offer if coordinator
     if (userRole === "coordinator") {
-      createOfferRef.current?.();
+      createOffer();
     }
-  }, [toast, setRemoteStream, setIsConnected, setIsConnectionEstablished, handleIceRestart, sendMessage, callId, userRole]);
-  
-  // Assign to ref for hoisting
-  initializePeerConnectionRef.current = initializePeerConnection;
+  }
 
-  const createAnswer = useCallback(async (offer: RTCSessionDescriptionInit) => {
+  async function createOffer(iceRestart = false) {
+    const pc = peerConnectionRef.current;
+    if (!pc) return;
+
+    try {
+      const offerOptions: RTCOfferOptions = {};
+      if (iceRestart) {
+        offerOptions.iceRestart = true;
+        console.log("Creating offer with ICE restart");
+      }
+      
+      const offer = await pc.createOffer(offerOptions);
+      await pc.setLocalDescription(offer);
+      
+      sendMessage({
+        type: "offer",
+        callId,
+        userId: userRole,
+        data: offer,
+      });
+    } catch (error) {
+      console.error("Failed to create offer:", error);
+    }
+  }
+
+  // Handle ICE restart with proper offer/answer negotiation
+  const handleIceRestart = useCallback(async () => {
+    if (iceRestartInProgressRef.current) {
+      console.log("ICE restart already in progress");
+      return;
+    }
+    
+    const pc = peerConnectionRef.current;
+    if (!pc || pc.connectionState === "closed") {
+      console.log("Cannot restart ICE - peer connection is closed");
+      return;
+    }
+    
+    iceRestartInProgressRef.current = true;
+    
+    try {
+      if (userRole === "coordinator") {
+        // Coordinator initiates ICE restart with new offer
+        console.log("Coordinator initiating ICE restart");
+        await createOffer(true);
+      } else {
+        // Inspector requests coordinator to initiate restart
+        console.log("Inspector requesting ICE restart from coordinator");
+        sendMessage({
+          type: "ice-restart-request",
+          callId,
+          userId: userRole,
+          data: { timestamp: Date.now() },
+        });
+      }
+    } catch (error) {
+      console.error("Failed to initiate ICE restart:", error);
+      iceRestartInProgressRef.current = false;
+    }
+  }, [userRole, callId, sendMessage]);
+
+  async function createAnswer(offer: RTCSessionDescriptionInit) {
     const pc = peerConnectionRef.current;
     if (!pc) return;
 
@@ -360,9 +336,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     } catch (error) {
       console.error("Failed to create answer:", error);
     }
-  }, [callId, userRole, sendMessage]);
+  }
 
-  const handleSignalingMessage = useCallback(async (message: any) => {
+  async function handleSignalingMessage(message: any) {
     const pc = peerConnectionRef.current;
 
     try {
@@ -443,13 +419,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
               sender: message.userId === 'coordinator' ? 'coordinator' : 'inspector',
               timestamp: new Date(message.data.timestamp)
             };
-            setChatMessages(prev => {
-              const updatedMessages = [...prev, newMessage];
-              // Cap message history to prevent memory issues
-              return updatedMessages.length > MAX_CHAT_MESSAGES 
-                ? updatedMessages.slice(-MAX_CHAT_MESSAGES) 
-                : updatedMessages;
-            });
+            setChatMessages(prev => [...prev, newMessage]);
             
             // Increment unread count for incoming messages
             setUnreadCount(prev => prev + 1);
@@ -555,7 +525,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     } catch (error) {
       console.error("Error handling signaling message:", error);
     }
-  }, [userRole, callId, sendMessage, hasPeerJoined, isConnectionEstablished, toast, playNotificationSound, queryClient]);
+  }
 
   const toggleMute = useCallback(() => {
     if (localStreamRef.current) {
@@ -780,11 +750,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, [callId, userRole, remoteStream, sendMessage, toast, isConnected, isCapturing]);
 
-  // Memoize expensive computations
-  const isCallActive = useMemo(() => {
-    return wsConnected && (hasPeerJoined || isConnectionEstablished);
-  }, [wsConnected, hasPeerJoined, isConnectionEstablished]);
-  
   const sendChatMessage = useCallback((text: string) => {
     const messageData = {
       id: Date.now().toString(),
@@ -813,12 +778,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const clearUnreadCount = useCallback(() => {
     setUnreadCount(0);
   }, []);
-  
-  // Memoize recording state for performance
-  const recordingState = useMemo(() => ({
-    isRecording,
-    isRecordingSupported
-  }), [isRecording, isRecordingSupported]);
 
   const startRecording = useCallback(async (videoRotation = 0) => {
     if (userRole !== "coordinator") {
@@ -1071,7 +1030,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, [callId, userRole, sendMessage, isRecording, stopRecording, toast]);
 
-  const cleanup = useCallback(() => {
+  function cleanup() {
     // Clean up capture timeout
     if (captureTimeoutRef.current) {
       clearTimeout(captureTimeoutRef.current);
@@ -1140,7 +1099,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     setIsConnected(false);
     setHasPeerJoined(false);
     setIsConnectionEstablished(false);
-  }, []);
+  }
 
   return {
     localStream,
