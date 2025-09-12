@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useWebSocket } from "./use-websocket";
 import { createPeerConnection, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream } from "@/lib/webrtc-utils";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface ChatMessage {
@@ -388,6 +388,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
             // Clear loading state
             setIsCapturing(false);
             
+            // Invalidate the images query to refresh the gallery
+            queryClient.invalidateQueries({ queryKey: ['/api/calls', callId, 'images'] });
+            
             toast({
               title: "Photo Captured",
               description: "Inspector's device has captured a high-quality photo",
@@ -408,6 +411,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
             
             // Clear loading state
             setIsCapturing(false);
+            
+            // Still try to refresh in case there were partial captures
+            queryClient.invalidateQueries({ queryKey: ['/api/calls', callId, 'images'] });
             
             toast({
               title: "Capture Failed",
@@ -564,15 +570,16 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           },
         });
 
-        // Set up timeout (10 seconds)
+        // Set up timeout (15 seconds to allow for slower network connections)
         captureTimeoutRef.current = setTimeout(() => {
           setIsCapturing(false);
+          captureTimeoutRef.current = null;
           toast({
             title: "Capture Timeout",
             description: "Photo capture took too long. Please try again.",
             variant: "destructive",
           });
-        }, 10000);
+        }, 15000);
 
         toast({
           title: "Requesting Photo",
