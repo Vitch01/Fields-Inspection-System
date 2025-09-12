@@ -393,11 +393,9 @@ export function getAdaptiveMediaConstraints(
   const audioConstraints: MediaTrackConstraints = {
     echoCancellation: true,
     noiseSuppression: true,
-    autoGainControl: true,
-    // Optimize for slow networks
-    channelCount: 1, // Mono audio saves bandwidth
-    sampleRate: networkCapabilities?.quality === 'poor' ? 16000 : 48000,
-    sampleSize: 16
+    autoGainControl: true
+    // Removed specific audio constraints that could cause failures on some devices
+    // Let browser choose optimal audio settings
   };
 
   // Audio-only mode for very poor connections
@@ -413,25 +411,25 @@ export function getAdaptiveMediaConstraints(
     ? { facingMode: { ideal: "environment" } } // Rear camera for inspections
     : { facingMode: "user" }; // Front camera for coordinator
 
-  // Video constraints based on quality level
+  // Video constraints based on quality level - Made more flexible for mobile compatibility
   let videoConstraints: MediaTrackConstraints;
   
   switch (videoQuality) {
     case 'low':
       videoConstraints = {
         ...baseCameraConstraints,
-        width: { ideal: 320, max: 480 },
-        height: { ideal: 240, max: 360 },
-        frameRate: { ideal: 10, max: 15 }
+        width: { ideal: 320 },  // Removed max to allow flexibility
+        height: { ideal: 240 }, // Let browser choose if ideal isn't available
+        frameRate: { ideal: 15 } // Simplified - no strict max
       };
       break;
       
     case 'medium':
       videoConstraints = {
         ...baseCameraConstraints,
-        width: { ideal: 640, max: 854 },
-        height: { ideal: 480, max: 480 },
-        frameRate: { ideal: 15, max: 24 }
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+        frameRate: { ideal: 20 }
       };
       break;
       
@@ -440,14 +438,12 @@ export function getAdaptiveMediaConstraints(
       videoConstraints = {
         ...baseCameraConstraints,
         width: { 
-          ideal: userRole === 'inspector' ? 1280 : 1024,
-          max: userRole === 'inspector' ? 1920 : 1280
+          ideal: userRole === 'inspector' ? 1280 : 640  // Reduced ideal for mobile compatibility
         },
         height: { 
-          ideal: userRole === 'inspector' ? 720 : 768,
-          max: userRole === 'inspector' ? 1080 : 720
+          ideal: userRole === 'inspector' ? 720 : 480   // More reasonable defaults
         },
-        frameRate: { ideal: 24, max: 30 }
+        frameRate: { ideal: 24 } // Let device choose best available
       };
       break;
   }

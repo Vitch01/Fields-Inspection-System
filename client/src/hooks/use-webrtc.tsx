@@ -313,20 +313,46 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     if (userRole === "inspector" && attemptedQuality !== 'audio-only') {
       try {
         console.log('[WebRTC] Trying fallback camera without specific facing mode...');
-        const fallbackConstraints = getAdaptiveMediaConstraints('low', 'coordinator'); // Use coordinator constraints (front camera)
-        const fallbackStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+        // Try very basic constraints without any facing mode restrictions
+        const basicConstraints: MediaStreamConstraints = {
+          audio: { echoCancellation: true },
+          video: { width: { ideal: 640 }, height: { ideal: 480 } } // No facingMode restriction
+        };
+        const fallbackStream = await navigator.mediaDevices.getUserMedia(basicConstraints);
         setLocalStream(fallbackStream);
         localStreamRef.current = fallbackStream;
         setCurrentVideoQuality('low');
         
         toast({
           title: "Camera Fallback",
-          description: "Using front camera due to rear camera unavailability",
+          description: "Using available camera for video call",
           variant: "default"
         });
         return;
       } catch (fallbackError) {
         console.error("Fallback camera failed:", fallbackError);
+        
+        // Try even more basic constraints
+        try {
+          console.log('[WebRTC] Trying most basic video constraints...');
+          const minimalConstraints: MediaStreamConstraints = {
+            audio: true,
+            video: true // Completely generic video request
+          };
+          const minimalStream = await navigator.mediaDevices.getUserMedia(minimalConstraints);
+          setLocalStream(minimalStream);
+          localStreamRef.current = minimalStream;
+          setCurrentVideoQuality('low');
+          
+          toast({
+            title: "Basic Camera Access",
+            description: "Using basic camera settings",
+            variant: "default"
+          });
+          return;
+        } catch (minimalError) {
+          console.error("Even basic video failed:", minimalError);
+        }
       }
     }
     

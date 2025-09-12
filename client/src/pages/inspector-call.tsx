@@ -6,7 +6,7 @@ import ChatPanel from "@/components/video-call/chat-panel";
 import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import { useWebRTC } from "@/hooks/use-webrtc";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Clock, Signal, Video, UserCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ export default function InspectorCall() {
   const [callDuration, setCallDuration] = useState(942);
   const [hasJoined, setHasJoined] = useState(false);
   const [inspectorName, setInspectorName] = useState("");
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const { data: call } = useQuery({
     queryKey: ["/api/calls", callId],
@@ -50,6 +51,14 @@ export default function InspectorCall() {
     }, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Properly assign video stream when localStream becomes available
+  useEffect(() => {
+    if (videoRef.current && localStream) {
+      console.log('[Inspector] Assigning localStream to video element:', localStream);
+      videoRef.current.srcObject = localStream;
+    }
+  }, [localStream]);
 
   const formatDuration = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -158,19 +167,26 @@ export default function InspectorCall() {
     <div className="flex flex-col h-screen bg-black relative">
       {/* Full Screen Camera View for Inspector */}
       <div className="absolute inset-0 z-0">
-        {localStream && (
-          <video
-            autoPlay
-            muted
-            playsInline
-            ref={(video) => {
-              if (video && localStream) {
-                video.srcObject = localStream;
-              }
-            }}
-            className="w-full h-full object-cover"
-            data-testid="video-local-fullscreen"
-          />
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          className="w-full h-full object-cover"
+          data-testid="video-local-fullscreen"
+        />
+        
+        {/* No Video Fallback for Inspector */}
+        {!localStream && (
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-800">
+            <div className="text-center text-white">
+              <div className="w-16 h-16 bg-slate-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Video className="w-8 h-8" />
+              </div>
+              <p className="text-lg font-medium">Initializing camera...</p>
+              <p className="text-sm opacity-75">Please allow camera access</p>
+            </div>
+          </div>
         )}
       </div>
 
