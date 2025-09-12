@@ -150,18 +150,32 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
   async function initializeLocalStream() {
     try {
-      // Use rear camera for inspector, front camera for coordinator
+      // Use lower resolution for mobile devices to reduce bandwidth
       const videoConstraints = userRole === "inspector" 
-        ? { 
-            width: { ideal: 1920 }, 
-            height: { ideal: 1080 },
-            facingMode: { exact: "environment" } // Rear camera
-          }
-        : { 
-            width: 1280, 
-            height: 720,
-            facingMode: "user" // Front camera
-          };
+        ? isMobile 
+          ? {
+              width: { ideal: 640, max: 640 },
+              height: { ideal: 360, max: 360 },
+              frameRate: { ideal: 15, max: 15 },
+              facingMode: { exact: "environment" } // Rear camera
+            }
+          : { 
+              width: { ideal: 1920 }, 
+              height: { ideal: 1080 },
+              facingMode: { exact: "environment" } // Rear camera
+            }
+        : isMobile
+          ? {
+              width: { ideal: 640, max: 640 },
+              height: { ideal: 360, max: 360 },
+              frameRate: { ideal: 15, max: 15 },
+              facingMode: "user" // Front camera
+            }
+          : { 
+              width: 1280, 
+              height: 720,
+              facingMode: "user" // Front camera
+            };
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: videoConstraints,
@@ -176,8 +190,16 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       // Fallback for inspector if rear camera fails
       if (userRole === "inspector") {
         try {
+          const fallbackConstraints = isMobile 
+            ? { 
+                width: { ideal: 640, max: 640 },
+                height: { ideal: 360, max: 360 },
+                frameRate: { ideal: 15, max: 15 }
+              }
+            : { width: { ideal: 1920 }, height: { ideal: 1080 } };
+          
           const fallbackStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+            video: fallbackConstraints,
             audio: { echoCancellation: true, noiseSuppression: true },
           });
           setLocalStream(fallbackStream);
@@ -197,8 +219,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }
 
   function initializePeerConnection(forceRelay: boolean = false) {
-    // Use relay mode for mobile inspectors or after connection failures
-    const useRelay = forceRelay || (shouldPreferRelay && connectionAttempts > 0);
+    // Force relay mode immediately for mobile inspectors
+    const useRelay = forceRelay || (userRole === "inspector" && isMobile) || (shouldPreferRelay && connectionAttempts > 0);
     
     console.log('Initializing peer connection:', {
       userRole,
@@ -220,10 +242,33 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       });
     }
 
-    // Add local stream tracks
+    // Add local stream tracks with bitrate limits for mobile
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current!);
+        const sender = pc.addTrack(track, localStreamRef.current!);
+        
+        // Apply aggressive bitrate limits for mobile video
+        if (track.kind === 'video' && isMobile) {
+          sender.setParameters({
+            encodings: [{
+              maxBitrate: 300000, // 300kbps for slow cellular
+              maxFramerate: 15,
+              scaleResolutionDownBy: 2
+            }],
+            degradationPreference: 'maintain-framerate'
+          } as RTCRtpSendParameters).catch((error) => {
+            console.warn('Failed to set video bitrate parameters:', error);
+          });
+        } else if (track.kind === 'audio' && isMobile) {
+          // Reduce audio bitrate for mobile too
+          sender.setParameters({
+            encodings: [{
+              maxBitrate: 24000 // 24kbps for audio on mobile
+            }]
+          } as RTCRtpSendParameters).catch((error) => {
+            console.warn('Failed to set audio bitrate parameters:', error);
+          });
+        }
       });
     }
 
@@ -232,15 +277,15 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       setRemoteStream(event.streams[0]);
     };
 
-    // Set connection timeout for mobile
-    if (shouldPreferRelay && !forceRelay) {
-      // Give direct connection 10 seconds to establish on mobile
+    // Set connection timeout for mobile (longer for slow cellular)
+    if (shouldPreferRelay && !useRelay) {
+      // Give direct connection 30 seconds to establish on slow cellular
       connectionTimeoutRef.current = setTimeout(() => {
         if (!isConnected && pc.connectionState !== "connected") {
           console.log("Direct connection timeout - switching to relay mode");
           handleConnectionFailure();
         }
-      }, 10000);
+      }, 30000); // Extended to 30 seconds for slow cellular connections
     }
     
     // Handle connection state changes with better diagnostics
@@ -396,10 +441,25 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     
     console.log(`Connection failure - attempt ${attempts}`);
     
-    // Clear existing connection
+    // Clear existing connection properly
     if (peerConnectionRef.current) {
+      // Stop all transceivers and remove event handlers
+      peerConnectionRef.current.getTransceivers().forEach(transceiver => {
+        transceiver.stop();
+      });
+      peerConnectionRef.current.onicecandidate = null;
+      peerConnectionRef.current.onconnectionstatechange = null;
+      peerConnectionRef.current.oniceconnectionstatechange = null;
+      peerConnectionRef.current.onicegatheringstatechange = null;
+      peerConnectionRef.current.ontrack = null;
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
+    }
+    
+    // Clear any existing timeout
+    if (connectionTimeoutRef.current) {
+      clearTimeout(connectionTimeoutRef.current);
+      connectionTimeoutRef.current = null;
     }
     
     // For mobile/inspector, switch to relay mode after first failure

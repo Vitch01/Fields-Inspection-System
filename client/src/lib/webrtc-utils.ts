@@ -90,8 +90,8 @@ export function createPeerConnection(forceRelay: boolean = false): RTCPeerConnec
   const configuration: RTCConfiguration = {
     iceServers: getICEServers(),
     
-    // Increase candidate pool for better mobile connectivity
-    iceCandidatePoolSize: isMobile ? 20 : 10,
+    // Reduce candidate pool for faster connection on slow mobile networks
+    iceCandidatePoolSize: isMobile ? 3 : 10,
     
     // ICE transport policy
     // 'relay' forces all traffic through TURN (for failed direct connections)
@@ -119,8 +119,8 @@ export function createMobilePeerConnection(): RTCPeerConnection {
   // For mobile devices, start with relay-preferred configuration
   const configuration: RTCConfiguration = {
     iceServers: getICEServers(),
-    iceCandidatePoolSize: 20, // More candidates for mobile
-    iceTransportPolicy: 'all', // Start with all, but monitor for failures
+    iceCandidatePoolSize: 3, // Fewer candidates for faster setup on slow networks
+    iceTransportPolicy: 'relay', // Force relay for mobile
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require',
   };
@@ -228,11 +228,11 @@ export function getBandwidthConstraints(isMobile: boolean = false) {
   if (isMobile) {
     return {
       video: {
-        maxBitrate: 500000, // 500 kbps for mobile video
-        maxFramerate: 24    // 24 fps for mobile
+        maxBitrate: 300000, // 300 kbps for slow cellular
+        maxFramerate: 15    // 15 fps for mobile to save bandwidth
       },
       audio: {
-        maxBitrate: 32000   // 32 kbps for audio
+        maxBitrate: 24000   // 24 kbps for audio on mobile
       }
     };
   }
@@ -249,6 +249,7 @@ export function getBandwidthConstraints(isMobile: boolean = false) {
 }
 
 export function getMediaConstraints(quality: 'low' | 'medium' | 'high') {
+  const isMobile = isMobileDevice();
   const constraints: MediaStreamConstraints = {
     audio: {
       echoCancellation: true,
@@ -258,16 +259,44 @@ export function getMediaConstraints(quality: 'low' | 'medium' | 'high') {
     video: true,
   };
 
-  switch (quality) {
-    case 'low':
-      constraints.video = { width: 640, height: 480 };
-      break;
-    case 'medium':
-      constraints.video = { width: 1280, height: 720 };
-      break;
-    case 'high':
-      constraints.video = { width: 1920, height: 1080 };
-      break;
+  // Use much lower resolution for mobile to reduce bandwidth
+  if (isMobile) {
+    switch (quality) {
+      case 'low':
+        constraints.video = { 
+          width: { ideal: 480, max: 480 }, 
+          height: { ideal: 270, max: 270 },
+          frameRate: { ideal: 15, max: 15 }
+        };
+        break;
+      case 'medium':
+        constraints.video = { 
+          width: { ideal: 640, max: 640 }, 
+          height: { ideal: 360, max: 360 },
+          frameRate: { ideal: 15, max: 15 }
+        };
+        break;
+      case 'high':
+        constraints.video = { 
+          width: { ideal: 640, max: 640 }, 
+          height: { ideal: 360, max: 360 },
+          frameRate: { ideal: 15, max: 15 }
+        };
+        break;
+    }
+  } else {
+    // Desktop constraints remain unchanged
+    switch (quality) {
+      case 'low':
+        constraints.video = { width: 640, height: 480 };
+        break;
+      case 'medium':
+        constraints.video = { width: 1280, height: 720 };
+        break;
+      case 'high':
+        constraints.video = { width: 1920, height: 1080 };
+        break;
+    }
   }
 
   return constraints;
