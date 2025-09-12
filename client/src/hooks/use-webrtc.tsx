@@ -33,6 +33,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [isCapturing, setIsCapturing] = useState(false);
   const [isRelayOnly, setIsRelayOnly] = useState(false);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
+  const [hasJoined, setHasJoined] = useState(false);
   const [networkQuality, setNetworkQuality] = useState<{
     level: 'excellent' | 'good' | 'fair' | 'poor' | 'disconnected';
     bars: number; // 0-4
@@ -150,12 +151,22 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     };
   }, []);
 
-  // Initialize peer connection when WebSocket is connected
+  // Auto-join when WebSocket connects
   useEffect(() => {
-    if (wsConnected && localStream) {
+    if (wsConnected && !hasJoined) {
+      console.log(`Auto-joining call as ${userRole} with callId: ${callId}`);
+      joinCall({ role: userRole });
+      setHasJoined(true);
+    }
+  }, [wsConnected, hasJoined, userRole, callId, joinCall]);
+
+  // Initialize peer connection when WebSocket is connected and we've joined the call
+  useEffect(() => {
+    if (wsConnected && localStream && hasJoined) {
+      console.log(`Initializing peer connection - wsConnected: ${wsConnected}, hasJoined: ${hasJoined}`);
       initializePeerConnection();
     }
-  }, [wsConnected, localStream]);
+  }, [wsConnected, localStream, hasJoined]);
 
   async function initializeLocalStream() {
     try {

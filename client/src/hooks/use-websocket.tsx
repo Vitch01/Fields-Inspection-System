@@ -66,6 +66,7 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
             type: "join-call",
             callId,
             userId: userRole,
+            role: userRole  // Add role field for proper signaling
           };
           ws.send(JSON.stringify(autoJoinMessage));
           setJoinedState({ callId, userId: userRole });
