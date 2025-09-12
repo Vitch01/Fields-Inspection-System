@@ -24,6 +24,10 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingSupported, setIsRecordingSupported] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
+  // Mobile connection retry state
+  const [connectionAttempts, setConnectionAttempts] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'failed' | 'retrying'>('connecting');
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -33,6 +37,11 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const captureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const captureRequestIdRef = useRef<string | null>(null);
   const iceRestartInProgressRef = useRef<boolean>(false);
+  // Connection retry management refs
+  const connectionRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const maxRetryAttemptsRef = useRef(5); // Maximum retry attempts for mobile
+  const retryDelayRef = useRef(1000); // Initial retry delay in ms
   const { toast } = useToast();
 
   // Helper function to get supported mimeType
@@ -182,9 +191,17 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }
 
-  function initializePeerConnection() {
-    const pc = createPeerConnection();
+  function initializePeerConnection(forceRelay: boolean = false) {
+    console.log(`Initializing peer connection... (Force Relay: ${forceRelay})`);
+    
+    // Reset connection state for new attempt
+    setConnectionStatus('connecting');
+    
+    const pc = createPeerConnection(forceRelay);
     peerConnectionRef.current = pc;
+
+    // Start connection timeout for mobile networks
+    startConnectionTimeout();
 
     // Add local stream tracks
     if (localStreamRef.current) {
@@ -195,51 +212,117 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
     // Handle remote stream
     pc.ontrack = (event) => {
+      console.log("Received remote stream");
       setRemoteStream(event.streams[0]);
     };
 
-    // Handle connection state changes with better diagnostics
+    // Enhanced connection state change handling with retry logic
     pc.onconnectionstatechange = () => {
       console.log(`Connection state changed to: ${pc.connectionState}`);
       const connected = pc.connectionState === "connected";
       setIsConnected(connected);
+      
       if (connected) {
-        setIsConnectionEstablished(true);
         console.log("WebRTC connection established successfully");
-      } else if (pc.connectionState === "failed") {
-        console.error("WebRTC connection failed - likely network issue");
+        setIsConnectionEstablished(true);
+        setConnectionStatus('connected');
+        
+        // Reset retry state on successful connection
+        resetConnectionState();
+        
         toast({
-          title: "Connection Failed",
-          description: "Unable to establish connection. If on mobile data, ensure you have a stable connection.",
-          variant: "destructive",
+          title: "Connected",
+          description: "Successfully connected to the call",
+          variant: "default",
         });
+        
+      } else if (pc.connectionState === "failed") {
+        console.error("WebRTC connection failed - attempting retry if available");
+        setConnectionStatus('failed');
+        
+        // Trigger retry logic for mobile connections
+        if (connectionAttempts < maxRetryAttemptsRef.current && !isRetrying) {
+          console.log("Connection failed, initiating retry...");
+          retryConnection();
+        } else {
+          toast({
+            title: "Connection Failed", 
+            description: "Unable to establish connection. Please check your network connection and reload the page.",
+            variant: "destructive",
+          });
+        }
+        
       } else if (pc.connectionState === "disconnected") {
         console.warn("WebRTC connection disconnected");
+        setConnectionStatus('connecting');
+        
+        // For mobile networks, be more aggressive about reconnecting
+        if (!isRetrying && connectionAttempts < maxRetryAttemptsRef.current) {
+          console.log("Connection disconnected, attempting to reconnect...");
+          setTimeout(() => {
+            if (pc.connectionState === "disconnected") {
+              retryConnection();
+            }
+          }, 3000); // Wait 3 seconds before retry
+        }
+        
+      } else if (pc.connectionState === "connecting") {
+        setConnectionStatus('connecting');
       }
     };
 
-    // Handle ICE gathering state for better debugging
+    // Enhanced ICE gathering state handling
     pc.onicegatheringstatechange = () => {
       console.log(`ICE gathering state: ${pc.iceGatheringState}`);
-    };
-
-    // Handle ICE connection state changes with improved restart logic
-    pc.oniceconnectionstatechange = () => {
-      console.log(`ICE connection state: ${pc.iceConnectionState}`);
-      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
-        console.error(`ICE connection ${pc.iceConnectionState} - attempting restart`);
-        // Attempt ICE restart with proper offer/answer negotiation
-        handleIceRestart();
-      } else if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
-        // Reset restart flag when connection is restored
-        iceRestartInProgressRef.current = false;
+      
+      if (pc.iceGatheringState === "complete") {
+        console.log("ICE candidate gathering completed");
+        
+        // If we still don't have a connection after ICE gathering, 
+        // this might indicate network issues
+        setTimeout(() => {
+          if (!isConnected && pc.connectionState !== "connected") {
+            console.warn("ICE gathering complete but no connection established");
+          }
+        }, 5000);
       }
     };
 
-    // Handle ICE candidates
+    // Enhanced ICE connection state handling with mobile-specific logic
+    pc.oniceconnectionstatechange = () => {
+      console.log(`ICE connection state: ${pc.iceConnectionState}`);
+      
+      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        console.log("ICE connection established successfully");
+        // Reset restart flag when connection is restored
+        iceRestartInProgressRef.current = false;
+        
+      } else if (pc.iceConnectionState === "failed") {
+        console.error("ICE connection failed - mobile network may have restrictive NAT");
+        
+        // For mobile connections, try ICE restart before full retry
+        if (!iceRestartInProgressRef.current) {
+          console.log("Attempting ICE restart for failed connection");
+          handleIceRestart();
+        }
+        
+      } else if (pc.iceConnectionState === "disconnected") {
+        console.warn("ICE connection disconnected - network change detected");
+        
+        // Mobile networks often have this issue, attempt restart
+        setTimeout(() => {
+          if (pc.iceConnectionState === "disconnected" && !iceRestartInProgressRef.current) {
+            console.log("ICE still disconnected, attempting restart");
+            handleIceRestart();
+          }
+        }, 5000);
+      }
+    };
+
+    // Enhanced ICE candidate handling
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        console.log(`ICE candidate type: ${event.candidate.type}, protocol: ${event.candidate.protocol}`);
+        console.log(`ICE candidate: type=${event.candidate.type}, protocol=${event.candidate.protocol}, address=${event.candidate.address || 'hidden'}`);
         sendMessage({
           type: "ice-candidate",
           callId,
@@ -247,13 +330,18 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           data: event.candidate,
         });
       } else {
-        console.log("ICE candidate gathering complete");
+        console.log("ICE candidate gathering finished - end-of-candidates reached");
       }
     };
 
-    // Create offer if coordinator
+    // Create offer if coordinator with mobile-optimized timing
     if (userRole === "coordinator") {
-      createOffer();
+      // Give mobile networks a bit more time to initialize
+      setTimeout(() => {
+        if (peerConnectionRef.current === pc) {
+          createOffer();
+        }
+      }, 1000);
     }
   }
 
@@ -281,6 +369,130 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       console.error("Failed to create offer:", error);
     }
   }
+
+  // Connection retry with exponential backoff for mobile networks
+  const calculateRetryDelay = useCallback((attemptNumber: number) => {
+    // Exponential backoff with jitter for mobile connections
+    const baseDelay = retryDelayRef.current;
+    const exponentialDelay = baseDelay * Math.pow(2, attemptNumber);
+    const jitter = Math.random() * 1000; // Add randomness to prevent thundering herd
+    const maxDelay = 30000; // Cap at 30 seconds
+    
+    return Math.min(exponentialDelay + jitter, maxDelay);
+  }, []);
+
+  const retryConnection = useCallback(async () => {
+    if (connectionAttempts >= maxRetryAttemptsRef.current) {
+      console.error("Maximum retry attempts reached for connection");
+      setConnectionStatus('failed');
+      setIsRetrying(false);
+      
+      toast({
+        title: "Connection Failed",
+        description: "Unable to establish connection after multiple attempts. Please check your network and try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const newAttempts = connectionAttempts + 1;
+    setConnectionAttempts(newAttempts);
+    setIsRetrying(true);
+    setConnectionStatus('retrying');
+    
+    // Adaptive strategy: use relay mode after first failure for mobile compatibility
+    const useRelayMode = newAttempts > 1;
+    
+    const delay = calculateRetryDelay(newAttempts);
+    console.log(`Retrying connection attempt ${newAttempts}/${maxRetryAttemptsRef.current} after ${delay}ms (Relay mode: ${useRelayMode})`);
+    
+    toast({
+      title: "Retrying Connection",
+      description: useRelayMode ? 
+        `Trying relay mode... (${newAttempts}/${maxRetryAttemptsRef.current})` :
+        `Attempting to reconnect... (${newAttempts}/${maxRetryAttemptsRef.current})`,
+      variant: "default",
+    });
+
+    // Clear existing connection retry timeout
+    if (connectionRetryTimeoutRef.current) {
+      clearTimeout(connectionRetryTimeoutRef.current);
+      connectionRetryTimeoutRef.current = null;
+    }
+
+    connectionRetryTimeoutRef.current = setTimeout(async () => {
+      try {
+        // Clean up the existing peer connection
+        if (peerConnectionRef.current) {
+          peerConnectionRef.current.close();
+          peerConnectionRef.current = null;
+        }
+        
+        // Reset connection state
+        setIsConnected(false);
+        setRemoteStream(null);
+        
+        // Re-initialize peer connection with adaptive strategy
+        if (wsConnected && localStream) {
+          console.log(`Re-initializing peer connection for retry with relay mode: ${useRelayMode}`);
+          initializePeerConnection(useRelayMode);
+        }
+        
+        setIsRetrying(false);
+      } catch (error) {
+        console.error("Error during connection retry:", error);
+        setIsRetrying(false);
+        // Schedule next retry
+        setTimeout(retryConnection, 2000);
+      }
+    }, delay);
+    
+  }, [connectionAttempts, calculateRetryDelay, wsConnected, localStream, toast]);
+
+  const resetConnectionState = useCallback(() => {
+    setConnectionAttempts(0);
+    setIsRetrying(false);
+    setConnectionStatus('connecting');
+    
+    // Clear any existing timeouts
+    if (connectionRetryTimeoutRef.current) {
+      clearTimeout(connectionRetryTimeoutRef.current);
+      connectionRetryTimeoutRef.current = null;
+    }
+    if (connectionTimeoutRef.current) {
+      clearTimeout(connectionTimeoutRef.current);
+      connectionTimeoutRef.current = null;
+    }
+  }, []);
+
+  // Enhanced connection timeout for mobile networks
+  const startConnectionTimeout = useCallback(() => {
+    // Clear existing timeout
+    if (connectionTimeoutRef.current) {
+      clearTimeout(connectionTimeoutRef.current);
+    }
+    
+    // Longer timeout for mobile networks (45 seconds)
+    const timeoutDuration = 45000;
+    
+    connectionTimeoutRef.current = setTimeout(() => {
+      const pc = peerConnectionRef.current;
+      if (pc && !isConnected && pc.connectionState !== 'connected') {
+        console.error("Connection timeout - no connection established within timeout period");
+        
+        if (connectionAttempts < maxRetryAttemptsRef.current) {
+          retryConnection();
+        } else {
+          setConnectionStatus('failed');
+          toast({
+            title: "Connection Timeout",
+            description: "Unable to establish connection. Please check your network connection and try again.",
+            variant: "destructive",
+          });
+        }
+      }
+    }, timeoutDuration);
+  }, [isConnected, connectionAttempts, retryConnection, toast]);
 
   // Handle ICE restart with proper offer/answer negotiation
   const handleIceRestart = useCallback(async () => {
@@ -1037,6 +1249,17 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       captureTimeoutRef.current = null;
     }
     
+    // Clean up connection retry timeouts
+    if (connectionRetryTimeoutRef.current) {
+      clearTimeout(connectionRetryTimeoutRef.current);
+      connectionRetryTimeoutRef.current = null;
+    }
+    
+    if (connectionTimeoutRef.current) {
+      clearTimeout(connectionTimeoutRef.current);
+      connectionTimeoutRef.current = null;
+    }
+    
     // Clean up canvas recording elements first
     if (canvasCleanupRef.current) {
       try {
@@ -1063,6 +1286,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     if (isRecording) {
       setIsRecording(false);
     }
+    
+    // Reset connection retry state
+    resetConnectionState();
     
     // Stop all media tracks to revoke camera and microphone permissions
     if (localStreamRef.current) {
@@ -1102,6 +1328,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }
 
   return {
+    // Original API
     localStream,
     remoteStream,
     isConnected,
@@ -1120,5 +1347,29 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     isCapturing,
     startRecording,
     stopRecording,
+    
+    // Mobile connection status and quality information
+    connectionStatus, // 'connecting' | 'connected' | 'failed' | 'retrying'
+    connectionAttempts, // Number of retry attempts made
+    isRetrying, // Whether currently retrying connection
+    
+    // Connection quality indicators for mobile networks
+    connectionQuality: {
+      status: connectionStatus,
+      attempts: connectionAttempts,
+      isRetrying: isRetrying,
+      maxAttempts: maxRetryAttemptsRef.current,
+      hasEstablishedConnection: isConnectionEstablished,
+      hasPeerJoined: hasPeerJoined,
+    },
+    
+    // Mobile-specific diagnostic information
+    diagnostics: {
+      connectionState: peerConnectionRef.current?.connectionState || 'unknown',
+      iceConnectionState: peerConnectionRef.current?.iceConnectionState || 'unknown',
+      iceGatheringState: peerConnectionRef.current?.iceGatheringState || 'unknown',
+      localStreamActive: localStreamRef.current ? localStreamRef.current.active : false,
+      remoteStreamActive: remoteStream ? remoteStream.active : false,
+    }
   };
 }
