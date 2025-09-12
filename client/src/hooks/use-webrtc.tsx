@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useWebSocket } from "./use-websocket";
 import { useNetworkMonitor } from "./use-network-monitor";
-import { createPeerConnection, createRecoveredPeerConnection, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream, checkNetworkCapabilities } from "@/lib/webrtc-utils";
+import { createPeerConnection, createRecoveredPeerConnection, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream, checkNetworkCapabilities, getAdaptiveMediaConstraints, type NetworkCapabilities, type VideoQuality } from "@/lib/webrtc-utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -26,6 +26,13 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [isRecordingSupported, setIsRecordingSupported] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   
+  // New adaptive quality states
+  const [networkCapabilities, setNetworkCapabilities] = useState<NetworkCapabilities | null>(null);
+  const [currentVideoQuality, setCurrentVideoQuality] = useState<VideoQuality>('medium');
+  const [isAdaptiveQualityEnabled, setIsAdaptiveQualityEnabled] = useState(true);
+  const [connectionAttempts, setConnectionAttempts] = useState(0);
+  const [isNetworkTesting, setIsNetworkTesting] = useState(false);
+  
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -37,6 +44,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const connectionRestoreInProgressRef = useRef<boolean>(false);
   const networkChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastConnectionAttemptRef = useRef<number>(0);
+  const networkTestTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const qualityDowngradeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const connectionRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
   // Helper function to get supported mimeType
@@ -127,9 +137,10 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const handleNetworkChange = useCallback(async (newNetworkInfo: any) => {
     console.log('[WebRTC] Network change detected:', newNetworkInfo);
     
-    // Don't trigger recovery too frequently
+    // Don't trigger recovery too frequently - increased for slow networks
     const now = Date.now();
-    if (now - lastConnectionAttemptRef.current < 5000) {
+    const minInterval = networkCapabilities?.quality === 'poor' ? 15000 : 8000; // Longer intervals for poor networks
+    if (now - lastConnectionAttemptRef.current < minInterval) {
       console.log('[WebRTC] Network change ignored - too frequent');
       return;
     }
@@ -160,10 +171,12 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       clearTimeout(networkChangeTimeoutRef.current);
     }
     
-    // Wait a bit for network to stabilize, then trigger ICE restart
+    // Wait longer for slow networks to stabilize before triggering ICE restart
+    const stabilizationDelay = networkCapabilities?.quality === 'poor' ? 8000 : 
+                              networkCapabilities?.quality === 'fair' ? 5000 : 2000;
     networkChangeTimeoutRef.current = setTimeout(() => {
       handleIceRestart();
-    }, 2000);
+    }, stabilizationDelay);
     
   }, []);
   
@@ -195,9 +208,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     onConnectionRestore: handleConnectionRestore,
   });
 
-  // Initialize local media stream
+  // Initialize network detection and local media stream
   useEffect(() => {
-    initializeLocalStream();
+    initializeWithNetworkDetection();
     return () => {
       cleanup();
     };
@@ -210,52 +223,130 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, [wsConnected, localStream]);
 
-  async function initializeLocalStream() {
+  // Initialize with network detection for adaptive quality
+  async function initializeWithNetworkDetection() {
+    setIsNetworkTesting(true);
+    
     try {
-      // Use rear camera for inspector, front camera for coordinator
-      const videoConstraints = userRole === "inspector" 
-        ? { 
-            width: { ideal: 1920 }, 
-            height: { ideal: 1080 },
-            facingMode: { exact: "environment" } // Rear camera
-          }
-        : { 
-            width: 1280, 
-            height: 720,
-            facingMode: "user" // Front camera
-          };
+      console.log('[WebRTC] Starting network capability detection...');
+      const capabilities = await checkNetworkCapabilities();
+      console.log('[WebRTC] Network capabilities detected:', capabilities);
+      
+      setNetworkCapabilities(capabilities);
+      
+      // Set initial video quality based on network capabilities
+      let initialQuality = capabilities.recommendedVideoQuality;
+      
+      // For very slow connections, be more conservative
+      if (capabilities.quality === 'poor' || capabilities.latency > 5000) {
+        initialQuality = userRole === 'inspector' ? 'audio-only' : 'low';
+        toast({
+          title: "Slow Network Detected",
+          description: `Starting with ${initialQuality === 'audio-only' ? 'audio-only' : 'low quality video'} mode for better connection`,
+          variant: "default"
+        });
+      } else if (capabilities.quality === 'fair') {
+        initialQuality = 'low';
+      }
+      
+      setCurrentVideoQuality(initialQuality);
+      await initializeLocalStream(initialQuality, capabilities);
+      
+    } catch (error) {
+      console.error('Network detection failed, using medium quality:', error);
+      setCurrentVideoQuality('medium');
+      await initializeLocalStream('medium');
+    } finally {
+      setIsNetworkTesting(false);
+    }
+  }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: videoConstraints,
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
+  async function initializeLocalStream(videoQuality?: VideoQuality, capabilities?: NetworkCapabilities) {
+    const quality = videoQuality || currentVideoQuality;
+    const caps = capabilities || networkCapabilities;
+    
+    try {
+      console.log(`[WebRTC] Initializing local stream with quality: ${quality}`);
+      
+      // Get adaptive media constraints based on network and role
+      const mediaConstraints = getAdaptiveMediaConstraints(quality, userRole, caps || undefined);
+      
+      console.log('[WebRTC] Using media constraints:', mediaConstraints);
+      const stream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
       
       setLocalStream(stream);
       localStreamRef.current = stream;
-    } catch (error) {
-      console.error("Failed to get local stream:", error);
       
-      // Fallback for inspector if rear camera fails
-      if (userRole === "inspector") {
-        try {
-          const fallbackStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
-            audio: { echoCancellation: true, noiseSuppression: true },
-          });
-          setLocalStream(fallbackStream);
-          localStreamRef.current = fallbackStream;
-          return;
-        } catch (fallbackError) {
-          console.error("Fallback camera failed:", fallbackError);
-        }
+      // Log actual stream settings for debugging
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        const settings = videoTrack.getSettings();
+        console.log(`[WebRTC] Actual video settings: ${settings.width}x${settings.height} @ ${settings.frameRate}fps`);
       }
       
-      toast({
-        title: "Camera/Microphone Access Denied",
-        description: "Please allow camera and microphone access to join the call",
-        variant: "destructive",
-      });
+    } catch (error) {
+      console.error("Failed to get local stream:", error);
+      await handleMediaStreamError(error, quality);
     }
+  }
+  
+  // Enhanced error handling with fallback strategies
+  async function handleMediaStreamError(error: any, attemptedQuality: VideoQuality) {
+    console.log(`[WebRTC] Media stream error with quality ${attemptedQuality}:`, error);
+    
+    // Try progressive fallback strategies
+    if (attemptedQuality === 'high') {
+      console.log('[WebRTC] High quality failed, trying medium...');
+      setCurrentVideoQuality('medium');
+      return initializeLocalStream('medium');
+    } else if (attemptedQuality === 'medium') {
+      console.log('[WebRTC] Medium quality failed, trying low...');
+      setCurrentVideoQuality('low');
+      return initializeLocalStream('low');
+    } else if (attemptedQuality === 'low') {
+      console.log('[WebRTC] Low quality failed, trying audio-only...');
+      setCurrentVideoQuality('audio-only');
+      return initializeLocalStream('audio-only');
+    }
+    
+    // For inspector, try fallback camera without specific facing mode
+    if (userRole === "inspector" && attemptedQuality !== 'audio-only') {
+      try {
+        console.log('[WebRTC] Trying fallback camera without specific facing mode...');
+        const fallbackConstraints = getAdaptiveMediaConstraints('low', 'coordinator'); // Use coordinator constraints (front camera)
+        const fallbackStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+        setLocalStream(fallbackStream);
+        localStreamRef.current = fallbackStream;
+        setCurrentVideoQuality('low');
+        
+        toast({
+          title: "Camera Fallback",
+          description: "Using front camera due to rear camera unavailability",
+          variant: "default"
+        });
+        return;
+      } catch (fallbackError) {
+        console.error("Fallback camera failed:", fallbackError);
+      }
+    }
+    
+    // Final fallback: audio-only
+    if (attemptedQuality !== 'audio-only') {
+      try {
+        console.log('[WebRTC] Trying audio-only fallback...');
+        setCurrentVideoQuality('audio-only');
+        return initializeLocalStream('audio-only');
+      } catch (audioError) {
+        console.error("Audio-only fallback failed:", audioError);
+      }
+    }
+    
+    // Complete failure
+    toast({
+      title: "Media Access Failed",
+      description: "Unable to access camera or microphone. Please check permissions and try again.",
+      variant: "destructive",
+    });
   }
 
   function initializePeerConnection() {
@@ -431,12 +522,14 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         console.warn('[WebRTC] Network connection is unreliable, delaying recovery');
         connectionRestoreInProgressRef.current = false;
         
-        // Retry after network stabilizes
+        // Retry after network stabilizes - longer delay for poor networks
+        const retryDelay = capabilities?.quality === 'poor' ? 15000 : 
+                          capabilities?.quality === 'fair' ? 10000 : 5000;
         setTimeout(() => {
           if (isOnline && isNetworkStable) {
             handleConnectionRecovery();
           }
-        }, 5000);
+        }, retryDelay);
         return;
       }
       
@@ -487,6 +580,59 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       connectionRestoreInProgressRef.current = false;
     }
   }, [isOnline, isNetworkStable, wsConnected, localStream, toast]);
+  
+  // Manual quality controls for users
+  const changeVideoQuality = useCallback(async (newQuality: VideoQuality) => {
+    if (newQuality === currentVideoQuality) return;
+    
+    console.log(`[WebRTC] Changing video quality from ${currentVideoQuality} to ${newQuality}`);
+    setCurrentVideoQuality(newQuality);
+    
+    // Stop current stream
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+    }
+    
+    // Initialize with new quality
+    try {
+      await initializeLocalStream(newQuality);
+      
+      // Update peer connection with new stream
+      const pc = peerConnectionRef.current;
+      if (pc && localStreamRef.current) {
+        // Remove old tracks
+        pc.getSenders().forEach(sender => {
+          if (sender.track) {
+            pc.removeTrack(sender);
+          }
+        });
+        
+        // Add new tracks
+        localStreamRef.current.getTracks().forEach(track => {
+          pc.addTrack(track, localStreamRef.current!);
+        });
+        
+        // Renegotiate if coordinator
+        if (userRole === 'coordinator') {
+          await createOffer();
+        }
+      }
+      
+      toast({
+        title: "Quality Changed",
+        description: `Video quality changed to ${newQuality === 'audio-only' ? 'audio-only' : newQuality} mode`,
+        variant: "default"
+      });
+      
+    } catch (error) {
+      console.error('Failed to change video quality:', error);
+      toast({
+        title: "Quality Change Failed",
+        description: "Unable to change video quality. Please try again.",
+        variant: "destructive"
+      });
+    }
+  }, [currentVideoQuality, userRole, toast]);
   
   // Enhanced ICE restart with better error handling
   const handleIceRestart = useCallback(async () => {
@@ -868,8 +1014,11 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }, [callId, userRole, sendMessage, toast]);
 
   const captureImage = useCallback(async (videoRotation = 0, retryCount = 0) => {
-    const MAX_RETRIES = 2;
-    const CAPTURE_TIMEOUT = 10000; // 10 seconds timeout for mobile networks
+    const MAX_RETRIES = networkCapabilities?.quality === 'poor' ? 4 : 2; // More retries for poor networks
+    // Dynamic timeout based on network quality - much longer for slow networks
+    const CAPTURE_TIMEOUT = networkCapabilities?.quality === 'poor' ? 30000 : // 30 seconds for poor networks
+                           networkCapabilities?.quality === 'fair' ? 20000 : // 20 seconds for fair networks
+                           15000; // 15 seconds for good/excellent networks
     
     try {
       if (userRole === "coordinator") {

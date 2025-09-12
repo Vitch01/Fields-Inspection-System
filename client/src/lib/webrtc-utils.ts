@@ -46,13 +46,14 @@ export function createPeerConnection(): RTCPeerConnection {
       }
       // ============================================================
     ],
-    // Optimize ICE gathering for network transitions
-    iceCandidatePoolSize: 15, // Increased for better mobile connectivity
+    // Optimize ICE gathering for slow cellular connections
+    iceCandidatePoolSize: 20, // Further increased for slow mobile connectivity
     // Allow both STUN and TURN for maximum compatibility
     iceTransportPolicy: 'all',
     // Optimize for network changes and mobile connections
     bundlePolicy: 'max-bundle',
-    rtcpMuxPolicy: 'require',
+    rtcpMuxPolicy: 'require'
+    // Note: Extended timeouts for slow networks are handled in the hook logic
     // Enhanced ICE settings for network transitions
     // Note: iceGatheringPolicy is not a standard RTCConfiguration property
   };
@@ -200,72 +201,271 @@ export function createRecoveredPeerConnection(originalPC?: RTCPeerConnection): R
   return pc;
 }
 
-// Check if network supports reliable WebRTC connections
-export function checkNetworkCapabilities(): Promise<{
+// Enhanced network quality types
+export type NetworkQuality = 'excellent' | 'good' | 'fair' | 'poor' | 'offline';
+export type VideoQuality = 'high' | 'medium' | 'low' | 'audio-only';
+
+export interface NetworkCapabilities {
   supportsWebRTC: boolean;
   hasReliableConnection: boolean;
   networkType?: string;
   estimatedBandwidth?: number;
-}> {
-  return new Promise((resolve) => {
-    const capabilities = {
-      supportsWebRTC: !!window.RTCPeerConnection,
-      hasReliableConnection: navigator.onLine,
-      networkType: undefined as string | undefined,
-      estimatedBandwidth: undefined as number | undefined
-    };
-
-    // Get network information if available
-    const connection = (navigator as any).connection || 
-                     (navigator as any).mozConnection || 
-                     (navigator as any).webkitConnection;
-    
-    if (connection) {
-      capabilities.networkType = connection.effectiveType;
-      capabilities.estimatedBandwidth = connection.downlink;
-    }
-
-    // Quick connectivity test
-    const start = Date.now();
-    fetch(window.location.origin + '/api', { 
-      method: 'HEAD',
-      cache: 'no-cache' 
-    })
-    .then(() => {
-      const latency = Date.now() - start;
-      capabilities.hasReliableConnection = latency < 5000; // Less than 5 seconds
-      resolve(capabilities);
-    })
-    .catch(() => {
-      capabilities.hasReliableConnection = false;
-      resolve(capabilities);
-    });
-  });
+  latency: number;
+  quality: NetworkQuality;
+  recommendedVideoQuality: VideoQuality;
+  canHandleVideo: boolean;
 }
 
-export function getMediaConstraints(quality: 'low' | 'medium' | 'high') {
-  const constraints: MediaStreamConstraints = {
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-    video: true,
+// Comprehensive bandwidth detection with multiple tests
+export async function checkNetworkCapabilities(): Promise<NetworkCapabilities> {
+  const capabilities: NetworkCapabilities = {
+    supportsWebRTC: !!window.RTCPeerConnection,
+    hasReliableConnection: navigator.onLine,
+    latency: 0,
+    quality: 'offline',
+    recommendedVideoQuality: 'audio-only',
+    canHandleVideo: false
   };
 
-  switch (quality) {
+  // Get network information if available
+  const connection = (navigator as any).connection || 
+                   (navigator as any).mozConnection || 
+                   (navigator as any).webkitConnection;
+  
+  if (connection) {
+    capabilities.networkType = connection.effectiveType;
+    capabilities.estimatedBandwidth = connection.downlink;
+  }
+
+  if (!navigator.onLine) {
+    return capabilities;
+  }
+
+  try {
+    // Enhanced connectivity test with multiple metrics
+    const testResults = await performBandwidthTest();
+    capabilities.latency = testResults.latency;
+    capabilities.estimatedBandwidth = testResults.bandwidth;
+    capabilities.hasReliableConnection = testResults.reliable;
+    
+    // Determine network quality and video capability
+    const quality = determineNetworkQuality(testResults, connection);
+    capabilities.quality = quality.networkQuality;
+    capabilities.recommendedVideoQuality = quality.videoQuality;
+    capabilities.canHandleVideo = quality.videoQuality !== 'audio-only';
+    
+  } catch (error) {
+    console.warn('Network test failed:', error);
+    capabilities.hasReliableConnection = false;
+    capabilities.quality = 'poor';
+  }
+
+  return capabilities;
+}
+
+// Perform comprehensive bandwidth and latency testing
+async function performBandwidthTest(): Promise<{
+  latency: number;
+  bandwidth: number;
+  reliable: boolean;
+  packetLoss: number;
+}> {
+  const results = {
+    latency: 0,
+    bandwidth: 0,
+    reliable: false,
+    packetLoss: 0
+  };
+
+  // Test 1: Basic latency test
+  const latencyStart = performance.now();
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // Increased for slow networks
+    
+    await fetch(window.location.origin + '/api', {
+      method: 'HEAD',
+      cache: 'no-cache',
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    results.latency = performance.now() - latencyStart;
+    results.reliable = results.latency < 10000; // 10 second threshold for slow networks
+  } catch (error) {
+    results.latency = 15000; // Max timeout
+    results.reliable = false;
+  }
+
+  // Test 2: Small data transfer test for bandwidth estimation
+  if (results.reliable) {
+    try {
+      const dataSize = 50 * 1024; // 50KB test
+      const testData = new Array(dataSize).fill('a').join('');
+      
+      const bandwidthStart = performance.now();
+      const response = await fetch(window.location.origin + '/api', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: testData,
+        cache: 'no-cache'
+      });
+      
+      if (response.ok) {
+        const duration = (performance.now() - bandwidthStart) / 1000; // seconds
+        results.bandwidth = (dataSize * 8) / (1024 * 1024 * duration); // Mbps
+      }
+    } catch (error) {
+      console.warn('Bandwidth test failed:', error);
+      results.bandwidth = 0.1; // Assume very slow connection
+    }
+  }
+
+  // Test 3: Stability test with multiple small requests
+  if (results.reliable) {
+    const stabilityTests = [];
+    for (let i = 0; i < 3; i++) {
+      stabilityTests.push(
+        fetch(window.location.origin + '/api', {
+          method: 'HEAD',
+          cache: 'no-cache'
+        }).then(
+          () => true,
+          () => false
+        )
+      );
+    }
+    
+    try {
+      const stabilityResults = await Promise.all(stabilityTests);
+      const successRate = stabilityResults.filter(Boolean).length / stabilityResults.length;
+      results.packetLoss = (1 - successRate) * 100;
+      results.reliable = results.reliable && successRate >= 0.7; // 70% success rate
+    } catch (error) {
+      results.packetLoss = 50;
+      results.reliable = false;
+    }
+  }
+
+  return results;
+}
+
+// Determine network quality and recommended video settings
+function determineNetworkQuality(
+  testResults: { latency: number; bandwidth: number; reliable: boolean; packetLoss: number },
+  connection?: any
+): { networkQuality: NetworkQuality; videoQuality: VideoQuality } {
+  const { latency, bandwidth, reliable, packetLoss } = testResults;
+  
+  // Use connection API data if available for cross-validation
+  let effectiveBandwidth = bandwidth;
+  if (connection && connection.downlink) {
+    effectiveBandwidth = Math.min(bandwidth, connection.downlink);
+  }
+  
+  // Network quality determination based on multiple factors
+  if (!reliable || packetLoss > 30) {
+    return { networkQuality: 'offline', videoQuality: 'audio-only' };
+  }
+  
+  if (latency > 8000 || effectiveBandwidth < 0.2 || packetLoss > 20) {
+    return { networkQuality: 'poor', videoQuality: 'audio-only' };
+  }
+  
+  if (latency > 3000 || effectiveBandwidth < 0.5 || packetLoss > 10) {
+    return { networkQuality: 'fair', videoQuality: 'low' };
+  }
+  
+  if (latency > 1000 || effectiveBandwidth < 2.0 || packetLoss > 5) {
+    return { networkQuality: 'good', videoQuality: 'medium' };
+  }
+  
+  return { networkQuality: 'excellent', videoQuality: 'high' };
+}
+
+// Adaptive media constraints based on network conditions and device role
+export function getAdaptiveMediaConstraints(
+  videoQuality: VideoQuality,
+  userRole: 'coordinator' | 'inspector',
+  networkCapabilities?: NetworkCapabilities
+): MediaStreamConstraints {
+  // Enhanced audio settings optimized for various network conditions
+  const audioConstraints: MediaTrackConstraints = {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    // Optimize for slow networks
+    channelCount: 1, // Mono audio saves bandwidth
+    sampleRate: networkCapabilities?.quality === 'poor' ? 16000 : 48000,
+    sampleSize: 16
+  };
+
+  // Audio-only mode for very poor connections
+  if (videoQuality === 'audio-only') {
+    return {
+      audio: audioConstraints,
+      video: false
+    };
+  }
+
+  // Device-specific camera preferences
+  const baseCameraConstraints = userRole === "inspector" 
+    ? { facingMode: { ideal: "environment" } } // Rear camera for inspections
+    : { facingMode: "user" }; // Front camera for coordinator
+
+  // Video constraints based on quality level
+  let videoConstraints: MediaTrackConstraints;
+  
+  switch (videoQuality) {
     case 'low':
-      constraints.video = { width: 640, height: 480 };
+      videoConstraints = {
+        ...baseCameraConstraints,
+        width: { ideal: 320, max: 480 },
+        height: { ideal: 240, max: 360 },
+        frameRate: { ideal: 10, max: 15 }
+      };
       break;
+      
     case 'medium':
-      constraints.video = { width: 1280, height: 720 };
+      videoConstraints = {
+        ...baseCameraConstraints,
+        width: { ideal: 640, max: 854 },
+        height: { ideal: 480, max: 480 },
+        frameRate: { ideal: 15, max: 24 }
+      };
       break;
+      
     case 'high':
-      constraints.video = { width: 1920, height: 1080 };
+    default:
+      videoConstraints = {
+        ...baseCameraConstraints,
+        width: { 
+          ideal: userRole === 'inspector' ? 1280 : 1024,
+          max: userRole === 'inspector' ? 1920 : 1280
+        },
+        height: { 
+          ideal: userRole === 'inspector' ? 720 : 768,
+          max: userRole === 'inspector' ? 1080 : 720
+        },
+        frameRate: { ideal: 24, max: 30 }
+      };
       break;
   }
 
-  return constraints;
+  return {
+    audio: audioConstraints,
+    video: videoConstraints
+  };
+}
+
+// Legacy support function
+export function getMediaConstraints(quality: 'low' | 'medium' | 'high') {
+  const videoQualityMap: Record<string, VideoQuality> = {
+    low: 'low',
+    medium: 'medium', 
+    high: 'high'
+  };
+  return getAdaptiveMediaConstraints(videoQualityMap[quality], 'coordinator');
 }
 
 // Utility function to get rotation class for images based on video rotation
