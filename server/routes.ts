@@ -65,16 +65,39 @@ const videoUpload = multer({
   }
 });
 
-// Ensure uploads directory exists with error handling
-try {
-  if (!fs.existsSync('uploads')) {
-    fs.mkdirSync('uploads', { recursive: true });
-    console.log('Created uploads directory');
-  }
-} catch (error) {
-  console.error('Failed to create uploads directory:', error);
-  // Continue execution as this may not be critical for the application to start
-  // The uploads directory can be created later when needed
+// Utility function to ensure uploads directory exists with comprehensive error handling
+function ensureUploadsDirectory(): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      const uploadsPath = path.resolve('uploads');
+      
+      // Check if directory exists
+      if (!fs.existsSync(uploadsPath)) {
+        console.log('Creating uploads directory...');
+        fs.mkdirSync(uploadsPath, { recursive: true });
+        console.log(`✓ Successfully created uploads directory at: ${uploadsPath}`);
+      } else {
+        console.log(`✓ Uploads directory already exists at: ${uploadsPath}`);
+      }
+      
+      // Verify directory is writable by attempting to create a temporary file
+      const testFile = path.join(uploadsPath, '.write-test-' + Date.now());
+      try {
+        fs.writeFileSync(testFile, 'test');
+        fs.unlinkSync(testFile);
+        console.log('✓ Uploads directory is writable');
+        resolve(true);
+      } catch (writeError) {
+        console.error('✗ Uploads directory is not writable:', writeError);
+        resolve(false);
+      }
+    } catch (error) {
+      console.error('✗ Failed to create uploads directory:', error);
+      console.error('  This will cause file upload operations to fail.');
+      console.error('  Please ensure the application has write permissions to create directories.');
+      resolve(false);
+    }
+  });
 }
 
 interface WebSocketClient extends WebSocket {
@@ -84,6 +107,13 @@ interface WebSocketClient extends WebSocket {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
+  
+  // Ensure uploads directory exists before setting up routes
+  const uploadsReady = await ensureUploadsDirectory();
+  if (!uploadsReady) {
+    console.warn('⚠️  Warning: Uploads directory setup failed. File upload operations may fail.');
+    console.warn('   The server will continue to start, but uploads may not work properly.');
+  }
   
   // WebSocket server for signaling
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
