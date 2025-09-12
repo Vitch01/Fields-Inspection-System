@@ -5,16 +5,11 @@ import CallControls from "@/components/video-call/call-controls";
 import ChatPanel from "@/components/video-call/chat-panel";
 import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
-import ConnectionDiagnostics from "@/components/connection-diagnostics";
-import TroubleshootingGuide from "@/components/troubleshooting-guide";
 import { useWebRTC } from "@/hooks/use-webrtc";
-import type { ConnectionState, ConnectionError } from "@/hooks/use-websocket";
 import { useState, useEffect } from "react";
-import { Clock, Signal, Video, UserCheck, Wifi, WifiOff, AlertTriangle, RefreshCw, XCircle, HelpCircle, Activity } from "lucide-react";
+import { Clock, Signal, Video, UserCheck, Wifi, WifiOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 export default function InspectorCall() {
   const { callId } = useParams();
@@ -24,9 +19,6 @@ export default function InspectorCall() {
   const [callDuration, setCallDuration] = useState(942);
   const [hasJoined, setHasJoined] = useState(false);
   const [inspectorName, setInspectorName] = useState("");
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const [showTroubleshooting, setShowTroubleshooting] = useState(false);
-  const [showDiagnosticsPanel, setShowDiagnosticsPanel] = useState(false);
 
   const { data: call } = useQuery({
     queryKey: ["/api/calls", callId],
@@ -37,9 +29,7 @@ export default function InspectorCall() {
     localStream,
     remoteStream,
     isConnected,
-    wsConnected, // WebSocket connection status (backward compatibility)
-    connectionState, // Enhanced WebSocket connection state
-    connectionStats, // Enhanced WebSocket connection statistics
+    wsConnected, // WebSocket connection status
     isMuted,
     isVideoEnabled,
     toggleMute,
@@ -134,55 +124,22 @@ export default function InspectorCall() {
               You've been invited to join an inspection video call
             </p>
             
-            {/* Enhanced Connection Status Indicator */}
+            {/* Connection Status Indicator */}
             <div className={`flex items-center justify-center space-x-2 mt-3 px-3 py-2 rounded-md ${
-              connectionState === 'connected' ? 'bg-green-100 border border-green-200' :
-              connectionState === 'connecting' || connectionState === 'reconnecting' ? 'bg-yellow-100 border border-yellow-200' :
-              connectionState === 'failed' || connectionState === 'maximum-retries-exceeded' ? 'bg-red-100 border border-red-200' :
-              'bg-gray-100 border border-gray-200'
+              wsConnected ? 'bg-green-100 border border-green-200' : 'bg-red-100 border border-red-200'
             }`} data-testid="connection-status">
-              {connectionState === 'connected' ? (
+              {wsConnected ? (
                 <>
                   <Wifi className="w-4 h-4 text-green-600" />
                   <span className="text-sm font-medium text-green-700">Connected - Ready to Join</span>
                 </>
-              ) : connectionState === 'connecting' ? (
-                <>
-                  <RefreshCw className="w-4 h-4 text-yellow-600 animate-spin" />
-                  <span className="text-sm font-medium text-yellow-700">Connecting...</span>
-                </>
-              ) : connectionState === 'reconnecting' ? (
-                <>
-                  <RefreshCw className="w-4 h-4 text-yellow-600 animate-spin" />
-                  <span className="text-sm font-medium text-yellow-700">
-                    Reconnecting... (Attempt {connectionStats.attempts})
-                  </span>
-                </>
-              ) : connectionState === 'maximum-retries-exceeded' ? (
-                <>
-                  <XCircle className="w-4 h-4 text-red-600" />
-                  <span className="text-sm font-medium text-red-700">Connection Failed</span>
-                </>
               ) : (
                 <>
-                  <AlertTriangle className="w-4 h-4 text-red-600" />
-                  <span className="text-sm font-medium text-red-700">Connection Issues</span>
+                  <WifiOff className="w-4 h-4 text-red-600" />
+                  <span className="text-sm font-medium text-red-700">Connecting...</span>
                 </>
               )}
             </div>
-            
-            {/* Connection Error Details */}
-            {(connectionState === 'failed' || connectionState === 'maximum-retries-exceeded') && connectionStats.lastError && (
-              <div className="mt-2 px-3 py-2 bg-red-50 border border-red-200 rounded-md text-xs text-red-700">
-                <div className="font-medium mb-1">Connection Error:</div>
-                <div className="mb-2">{connectionStats.lastError.message}</div>
-                {connectionState === 'maximum-retries-exceeded' && (
-                  <div className="text-red-600 font-medium">
-                    Maximum retry attempts reached. Please check your internet connection and try refreshing the page.
-                  </div>
-                )}
-              </div>
-            )}
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -209,101 +166,22 @@ export default function InspectorCall() {
               </p>
             </div>
 
-            {/* Connection Diagnostics Panel */}
-            {(connectionState === 'failed' || connectionState === 'maximum-retries-exceeded' || showDiagnosticsPanel) && (
-              <div className="space-y-3">
-                <Collapsible open={showDiagnosticsPanel} onOpenChange={setShowDiagnosticsPanel}>
-                  <CollapsibleTrigger className="flex items-center w-full justify-between p-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded" data-testid="toggle-diagnostics-panel">
-                    <span className="flex items-center space-x-2">
-                      <Activity className="w-4 h-4 text-blue-600" />
-                      <span className="text-sm font-medium text-blue-800">Connection Diagnostics</span>
-                    </span>
-                    <span className="text-xs text-blue-600">
-                      {showDiagnosticsPanel ? 'Hide' : 'Show'} Details
-                    </span>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="mt-2">
-                    <ConnectionDiagnostics
-                      connectionState={connectionState}
-                      connectionStats={connectionStats}
-                      networkQuality={networkQuality}
-                      showFullDiagnostics={true}
-                      className="border-0 bg-white"
-                    />
-                  </CollapsibleContent>
-                </Collapsible>
-                
-                {(connectionState === 'failed' || connectionState === 'maximum-retries-exceeded') && (
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    onClick={() => setShowTroubleshooting(true)}
-                    className="w-full text-blue-600 border-blue-200 hover:bg-blue-50"
-                    data-testid="button-show-troubleshooting"
-                  >
-                    <HelpCircle className="w-4 h-4 mr-2" />
-                    Get Help Troubleshooting
-                  </Button>
-                )}
-              </div>
-            )}
-
-            {/* Quick Diagnostic Toggle */}
-            {connectionState === 'connected' && !showDiagnosticsPanel && (
-              <Button 
-                size="sm" 
-                variant="ghost" 
-                onClick={() => setShowDiagnosticsPanel(true)}
-                className="w-full text-gray-600 hover:bg-gray-50"
-                data-testid="button-show-diagnostics"
-              >
-                <Activity className="w-4 h-4 mr-2" />
-                Show Connection Details
-              </Button>
-            )}
-
             <Button 
               onClick={handleJoinCall} 
               className="w-full bg-black text-white hover:bg-gray-800 border-black disabled:bg-gray-400 disabled:cursor-not-allowed" 
-              disabled={connectionState !== 'connected' || !inspectorName.trim()}
+              disabled={!wsConnected || !inspectorName.trim()}
               data-testid="button-join-inspection-call"
             >
-              {connectionState === 'connecting' ? 'Connecting...' :
-               connectionState === 'reconnecting' ? `Reconnecting... (${connectionStats.attempts})` :
-               connectionState === 'failed' || connectionState === 'maximum-retries-exceeded' ? 'Connection Failed' :
-               connectionState === 'connected' ? 'Join Inspection Call' :
-               'Connecting...'}
+              {!wsConnected ? 'Connecting...' : 'Join Inspection Call'}
             </Button>
             
-            {/* Enhanced Helper text */}
-            <div className="text-xs text-gray-500 text-center mt-2">
-              {connectionState === 'connecting' && (
-                <p>Please wait while we establish connection...</p>
-              )}
-              {connectionState === 'reconnecting' && (
-                <p>Reconnecting... Please wait while we restore your connection.</p>
-              )}
-              {connectionState === 'connected' && (
-                <p>Ready to join the call</p>
-              )}
-              {connectionState === 'failed' && (
-                <div>
-                  <p className="text-red-600 mb-1">Connection failed. This may be due to:</p>
-                  <ul className="text-left space-y-1 ml-4">
-                    <li>• Poor internet connection</li>
-                    <li>• Network firewall restrictions</li>
-                    <li>• Server maintenance</li>
-                  </ul>
-                  <p className="mt-1 text-red-600">Please try refreshing the page.</p>
-                </div>
-              )}
-              {connectionState === 'maximum-retries-exceeded' && (
-                <div>
-                  <p className="text-red-600 mb-1">Unable to connect after multiple attempts.</p>
-                  <p className="text-red-600">Please check your internet connection and refresh the page to try again.</p>
-                </div>
-              )}
-            </div>
+            {/* Helper text */}
+            <p className="text-xs text-gray-500 text-center mt-2">
+              {!wsConnected 
+                ? 'Please wait while we establish connection...' 
+                : 'Ready to join the call'
+              }
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -403,38 +281,6 @@ export default function InspectorCall() {
         selectedImage={selectedImage}
         onClose={() => setSelectedImage(null)}
       />
-
-      {/* Diagnostic Modals */}
-      <Dialog open={showDiagnostics} onOpenChange={setShowDiagnostics}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-connection-diagnostics">
-          <DialogHeader>
-            <DialogTitle>Connection Diagnostics</DialogTitle>
-          </DialogHeader>
-          <ConnectionDiagnostics
-            connectionState={connectionState}
-            connectionStats={connectionStats}
-            networkQuality={networkQuality}
-            showFullDiagnostics={true}
-            onRefresh={() => window.location.reload()}
-          />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showTroubleshooting} onOpenChange={setShowTroubleshooting}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto" data-testid="dialog-troubleshooting-guide">
-          <DialogHeader>
-            <DialogTitle>Troubleshooting Guide</DialogTitle>
-          </DialogHeader>
-          <TroubleshootingGuide
-            currentIssue={
-              connectionState === 'failed' || connectionState === 'maximum-retries-exceeded' ? 'websocket' :
-              !navigator.mediaDevices ? 'media' :
-              null
-            }
-            onClose={() => setShowTroubleshooting(false)}
-          />
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

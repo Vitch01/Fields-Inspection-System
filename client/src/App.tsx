@@ -8,7 +8,6 @@ import Home from "@/pages/home";
 import CoordinatorCall from "@/pages/coordinator-call";
 import InspectorCall from "@/pages/inspector-call";
 import InspectorThankYou from "@/pages/inspector-thank-you";
-import Diagnostics from "@/pages/diagnostics";
 
 function Router() {
   return (
@@ -18,7 +17,6 @@ function Router() {
       <Route path="/inspector/:callId" component={InspectorCall} />
       <Route path="/join/:callId" component={InspectorCall} />
       <Route path="/inspector-thank-you" component={InspectorThankYou} />
-      <Route path="/diagnostics" component={Diagnostics} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -140,13 +140,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }, []);
 
   // Since handleSignalingMessage is a hoisted function, we can reference it directly
-  const { 
-    sendMessage, 
-    isConnected: wsConnected, 
-    connectionState, 
-    connectionStats, 
-    joinCall 
-  } = useWebSocket(callId, userRole, {
+  const { sendMessage, isConnected: wsConnected, joinCall } = useWebSocket(callId, userRole, {
     onMessage: handleSignalingMessage,
   });
 
@@ -1670,9 +1664,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     localStream,
     remoteStream,
     isConnected, // WebRTC peer connection status
-    wsConnected, // WebSocket connection status (backward compatibility)
-    connectionState, // Enhanced WebSocket connection state
-    connectionStats, // Enhanced WebSocket connection statistics
+    wsConnected, // WebSocket connection status
     isMuted,
     isVideoEnabled,
     toggleMute,

@@ -6,27 +6,19 @@ import ChatPanel from "@/components/video-call/chat-panel";
 import InspectorLocation from "@/components/video-call/inspector-location";
 import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
-import QRCodeDisplay from "@/components/video-call/qr-code-display";
-import ConnectionDiagnostics from "@/components/connection-diagnostics";
-import TroubleshootingGuide from "@/components/troubleshooting-guide";
 import { useWebRTC } from "@/hooks/use-webrtc";
-import type { ConnectionState, ConnectionError } from "@/hooks/use-websocket";
 import { useState, useEffect } from "react";
-import { Clock, Signal, Users, Copy, ExternalLink, QrCode, Wifi, WifiOff, AlertTriangle, RefreshCw, XCircle, Activity, HelpCircle } from "lucide-react";
+import { Clock, Signal, Users, Copy, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CoordinatorCall() {
   const { callId } = useParams();
   const [showSettings, setShowSettings] = useState(false);
   const [showChat, setShowChat] = useState(false);
-  const [showQRCode, setShowQRCode] = useState(false);
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [callDuration, setCallDuration] = useState(0); // seconds
   const [videoRotation, setVideoRotation] = useState(0); // Track video rotation state
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const [showTroubleshooting, setShowTroubleshooting] = useState(false);
   const { toast } = useToast();
 
   // Inspector name mapping
@@ -47,9 +39,6 @@ export default function CoordinatorCall() {
     localStream,
     remoteStream,
     isConnected,
-    wsConnected, // WebSocket connection status (backward compatibility)
-    connectionState, // Enhanced WebSocket connection state
-    connectionStats, // Enhanced WebSocket connection statistics
     isMuted,
     isVideoEnabled,
     toggleMute,
@@ -153,37 +142,16 @@ export default function CoordinatorCall() {
     window.open(inspectorUrl, '_blank');
   };
 
-  const getInspectorUrl = () => {
-    return `${window.location.origin}/join/${callId}`;
-  };
-
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header with Call Status */}
       <header className="bg-card border-b border-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2">
-            {/* Enhanced connection status indicator */}
-            <div className={`w-3 h-3 rounded-full ${
-              connectionState === 'connected' ? 'bg-green-500 connection-indicator' :
-              connectionState === 'connecting' || connectionState === 'reconnecting' ? 'bg-yellow-500' :
-              connectionState === 'failed' || connectionState === 'maximum-retries-exceeded' ? 'bg-red-500' :
-              'bg-gray-500'
-            }`}></div>
+            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 connection-indicator' : 'bg-red-500'}`}></div>
             <span className="text-sm font-medium text-muted-foreground">
-              {connectionState === 'connected' ? 'Connected' :
-               connectionState === 'connecting' ? 'Connecting...' :
-               connectionState === 'reconnecting' ? `Reconnecting... (Attempt ${connectionStats.attempts})` :
-               connectionState === 'failed' ? 'Connection Failed' :
-               connectionState === 'maximum-retries-exceeded' ? 'Connection Failed (Max Retries)' :
-               'Disconnected'}
+              {isConnected ? 'Connected' : 'Connecting...'}
             </span>
-            {connectionState === 'reconnecting' && (
-              <RefreshCw className="w-3 h-3 text-yellow-500 animate-spin" />
-            )}
-            {(connectionState === 'failed' || connectionState === 'maximum-retries-exceeded') && (
-              <AlertTriangle className="w-3 h-3 text-red-500" />
-            )}
           </div>
           <div className="text-sm text-muted-foreground">
             <Clock className="w-4 h-4 inline mr-1" />
@@ -221,24 +189,6 @@ export default function CoordinatorCall() {
               <ExternalLink className="w-3 h-3 mr-1" />
               Open Link
             </Button>
-            <Button 
-              size="sm" 
-              variant="outline"
-              onClick={() => setShowDiagnostics(true)}
-              data-testid="button-show-connection-diagnostics"
-            >
-              <Activity className="w-3 h-3 mr-1" />
-              Diagnostics
-            </Button>
-            <Button 
-              size="sm" 
-              variant="outline"
-              onClick={() => setShowQRCode(true)}
-              data-testid="button-show-qr-code"
-            >
-              <QrCode className="w-3 h-3 mr-1" />
-              QR Code
-            </Button>
           </div>
           <div className="flex items-center space-x-1">
             <Signal 
@@ -251,11 +201,7 @@ export default function CoordinatorCall() {
               }`} 
             />
             <span className="text-xs text-muted-foreground capitalize">
-              {connectionState !== 'connected' ? 
-                (connectionState === 'reconnecting' ? `Reconnecting... (${connectionStats.attempts})` : 
-                 connectionState === 'connecting' ? 'Connecting...' : 
-                 'Disconnected') : 
-                networkQuality.level}
+              {!isConnected ? 'Connecting...' : networkQuality.level}
             </span>
           </div>
         </div>
@@ -324,55 +270,6 @@ export default function CoordinatorCall() {
         selectedImage={selectedImage}
         onClose={() => setSelectedImage(null)}
       />
-
-      {/* QR Code Modal */}
-      <Dialog open={showQRCode} onOpenChange={setShowQRCode}>
-        <DialogContent className="max-w-sm" data-testid="dialog-qr-code">
-          <DialogHeader>
-            <DialogTitle className="text-center">Inspector Access QR Code</DialogTitle>
-          </DialogHeader>
-          <div className="flex justify-center">
-            <QRCodeDisplay
-              url={getInspectorUrl()}
-              title="Inspector Access"
-              description="Scan with mobile device to join call"
-              size={250}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Diagnostic Modals */}
-      <Dialog open={showDiagnostics} onOpenChange={setShowDiagnostics}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-connection-diagnostics">
-          <DialogHeader>
-            <DialogTitle>Connection Diagnostics</DialogTitle>
-          </DialogHeader>
-          <ConnectionDiagnostics
-            connectionState={connectionState}
-            connectionStats={connectionStats}
-            networkQuality={networkQuality}
-            showFullDiagnostics={true}
-            onRefresh={() => window.location.reload()}
-          />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showTroubleshooting} onOpenChange={setShowTroubleshooting}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto" data-testid="dialog-troubleshooting-guide">
-          <DialogHeader>
-            <DialogTitle>Troubleshooting Guide</DialogTitle>
-          </DialogHeader>
-          <TroubleshootingGuide
-            currentIssue={
-              connectionState === 'failed' || connectionState === 'maximum-retries-exceeded' ? 'websocket' :
-              !navigator.mediaDevices ? 'media' :
-              null
-            }
-            onClose={() => setShowTroubleshooting(false)}
-          />
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
