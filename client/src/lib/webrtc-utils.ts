@@ -46,16 +46,53 @@ export function createPeerConnection(): RTCPeerConnection {
       }
       // ============================================================
     ],
-    // Improve ICE gathering on mobile networks
-    iceCandidatePoolSize: 10,
-    // Force all traffic through TURN for mobile connections if needed
-    iceTransportPolicy: 'all', // Use 'all' to allow both STUN and TURN
-    // Better handling of network changes
+    // Optimize ICE gathering for network transitions
+    iceCandidatePoolSize: 15, // Increased for better mobile connectivity
+    // Allow both STUN and TURN for maximum compatibility
+    iceTransportPolicy: 'all',
+    // Optimize for network changes and mobile connections
     bundlePolicy: 'max-bundle',
-    rtcpMuxPolicy: 'require'
+    rtcpMuxPolicy: 'require',
+    // Enhanced ICE settings for network transitions
+    // Note: iceGatheringPolicy is not a standard RTCConfiguration property
   };
 
-  return new RTCPeerConnection(configuration);
+  const pc = new RTCPeerConnection(configuration);
+  
+  // Enhanced logging for debugging network transitions
+  pc.onicegatheringstatechange = () => {
+    console.log(`[WebRTC] ICE gathering state: ${pc.iceGatheringState}`);
+  };
+  
+  pc.oniceconnectionstatechange = () => {
+    console.log(`[WebRTC] ICE connection state: ${pc.iceConnectionState}`);
+    if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+      console.warn(`[WebRTC] ICE connection ${pc.iceConnectionState} - may need restart`);
+    }
+  };
+  
+  pc.onconnectionstatechange = () => {
+    console.log(`[WebRTC] Connection state: ${pc.connectionState}`);
+    if (pc.connectionState === 'failed') {
+      console.error('[WebRTC] Connection failed - likely network transition issue');
+    }
+  };
+  
+  // Log ICE candidates for debugging network transitions
+  const originalIceCandidateHandler = pc.onicecandidate;
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      console.log(`[WebRTC] ICE candidate: ${event.candidate.type} (${event.candidate.protocol}) - ${event.candidate.candidate.substring(0, 50)}...`);
+    } else {
+      console.log('[WebRTC] ICE candidate gathering complete');
+    }
+    // Call the original handler if it exists
+    if (originalIceCandidateHandler) {
+      originalIceCandidateHandler.call(pc, event);
+    }
+  };
+  
+  return pc;
 }
 
 export async function captureImageFromStream(stream: MediaStream): Promise<Blob> {
@@ -151,6 +188,59 @@ export async function capturePhotoFromCamera(): Promise<Blob> {
   } catch (error) {
     throw new Error(`Camera access failed: ${error}`);
   }
+}
+
+// Enhanced peer connection creation specifically for network recovery
+export function createRecoveredPeerConnection(originalPC?: RTCPeerConnection): RTCPeerConnection {
+  // If we have an original peer connection, copy some settings
+  const pc = createPeerConnection();
+  
+  console.log('[WebRTC] Created recovered peer connection for network transition');
+  
+  return pc;
+}
+
+// Check if network supports reliable WebRTC connections
+export function checkNetworkCapabilities(): Promise<{
+  supportsWebRTC: boolean;
+  hasReliableConnection: boolean;
+  networkType?: string;
+  estimatedBandwidth?: number;
+}> {
+  return new Promise((resolve) => {
+    const capabilities = {
+      supportsWebRTC: !!window.RTCPeerConnection,
+      hasReliableConnection: navigator.onLine,
+      networkType: undefined as string | undefined,
+      estimatedBandwidth: undefined as number | undefined
+    };
+
+    // Get network information if available
+    const connection = (navigator as any).connection || 
+                     (navigator as any).mozConnection || 
+                     (navigator as any).webkitConnection;
+    
+    if (connection) {
+      capabilities.networkType = connection.effectiveType;
+      capabilities.estimatedBandwidth = connection.downlink;
+    }
+
+    // Quick connectivity test
+    const start = Date.now();
+    fetch(window.location.origin + '/api', { 
+      method: 'HEAD',
+      cache: 'no-cache' 
+    })
+    .then(() => {
+      const latency = Date.now() - start;
+      capabilities.hasReliableConnection = latency < 5000; // Less than 5 seconds
+      resolve(capabilities);
+    })
+    .catch(() => {
+      capabilities.hasReliableConnection = false;
+      resolve(capabilities);
+    });
+  });
 }
 
 export function getMediaConstraints(quality: 'low' | 'medium' | 'high') {

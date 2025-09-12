@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useWebSocket } from "./use-websocket";
-import { createPeerConnection, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream } from "@/lib/webrtc-utils";
+import { useNetworkMonitor } from "./use-network-monitor";
+import { createPeerConnection, createRecoveredPeerConnection, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream, checkNetworkCapabilities } from "@/lib/webrtc-utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -33,6 +34,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const captureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const captureRequestIdRef = useRef<string | null>(null);
   const iceRestartInProgressRef = useRef<boolean>(false);
+  const connectionRestoreInProgressRef = useRef<boolean>(false);
+  const networkChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastConnectionAttemptRef = useRef<number>(0);
   const { toast } = useToast();
 
   // Helper function to get supported mimeType
@@ -119,6 +123,78 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     onMessage: handleSignalingMessage,
   });
 
+  // Enhanced network change handler (declared before useNetworkMonitor)
+  const handleNetworkChange = useCallback(async (newNetworkInfo: any) => {
+    console.log('[WebRTC] Network change detected:', newNetworkInfo);
+    
+    // Don't trigger recovery too frequently
+    const now = Date.now();
+    if (now - lastConnectionAttemptRef.current < 5000) {
+      console.log('[WebRTC] Network change ignored - too frequent');
+      return;
+    }
+    
+    // If we're offline, wait for connection to restore
+    if (!newNetworkInfo.isOnline) {
+      console.log('[WebRTC] Going offline, waiting for connection restore');
+      return;
+    }
+    
+    // Check if we have an active peer connection that might be affected
+    const pc = peerConnectionRef.current;
+    if (!pc || pc.connectionState === 'closed') {
+      console.log('[WebRTC] No active peer connection, network change ignored');
+      return;
+    }
+    
+    // If connection is already good, no need to restart
+    if (pc.connectionState === 'connected' && pc.iceConnectionState === 'connected') {
+      console.log('[WebRTC] Connection is healthy, network change ignored');
+      return;
+    }
+    
+    console.log('[WebRTC] Network change may have affected WebRTC connection, scheduling ICE restart');
+    
+    // Clear any existing network change timeout
+    if (networkChangeTimeoutRef.current) {
+      clearTimeout(networkChangeTimeoutRef.current);
+    }
+    
+    // Wait a bit for network to stabilize, then trigger ICE restart
+    networkChangeTimeoutRef.current = setTimeout(() => {
+      handleIceRestart();
+    }, 2000);
+    
+  }, []);
+  
+  // Handle connection restoration after network comes back online (declared before useNetworkMonitor)
+  const handleConnectionRestore = useCallback(async () => {
+    console.log('[WebRTC] Connection restored, checking if reconnection needed');
+    
+    const pc = peerConnectionRef.current;
+    if (!pc) {
+      console.log('[WebRTC] No peer connection, attempting to reinitialize');
+      if (wsConnected && localStream) {
+        console.log('[WebRTC] Reinitializing peer connection after network restore');
+        initializePeerConnection();
+      }
+      return;
+    }
+    
+    // Check if connection needs recovery
+    if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' ||
+        pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+      console.log('[WebRTC] Connection needs recovery after network restore');
+      await handleConnectionRecovery();
+    }
+  }, [wsConnected, localStream]);
+
+  // Monitor network changes and trigger connection recovery
+  const { isOnline, networkInfo, isNetworkStable } = useNetworkMonitor({
+    onNetworkChange: handleNetworkChange,
+    onConnectionRestore: handleConnectionRestore,
+  });
+
   // Initialize local media stream
   useEffect(() => {
     initializeLocalStream();
@@ -198,23 +274,54 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       setRemoteStream(event.streams[0]);
     };
 
-    // Handle connection state changes with better diagnostics
+    // Enhanced connection state changes with network transition handling
     pc.onconnectionstatechange = () => {
-      console.log(`Connection state changed to: ${pc.connectionState}`);
+      console.log(`[WebRTC] Connection state changed to: ${pc.connectionState}`);
       const connected = pc.connectionState === "connected";
       setIsConnected(connected);
+      
       if (connected) {
         setIsConnectionEstablished(true);
-        console.log("WebRTC connection established successfully");
+        // Reset recovery flags when connection is restored
+        iceRestartInProgressRef.current = false;
+        connectionRestoreInProgressRef.current = false;
+        console.log("[WebRTC] Connection established successfully");
+        
+        // Show success toast if this was a recovery
+        if (lastConnectionAttemptRef.current > 0 && Date.now() - lastConnectionAttemptRef.current < 30000) {
+          toast({
+            title: "Connection Restored",
+            description: "Video connection has been restored successfully",
+            variant: "default"
+          });
+        }
       } else if (pc.connectionState === "failed") {
-        console.error("WebRTC connection failed - likely network issue");
-        toast({
-          title: "Connection Failed",
-          description: "Unable to establish connection. If on mobile data, ensure you have a stable connection.",
-          variant: "destructive",
-        });
+        console.error("[WebRTC] Connection failed - attempting recovery");
+        
+        // Don't show error immediately, try recovery first
+        if (isOnline && isNetworkStable && !connectionRestoreInProgressRef.current) {
+          console.log("[WebRTC] Attempting automatic connection recovery");
+          setTimeout(() => handleConnectionRecovery(), 1000);
+        } else {
+          toast({
+            title: "Connection Failed",
+            description: "Unable to establish connection. Checking network...",
+            variant: "destructive"
+          });
+        }
       } else if (pc.connectionState === "disconnected") {
-        console.warn("WebRTC connection disconnected");
+        console.warn("[WebRTC] Connection disconnected - monitoring for recovery");
+        
+        // If we're online and network is stable, try to recover
+        if (isOnline && isNetworkStable) {
+          setTimeout(() => {
+            const currentPc = peerConnectionRef.current;
+            if (currentPc && currentPc.connectionState === "disconnected") {
+              console.log("[WebRTC] Connection still disconnected, attempting recovery");
+              handleConnectionRecovery();
+            }
+          }, 3000);
+        }
       }
     };
 
@@ -223,16 +330,37 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       console.log(`ICE gathering state: ${pc.iceGatheringState}`);
     };
 
-    // Handle ICE connection state changes with improved restart logic
+    // Enhanced ICE connection state changes with network transition handling
     pc.oniceconnectionstatechange = () => {
-      console.log(`ICE connection state: ${pc.iceConnectionState}`);
-      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
-        console.error(`ICE connection ${pc.iceConnectionState} - attempting restart`);
-        // Attempt ICE restart with proper offer/answer negotiation
-        handleIceRestart();
-      } else if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
-        // Reset restart flag when connection is restored
+      console.log(`[WebRTC] ICE connection state: ${pc.iceConnectionState}`);
+      
+      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        // Reset restart flags when ICE connection is restored
         iceRestartInProgressRef.current = false;
+        connectionRestoreInProgressRef.current = false;
+        console.log("[WebRTC] ICE connection established");
+      } else if (pc.iceConnectionState === "failed") {
+        console.error("[WebRTC] ICE connection failed - attempting recovery");
+        
+        if (isOnline && !iceRestartInProgressRef.current) {
+          // Try ICE restart first
+          setTimeout(() => handleIceRestart(), 1000);
+        }
+      } else if (pc.iceConnectionState === "disconnected") {
+        console.warn("[WebRTC] ICE connection disconnected");
+        
+        // If we're online and network seems stable, monitor for recovery
+        if (isOnline && isNetworkStable) {
+          setTimeout(() => {
+            const currentPc = peerConnectionRef.current;
+            if (currentPc && currentPc.iceConnectionState === "disconnected") {
+              console.log("[WebRTC] ICE still disconnected, attempting restart");
+              if (!iceRestartInProgressRef.current) {
+                handleIceRestart();
+              }
+            }
+          }, 5000);
+        }
       }
     };
 
@@ -282,38 +410,132 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }
 
-  // Handle ICE restart with proper offer/answer negotiation
+  // Comprehensive connection recovery
+  const handleConnectionRecovery = useCallback(async () => {
+    if (connectionRestoreInProgressRef.current) {
+      console.log('[WebRTC] Connection recovery already in progress');
+      return;
+    }
+    
+    connectionRestoreInProgressRef.current = true;
+    lastConnectionAttemptRef.current = Date.now();
+    
+    try {
+      console.log('[WebRTC] Starting connection recovery process');
+      
+      // Check network capabilities first
+      const capabilities = await checkNetworkCapabilities();
+      console.log('[WebRTC] Network capabilities:', capabilities);
+      
+      if (!capabilities.hasReliableConnection) {
+        console.warn('[WebRTC] Network connection is unreliable, delaying recovery');
+        connectionRestoreInProgressRef.current = false;
+        
+        // Retry after network stabilizes
+        setTimeout(() => {
+          if (isOnline && isNetworkStable) {
+            handleConnectionRecovery();
+          }
+        }, 5000);
+        return;
+      }
+      
+      const pc = peerConnectionRef.current;
+      
+      if (!pc || pc.connectionState === 'closed') {
+        // Create new peer connection
+        console.log('[WebRTC] Creating new peer connection for recovery');
+        initializePeerConnection();
+      } else {
+        // Try ICE restart first
+        console.log('[WebRTC] Attempting ICE restart for recovery');
+        await handleIceRestart();
+        
+        // If ICE restart doesn't work after 10 seconds, recreate connection
+        setTimeout(() => {
+          const currentPc = peerConnectionRef.current;
+          if (currentPc && 
+              (currentPc.connectionState === 'failed' || currentPc.iceConnectionState === 'failed')) {
+            console.log('[WebRTC] ICE restart failed, recreating peer connection');
+            
+            // Close old connection
+            currentPc.close();
+            peerConnectionRef.current = null;
+            
+            // Create new connection
+            if (wsConnected && localStream) {
+              initializePeerConnection();
+            }
+          }
+        }, 10000);
+      }
+      
+      toast({
+        title: "Reconnecting",
+        description: "Attempting to restore video connection after network change",
+        variant: "default"
+      });
+      
+    } catch (error) {
+      console.error('[WebRTC] Connection recovery failed:', error);
+      toast({
+        title: "Connection Issue",
+        description: "Having trouble reconnecting. Please check your network connection.",
+        variant: "destructive"
+      });
+    } finally {
+      connectionRestoreInProgressRef.current = false;
+    }
+  }, [isOnline, isNetworkStable, wsConnected, localStream, toast]);
+  
+  // Enhanced ICE restart with better error handling
   const handleIceRestart = useCallback(async () => {
     if (iceRestartInProgressRef.current) {
-      console.log("ICE restart already in progress");
+      console.log("[WebRTC] ICE restart already in progress");
       return;
     }
     
     const pc = peerConnectionRef.current;
     if (!pc || pc.connectionState === "closed") {
-      console.log("Cannot restart ICE - peer connection is closed");
+      console.log("[WebRTC] Cannot restart ICE - peer connection is closed");
       return;
     }
     
     iceRestartInProgressRef.current = true;
     
     try {
+      console.log(`[WebRTC] Starting ICE restart - current connection state: ${pc.connectionState}, ICE state: ${pc.iceConnectionState}`);
+      
       if (userRole === "coordinator") {
         // Coordinator initiates ICE restart with new offer
-        console.log("Coordinator initiating ICE restart");
+        console.log("[WebRTC] Coordinator initiating ICE restart with new offer");
         await createOffer(true);
       } else {
         // Inspector requests coordinator to initiate restart
-        console.log("Inspector requesting ICE restart from coordinator");
+        console.log("[WebRTC] Inspector requesting ICE restart from coordinator");
         sendMessage({
           type: "ice-restart-request",
           callId,
           userId: userRole,
-          data: { timestamp: Date.now() },
+          data: { 
+            timestamp: Date.now(),
+            reason: 'network-change',
+            connectionState: pc.connectionState,
+            iceConnectionState: pc.iceConnectionState
+          },
         });
       }
+      
+      // Reset ICE restart flag after timeout if not manually reset
+      setTimeout(() => {
+        if (iceRestartInProgressRef.current) {
+          console.log('[WebRTC] ICE restart timeout, resetting flag');
+          iceRestartInProgressRef.current = false;
+        }
+      }, 15000);
+      
     } catch (error) {
-      console.error("Failed to initiate ICE restart:", error);
+      console.error("[WebRTC] Failed to initiate ICE restart:", error);
       iceRestartInProgressRef.current = false;
     }
   }, [userRole, callId, sendMessage]);
@@ -1036,6 +1258,17 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       clearTimeout(captureTimeoutRef.current);
       captureTimeoutRef.current = null;
     }
+    
+    // Clean up network change timeout
+    if (networkChangeTimeoutRef.current) {
+      clearTimeout(networkChangeTimeoutRef.current);
+      networkChangeTimeoutRef.current = null;
+    }
+    
+    // Reset recovery flags
+    iceRestartInProgressRef.current = false;
+    connectionRestoreInProgressRef.current = false;
+    lastConnectionAttemptRef.current = 0;
     
     // Clean up canvas recording elements first
     if (canvasCleanupRef.current) {
