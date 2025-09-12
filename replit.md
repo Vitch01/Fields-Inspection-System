@@ -3,10 +3,13 @@
 This is a real-time video calling application built for remote site inspections. The application enables coordinators to create video calls with inspectors for conducting site surveys and quality assessments. During calls, users can capture and share images for documentation purposes. The system uses React with TypeScript for the frontend, Express.js for the backend, and WebRTC for real-time video communication.
 
 **Recent Updates (Sep 2025):**
+- Fixed cellular connectivity issues for inspectors with working TURN servers and automatic relay fallback
+- Replaced non-functional Cloudflare TURN servers with Metered Open Relay Project servers (20GB/month free tier)
+- Added TURNS (TURN over TLS) on port 443 for better mobile network compatibility
+- Implemented automatic relay fallback when direct connection fails on mobile devices
+- Fixed photo capture by properly forwarding WebSocket messages between coordinator and inspector
 - Added inspector thank you page with company branding displayed after call completion
 - Enhanced home page with dual interface: coordinator call creation and inspector call joining
-- Improved camera permission cleanup to fully revoke access when inspectors end calls
-- Removed time display from inspector interface per user preference
 
 # User Preferences
 
@@ -41,8 +44,11 @@ Uses Drizzle ORM with PostgreSQL for data persistence:
 WebRTC implementation for peer-to-peer video calling:
 
 - **Signaling Server**: WebSocket-based signaling for connection establishment
-- **STUN Servers**: Google STUN servers for NAT traversal
-- **Media Constraints**: Configurable video quality (720p default) with audio enhancement features
+- **STUN Servers**: Multiple Google STUN servers for redundancy
+- **TURN Servers**: Metered Open Relay Project servers for mobile connectivity (20GB/month free tier)
+- **Mobile Optimization**: Automatic relay fallback for cellular networks with TURNS on port 443
+- **Media Constraints**: Configurable video quality (720p default) with mobile-optimized bandwidth settings
+- **Connection Recovery**: ICE restart capability and progressive fallback strategy for network changes
 
 ## Authentication & Authorization
 Role-based access control with two user types:
