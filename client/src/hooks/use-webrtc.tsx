@@ -196,24 +196,55 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       setRemoteStream(event.streams[0]);
     };
 
-    // Handle connection state changes
+    // Handle connection state changes with better diagnostics
     pc.onconnectionstatechange = () => {
+      console.log(`Connection state changed to: ${pc.connectionState}`);
       const connected = pc.connectionState === "connected";
       setIsConnected(connected);
       if (connected) {
         setIsConnectionEstablished(true);
+        console.log("WebRTC connection established successfully");
+      } else if (pc.connectionState === "failed") {
+        console.error("WebRTC connection failed - likely network issue");
+        toast({
+          title: "Connection Failed",
+          description: "Unable to establish connection. If on mobile data, ensure you have a stable connection.",
+          variant: "destructive",
+        });
+      } else if (pc.connectionState === "disconnected") {
+        console.warn("WebRTC connection disconnected");
+      }
+    };
+
+    // Handle ICE gathering state for better debugging
+    pc.onicegatheringstatechange = () => {
+      console.log(`ICE gathering state: ${pc.iceGatheringState}`);
+    };
+
+    // Handle ICE connection state changes
+    pc.oniceconnectionstatechange = () => {
+      console.log(`ICE connection state: ${pc.iceConnectionState}`);
+      if (pc.iceConnectionState === "failed") {
+        console.error("ICE connection failed - attempting restart");
+        // Attempt ICE restart for mobile connections
+        if ('restartIce' in pc) {
+          (pc as any).restartIce();
+        }
       }
     };
 
     // Handle ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log(`ICE candidate type: ${event.candidate.type}, protocol: ${event.candidate.protocol}`);
         sendMessage({
           type: "ice-candidate",
           callId,
           userId: userRole,
           data: event.candidate,
         });
+      } else {
+        console.log("ICE candidate gathering complete");
       }
     };
 
@@ -534,7 +565,10 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, [callId, userRole, sendMessage, toast]);
 
-  const captureImage = useCallback(async (videoRotation = 0) => {
+  const captureImage = useCallback(async (videoRotation = 0, retryCount = 0) => {
+    const MAX_RETRIES = 2;
+    const CAPTURE_TIMEOUT = 5000; // 5 seconds timeout
+    
     try {
       if (userRole === "coordinator") {
         // For coordinator: Send request to inspector to capture
@@ -566,25 +600,41 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           userId: userRole,
           data: { 
             videoRotation: videoRotation,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            retryCount: retryCount
           },
         });
 
-        // Set up timeout (15 seconds to allow for slower network connections)
+        // Set up timeout (5 seconds for faster response)
         captureTimeoutRef.current = setTimeout(() => {
           setIsCapturing(false);
           captureTimeoutRef.current = null;
-          toast({
-            title: "Capture Timeout",
-            description: "Photo capture took too long. Please try again.",
-            variant: "destructive",
-          });
-        }, 15000);
+          
+          // Retry logic
+          if (retryCount < MAX_RETRIES) {
+            toast({
+              title: "Retrying Capture",
+              description: `Attempt ${retryCount + 2} of ${MAX_RETRIES + 1}...`,
+            });
+            // Retry after a short delay
+            setTimeout(() => {
+              captureImage(videoRotation, retryCount + 1);
+            }, 1000);
+          } else {
+            toast({
+              title: "Capture Failed",
+              description: "Unable to capture photo after multiple attempts. Please check the connection and try again.",
+              variant: "destructive",
+            });
+          }
+        }, CAPTURE_TIMEOUT);
 
-        toast({
-          title: "Requesting Photo",
-          description: "Triggering inspector's camera to capture photo...",
-        });
+        if (retryCount === 0) {
+          toast({
+            title: "Requesting Photo",
+            description: "Triggering inspector's camera to capture photo...",
+          });
+        }
 
         // Return early - success/failure will be handled by message handlers
         return;
@@ -597,11 +647,19 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     } catch (error) {
       console.error("Failed to initiate capture:", error);
       setIsCapturing(false);
-      toast({
-        title: "Capture Failed",
-        description: "Failed to initiate photo capture",
-        variant: "destructive",
-      });
+      
+      // Retry on error if we haven't exceeded retry count
+      if (retryCount < MAX_RETRIES) {
+        setTimeout(() => {
+          captureImage(videoRotation, retryCount + 1);
+        }, 1000);
+      } else {
+        toast({
+          title: "Capture Failed",
+          description: "Failed to initiate photo capture after multiple attempts",
+          variant: "destructive",
+        });
+      }
     }
   }, [callId, userRole, remoteStream, sendMessage, toast, isConnected, isCapturing]);
 

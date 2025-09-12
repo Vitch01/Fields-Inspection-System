@@ -1,9 +1,15 @@
 export function createPeerConnection(): RTCPeerConnection {
   const configuration: RTCConfiguration = {
     iceServers: [
+      // STUN servers for NAT traversal
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
-      // Public TURN servers for better mobile network connectivity
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      
+      // Multiple public TURN servers for better mobile network connectivity
+      // OpenRelay TURN servers
       { 
         urls: 'turn:openrelay.metered.ca:80',
         username: 'openrelayproject',
@@ -18,10 +24,42 @@ export function createPeerConnection(): RTCPeerConnection {
         urls: 'turn:openrelay.metered.ca:443?transport=tcp',
         username: 'openrelayproject',
         credential: 'openrelayproject'
+      },
+      
+      // Additional public TURN servers for redundancy
+      {
+        urls: 'turn:relay1.expressturn.com:3478',
+        username: 'efKIDZOHBMLPA1HKE5',
+        credential: 'Lf9AcRn7VgJHBKIQ'
+      },
+      {
+        urls: 'turn:a.relay.metered.ca:80',
+        username: '28224511:1615071744',
+        credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA='
+      },
+      {
+        urls: 'turn:a.relay.metered.ca:80?transport=tcp',
+        username: '28224511:1615071744',
+        credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA='
+      },
+      {
+        urls: 'turn:a.relay.metered.ca:443',
+        username: '28224511:1615071744',
+        credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA='
+      },
+      {
+        urls: 'turn:a.relay.metered.ca:443?transport=tcp',
+        username: '28224511:1615071744',
+        credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA='
       }
     ],
     // Improve ICE gathering on mobile networks
-    iceCandidatePoolSize: 10
+    iceCandidatePoolSize: 10,
+    // Force all traffic through TURN for mobile connections if needed
+    iceTransportPolicy: 'all', // Use 'all' to allow both STUN and TURN
+    // Better handling of network changes
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require'
   };
 
   return new RTCPeerConnection(configuration);
