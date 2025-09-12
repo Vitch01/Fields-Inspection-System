@@ -3,10 +3,14 @@
 This is a real-time video calling application built for remote site inspections. The application enables coordinators to create video calls with inspectors for conducting site surveys and quality assessments. During calls, users can capture and share images for documentation purposes. The system uses React with TypeScript for the frontend, Express.js for the backend, and WebRTC for real-time video communication.
 
 **Recent Updates (Sep 2025):**
-- Added inspector thank you page with company branding displayed after call completion
-- Enhanced home page with dual interface: coordinator call creation and inspector call joining
-- Improved camera permission cleanup to fully revoke access when inspectors end calls
-- Removed time display from inspector interface per user preference
+- Optimized for slow cellular connections: reduced video to 300kbps, 640x360 @ 15fps for mobile devices
+- Fixed cellular connectivity with Metered Open Relay TURN servers (20GB/month free tier)
+- Force relay mode for mobile inspectors to ensure reliable connections on restrictive networks
+- Extended connection timeout to 30 seconds for slow cellular networks
+- Applied aggressive bitrate limits: 300kbps video, 24kbps audio for mobile
+- Fixed photo capture by properly forwarding WebSocket messages between participants
+- Added inspector thank you page with company branding after call completion
+- Enhanced home page with dual interface for coordinators and inspectors
 
 # User Preferences
 
@@ -41,8 +45,11 @@ Uses Drizzle ORM with PostgreSQL for data persistence:
 WebRTC implementation for peer-to-peer video calling:
 
 - **Signaling Server**: WebSocket-based signaling for connection establishment
-- **STUN Servers**: Google STUN servers for NAT traversal
-- **Media Constraints**: Configurable video quality (720p default) with audio enhancement features
+- **STUN Servers**: Multiple Google STUN servers for redundancy
+- **TURN Servers**: Metered Open Relay Project servers for mobile connectivity (20GB/month free tier)
+- **Mobile Optimization**: Automatic relay fallback for cellular networks with TURNS on port 443
+- **Media Constraints**: Configurable video quality (720p default) with mobile-optimized bandwidth settings
+- **Connection Recovery**: ICE restart capability and progressive fallback strategy for network changes
 
 ## Authentication & Authorization
 Role-based access control with two user types:

@@ -103,11 +103,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ws.callId = message.callId;
             clients.set(message.userId, ws);
             
-            // Broadcast to other participants in the call
+            console.log(`User ${message.userId} joined call ${message.callId} with role:`, message.role);
+            
+            // Broadcast to other participants in the call with role information
             broadcastToCall(message.callId, {
               type: 'user-joined',
               userId: message.userId,
-              callId: message.callId
+              callId: message.callId,
+              role: message.role || message.userId // Use role if provided, fallback to userId for backward compatibility
             }, message.userId);
             break;
 
