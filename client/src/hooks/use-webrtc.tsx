@@ -163,11 +163,11 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
   // Initialize peer connection when WebSocket is connected and we've joined the call
   useEffect(() => {
-    if (wsConnected && localStream && hasJoined) {
+    if (wsConnected && hasJoined) {
       console.log(`Initializing peer connection - wsConnected: ${wsConnected}, hasJoined: ${hasJoined}`);
       initializePeerConnection();
     }
-  }, [wsConnected, localStream, hasJoined]);
+  }, [wsConnected, hasJoined]);
 
   async function initializeLocalStream() {
     try {
@@ -291,6 +291,20 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           });
         }
       });
+    } else {
+      // Add recvonly transceivers if no local stream (e.g., when camera/mic access denied)
+      console.log(`[${userRole}] No local stream available, adding recvonly transceivers`);
+      pc.addTransceiver('audio', { direction: 'recvonly' });
+      pc.addTransceiver('video', { direction: 'recvonly' });
+      
+      // Inform user that they can still receive media
+      if (userRole === "inspector") {
+        toast({
+          title: "Receive-Only Mode",
+          description: "You can still receive video from the coordinator.",
+          variant: "default"
+        });
+      }
     }
 
     // Handle remote stream
@@ -437,6 +451,13 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
 
     try {
+      // Ensure at least one transceiver exists for BUNDLE group
+      if (pc.getTransceivers().length === 0) {
+        console.log(`[${userRole}] No transceivers found, adding recvonly transceivers`);
+        pc.addTransceiver('audio', { direction: 'recvonly' });
+        pc.addTransceiver('video', { direction: 'recvonly' });
+      }
+      
       const offerOptions: RTCOfferOptions = {};
       if (iceRestart) {
         offerOptions.iceRestart = true;
@@ -503,6 +524,13 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         // Only create offer if we know the inspector is already in the call
         if (userRole === "coordinator" && hasPeerJoined) {
           console.log(`[${userRole}] Reconnecting with relay mode, creating offer since peer is in call`);
+          // Ensure transceivers exist before creating offer
+          const pc = peerConnectionRef.current;
+          if (pc && pc.getTransceivers().length === 0) {
+            console.log(`[${userRole}] Adding transceivers before reconnection offer`);
+            pc.addTransceiver('audio', { direction: 'recvonly' });
+            pc.addTransceiver('video', { direction: 'recvonly' });
+          }
           createOffer();
         } else {
           console.log(`[${userRole}] Reconnecting with relay mode, waiting for peer to join before offer`);
@@ -521,6 +549,13 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         // Only create offer if we know the inspector is already in the call
         if (userRole === "coordinator" && hasPeerJoined) {
           console.log(`[${userRole}] Reconnecting attempt ${attempts}, creating offer since peer is in call`);
+          // Ensure transceivers exist before creating offer
+          const pc = peerConnectionRef.current;
+          if (pc && pc.getTransceivers().length === 0) {
+            console.log(`[${userRole}] Adding transceivers before reconnection offer`);
+            pc.addTransceiver('audio', { direction: 'recvonly' });
+            pc.addTransceiver('video', { direction: 'recvonly' });
+          }
           createOffer();
         } else {
           console.log(`[${userRole}] Reconnecting attempt ${attempts}, waiting for peer to join before offer`);
@@ -643,6 +678,12 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       if (userRole === "coordinator") {
         // Coordinator initiates ICE restart with new offer
         console.log("Coordinator initiating ICE restart");
+        // Ensure transceivers exist before creating offer for ICE restart
+        if (pc.getTransceivers().length === 0) {
+          console.log(`[${userRole}] Adding transceivers before ICE restart offer`);
+          pc.addTransceiver('audio', { direction: 'recvonly' });
+          pc.addTransceiver('video', { direction: 'recvonly' });
+        }
         await createOffer(true);
       } else {
         // Inspector requests coordinator to initiate restart
@@ -789,6 +830,13 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
               
               setTimeout(() => {
                 console.log(`[${userRole}] Now creating offer for inspector...`);
+                // Ensure transceivers exist before creating offer
+                const pc = peerConnectionRef.current;
+                if (pc && pc.getTransceivers().length === 0) {
+                  console.log(`[${userRole}] Adding transceivers before offer to inspector`);
+                  pc.addTransceiver('audio', { direction: 'recvonly' });
+                  pc.addTransceiver('video', { direction: 'recvonly' });
+                }
                 createOffer();
               }, 1000);
             }
