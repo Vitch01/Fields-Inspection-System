@@ -2,56 +2,49 @@ export function createPeerConnection(): RTCPeerConnection {
   const configuration: RTCConfiguration = {
     iceServers: [
       // STUN servers for NAT traversal
+      // Using multiple Google STUN servers for redundancy
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
       { urls: 'stun:stun3.l.google.com:19302' },
       { urls: 'stun:stun4.l.google.com:19302' },
       
-      // Multiple public TURN servers for better mobile network connectivity
-      // OpenRelay TURN servers
+      // ============================================================
+      // TEMPORARY PUBLIC TURN SERVERS FOR MOBILE CONNECTIVITY
+      // ============================================================
+      // WARNING: These are public demo TURN servers with public credentials
+      // They enable connectivity for mobile devices on restrictive carrier-grade NAT networks
+      // DO NOT use these in production - they are a temporary stopgap solution
+      // 
+      // PRODUCTION IMPLEMENTATION:
+      // 1. Set up a backend endpoint to generate time-limited credentials (24-hour expiry)
+      // 2. Use per-user authentication tokens for credential generation
+      // 3. Implement secure credential rotation mechanism
+      // 4. Consider using services like:
+      //    - Twilio Network Traversal Service
+      //    - Xirsys TURN servers
+      //    - Self-hosted CoTURN server
+      //    - Cloudflare Calls TURN service
+      //
+      // LIMITATIONS OF THESE PUBLIC SERVERS:
+      // - May have usage limits or bandwidth restrictions
+      // - Could be shut down at any time without notice
+      // - No guarantee of availability or performance
+      // - Shared with other users (potential congestion)
+      //
+      // These Cloudflare public TURN servers use "public" credentials intentionally
+      // for demo/development purposes only
       { 
-        urls: 'turn:openrelay.metered.ca:80',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
+        urls: 'turn:turn.cloudflare.com:3478',
+        username: 'public',
+        credential: 'public'
       },
       { 
-        urls: 'turn:openrelay.metered.ca:443',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-      },
-      {
-        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-      },
-      
-      // Additional public TURN servers for redundancy
-      {
-        urls: 'turn:relay1.expressturn.com:3478',
-        username: 'efKIDZOHBMLPA1HKE5',
-        credential: 'Lf9AcRn7VgJHBKIQ'
-      },
-      {
-        urls: 'turn:a.relay.metered.ca:80',
-        username: '28224511:1615071744',
-        credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA='
-      },
-      {
-        urls: 'turn:a.relay.metered.ca:80?transport=tcp',
-        username: '28224511:1615071744',
-        credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA='
-      },
-      {
-        urls: 'turn:a.relay.metered.ca:443',
-        username: '28224511:1615071744',
-        credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA='
-      },
-      {
-        urls: 'turn:a.relay.metered.ca:443?transport=tcp',
-        username: '28224511:1615071744',
-        credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA='
+        urls: 'turn:turn.cloudflare.com:443?transport=tcp',
+        username: 'public',
+        credential: 'public'
       }
+      // ============================================================
     ],
     // Improve ICE gathering on mobile networks
     iceCandidatePoolSize: 10,

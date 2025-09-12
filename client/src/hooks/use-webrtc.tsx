@@ -31,6 +31,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const recordedChunksRef = useRef<Blob[]>([]);
   const canvasCleanupRef = useRef<(() => void) | null>(null);
   const captureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const captureRequestIdRef = useRef<string | null>(null);
+  const iceRestartInProgressRef = useRef<boolean>(false);
   const { toast } = useToast();
 
   // Helper function to get supported mimeType
@@ -221,15 +223,16 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       console.log(`ICE gathering state: ${pc.iceGatheringState}`);
     };
 
-    // Handle ICE connection state changes
+    // Handle ICE connection state changes with improved restart logic
     pc.oniceconnectionstatechange = () => {
       console.log(`ICE connection state: ${pc.iceConnectionState}`);
-      if (pc.iceConnectionState === "failed") {
-        console.error("ICE connection failed - attempting restart");
-        // Attempt ICE restart for mobile connections
-        if ('restartIce' in pc) {
-          (pc as any).restartIce();
-        }
+      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+        console.error(`ICE connection ${pc.iceConnectionState} - attempting restart`);
+        // Attempt ICE restart with proper offer/answer negotiation
+        handleIceRestart();
+      } else if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        // Reset restart flag when connection is restored
+        iceRestartInProgressRef.current = false;
       }
     };
 
@@ -254,12 +257,18 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }
 
-  async function createOffer() {
+  async function createOffer(iceRestart = false) {
     const pc = peerConnectionRef.current;
     if (!pc) return;
 
     try {
-      const offer = await pc.createOffer();
+      const offerOptions: RTCOfferOptions = {};
+      if (iceRestart) {
+        offerOptions.iceRestart = true;
+        console.log("Creating offer with ICE restart");
+      }
+      
+      const offer = await pc.createOffer(offerOptions);
       await pc.setLocalDescription(offer);
       
       sendMessage({
@@ -272,6 +281,42 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       console.error("Failed to create offer:", error);
     }
   }
+
+  // Handle ICE restart with proper offer/answer negotiation
+  const handleIceRestart = useCallback(async () => {
+    if (iceRestartInProgressRef.current) {
+      console.log("ICE restart already in progress");
+      return;
+    }
+    
+    const pc = peerConnectionRef.current;
+    if (!pc || pc.connectionState === "closed") {
+      console.log("Cannot restart ICE - peer connection is closed");
+      return;
+    }
+    
+    iceRestartInProgressRef.current = true;
+    
+    try {
+      if (userRole === "coordinator") {
+        // Coordinator initiates ICE restart with new offer
+        console.log("Coordinator initiating ICE restart");
+        await createOffer(true);
+      } else {
+        // Inspector requests coordinator to initiate restart
+        console.log("Inspector requesting ICE restart from coordinator");
+        sendMessage({
+          type: "ice-restart-request",
+          callId,
+          userId: userRole,
+          data: { timestamp: Date.now() },
+        });
+      }
+    } catch (error) {
+      console.error("Failed to initiate ICE restart:", error);
+      iceRestartInProgressRef.current = false;
+    }
+  }, [userRole, callId, sendMessage]);
 
   async function createAnswer(offer: RTCSessionDescriptionInit) {
     const pc = peerConnectionRef.current;
@@ -394,30 +439,38 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         case "capture-request":
           // Only handle if we're the inspector
           if (userRole === "inspector" && message.userId === "coordinator") {
-            console.log("Received remote capture request from coordinator");
+            const requestId = message.data?.requestId;
+            console.log("Received remote capture request from coordinator with ID:", requestId);
             toast({
               title: "Capturing Photo",
               description: "Coordinator has requested a photo capture",
             });
             
-            // Trigger capture on inspector's device
-            handleRemoteCapture(message.data?.videoRotation || 0);
+            // Trigger capture on inspector's device with request ID
+            handleRemoteCapture(message.data?.videoRotation || 0, requestId);
           }
           break;
 
         case "capture-complete":
-          // Only handle if we're the coordinator
+          // Only handle if we're the coordinator and request ID matches
           if (userRole === "coordinator" && message.userId === "inspector") {
-            console.log("Capture completed by inspector:", message.data);
+            const responseId = message.data?.requestId;
+            console.log("Capture completed by inspector, request ID:", responseId);
             
-            // Clear the capture timeout
-            if (captureTimeoutRef.current) {
-              clearTimeout(captureTimeoutRef.current);
-              captureTimeoutRef.current = null;
+            // Only process if this is for our current request
+            if (responseId === captureRequestIdRef.current) {
+              // Clear the capture timeout
+              if (captureTimeoutRef.current) {
+                clearTimeout(captureTimeoutRef.current);
+                captureTimeoutRef.current = null;
+              }
+              
+              // Clear loading state and request ID
+              setIsCapturing(false);
+              captureRequestIdRef.current = null;
+            } else {
+              console.log("Ignoring capture complete for different request ID");
             }
-            
-            // Clear loading state
-            setIsCapturing(false);
             
             // Invalidate the images query to refresh the gallery
             queryClient.invalidateQueries({ queryKey: ['/api/calls', callId, 'images'] });
@@ -430,18 +483,25 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           break;
 
         case "capture-error":
-          // Only handle if we're the coordinator
+          // Only handle if we're the coordinator and request ID matches
           if (userRole === "coordinator" && message.userId === "inspector") {
-            console.error("Capture failed on inspector:", message.data);
+            const responseId = message.data?.requestId;
+            console.error("Capture failed on inspector, request ID:", responseId, message.data);
             
-            // Clear the capture timeout
-            if (captureTimeoutRef.current) {
-              clearTimeout(captureTimeoutRef.current);
-              captureTimeoutRef.current = null;
+            // Only process if this is for our current request
+            if (responseId === captureRequestIdRef.current) {
+              // Clear the capture timeout
+              if (captureTimeoutRef.current) {
+                clearTimeout(captureTimeoutRef.current);
+                captureTimeoutRef.current = null;
+              }
+              
+              // Clear loading state and request ID
+              setIsCapturing(false);
+              captureRequestIdRef.current = null;
+            } else {
+              console.log("Ignoring capture error for different request ID");
             }
-            
-            // Clear loading state
-            setIsCapturing(false);
             
             // Still try to refresh in case there were partial captures
             queryClient.invalidateQueries({ queryKey: ['/api/calls', callId, 'images'] });
@@ -451,6 +511,14 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
               description: message.data?.error || "Failed to capture photo from inspector's device",
               variant: "destructive",
             });
+          }
+          break;
+          
+        case "ice-restart-request":
+          // Handle ICE restart request from inspector
+          if (userRole === "coordinator" && message.userId === "inspector") {
+            console.log("Received ICE restart request from inspector");
+            handleIceRestart();
           }
           break;
       }
@@ -480,14 +548,24 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }, []);
 
   // Handle remote capture request from coordinator (for inspector only)
-  const handleRemoteCapture = useCallback(async (videoRotation = 0) => {
+  const handleRemoteCapture = useCallback(async (videoRotation = 0, requestId?: string) => {
     if (userRole !== "inspector") return;
     
     try {
       console.log("Starting remote capture on inspector device...");
       
-      // Use rear camera to take a high-quality photo
-      const imageBlob = await capturePhotoFromCamera();
+      // Try to use existing stream first if available, otherwise use new camera
+      let imageBlob: Blob;
+      
+      if (localStreamRef.current && localStreamRef.current.getVideoTracks().length > 0) {
+        // Use existing stream from call for faster capture
+        console.log("Using existing video stream for capture");
+        imageBlob = await captureImageFromStream(localStreamRef.current);
+      } else {
+        // Fall back to using device camera directly
+        console.log("Using device camera for high-quality capture");
+        imageBlob = await capturePhotoFromCamera();
+      }
       
       // Ensure we have a valid blob
       if (!imageBlob || imageBlob.size === 0) {
@@ -527,7 +605,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       
       const result = await response.json();
       
-      // Send success message back to coordinator
+      // Send success message back to coordinator with request ID
       sendMessage({
         type: "capture-complete",
         callId,
@@ -535,7 +613,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         data: { 
           timestamp: Date.now(), 
           imageId: result.id,
-          filename: filename
+          filename: filename,
+          requestId: requestId
         },
       });
 
@@ -547,13 +626,14 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     } catch (error) {
       console.error("Failed to capture image remotely:", error);
       
-      // Send error message back to coordinator
+      // Send error message back to coordinator with request ID
       sendMessage({
         type: "capture-error",
         callId,
         userId: userRole,
         data: { 
-          error: error instanceof Error ? error.message : "Failed to capture photo"
+          error: error instanceof Error ? error.message : "Failed to capture photo",
+          requestId: requestId
         },
       });
       
@@ -567,7 +647,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
   const captureImage = useCallback(async (videoRotation = 0, retryCount = 0) => {
     const MAX_RETRIES = 2;
-    const CAPTURE_TIMEOUT = 5000; // 5 seconds timeout
+    const CAPTURE_TIMEOUT = 10000; // 10 seconds timeout for mobile networks
     
     try {
       if (userRole === "coordinator") {
@@ -590,10 +670,12 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           return;
         }
 
-        // Set loading state
+        // Set loading state and generate unique request ID
         setIsCapturing(true);
+        const requestId = `capture-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        captureRequestIdRef.current = requestId;
 
-        // Send capture request to inspector
+        // Send capture request to inspector with unique ID
         sendMessage({
           type: "capture-request",
           callId,
@@ -601,31 +683,36 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           data: { 
             videoRotation: videoRotation,
             timestamp: Date.now(),
-            retryCount: retryCount
+            retryCount: retryCount,
+            requestId: requestId
           },
         });
 
-        // Set up timeout (5 seconds for faster response)
+        // Set up timeout (10 seconds for mobile networks)
         captureTimeoutRef.current = setTimeout(() => {
-          setIsCapturing(false);
-          captureTimeoutRef.current = null;
-          
-          // Retry logic
-          if (retryCount < MAX_RETRIES) {
-            toast({
-              title: "Retrying Capture",
-              description: `Attempt ${retryCount + 2} of ${MAX_RETRIES + 1}...`,
-            });
-            // Retry after a short delay
-            setTimeout(() => {
-              captureImage(videoRotation, retryCount + 1);
-            }, 1000);
-          } else {
-            toast({
-              title: "Capture Failed",
-              description: "Unable to capture photo after multiple attempts. Please check the connection and try again.",
-              variant: "destructive",
-            });
+          // Only timeout if this is still the active request
+          if (captureRequestIdRef.current === requestId) {
+            setIsCapturing(false);
+            captureTimeoutRef.current = null;
+            captureRequestIdRef.current = null;
+            
+            // Retry logic
+            if (retryCount < MAX_RETRIES) {
+              toast({
+                title: "Retrying Capture",
+                description: `Attempt ${retryCount + 2} of ${MAX_RETRIES + 1}...`,
+              });
+              // Retry after a short delay
+              setTimeout(() => {
+                captureImage(videoRotation, retryCount + 1);
+              }, 1000);
+            } else {
+              toast({
+                title: "Capture Failed",
+                description: "Unable to capture photo after multiple attempts. Please check the connection and try again.",
+                variant: "destructive",
+              });
+            }
           }
         }, CAPTURE_TIMEOUT);
 
