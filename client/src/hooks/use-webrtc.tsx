@@ -137,6 +137,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, []);
 
+  // Since handleSignalingMessage is a hoisted function, we can reference it directly
   const { sendMessage, isConnected: wsConnected, joinCall } = useWebSocket(callId, userRole, {
     onMessage: handleSignalingMessage,
   });
@@ -659,6 +660,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }
 
+  // Define the signaling message handler as a regular function (gets hoisted)
   async function handleSignalingMessage(message: any) {
     const pc = peerConnectionRef.current;
 
