@@ -111,7 +111,8 @@ export default function CallControls({
 
         {/* Right Controls */}
         <div className="flex items-center space-x-3">
-          {isCoordinator && onCaptureImage && (
+          {/* Show capture button for both coordinators and inspectors */}
+          {onCaptureImage && (
             <Button 
               variant="default"
               onClick={() => onCaptureImage?.(videoRotation)}

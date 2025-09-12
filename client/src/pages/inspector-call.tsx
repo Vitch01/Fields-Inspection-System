@@ -211,6 +211,7 @@ export default function InspectorCall() {
           }}
           onEndCall={endCall}
           onImageClick={setSelectedImage}
+          onCaptureImage={captureImage}
           isCoordinator={false}
           unreadCount={unreadCount}
         />
