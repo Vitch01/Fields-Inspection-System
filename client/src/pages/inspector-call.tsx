@@ -211,7 +211,7 @@ export default function InspectorCall() {
           }}
           onEndCall={endCall}
           onImageClick={setSelectedImage}
-          onCaptureImage={captureImage}
+          // Inspector doesn't have capture button - coordinator controls capture remotely
           isCoordinator={false}
           unreadCount={unreadCount}
         />

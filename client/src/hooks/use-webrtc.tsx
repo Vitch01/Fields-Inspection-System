@@ -23,12 +23,14 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [isConnectionEstablished, setIsConnectionEstablished] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingSupported, setIsRecordingSupported] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const canvasCleanupRef = useRef<(() => void) | null>(null);
+  const captureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
   // Helper function to get supported mimeType
@@ -357,6 +359,63 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
             });
           }
           break;
+
+        case "capture-request":
+          // Only handle if we're the inspector
+          if (userRole === "inspector" && message.userId === "coordinator") {
+            console.log("Received remote capture request from coordinator");
+            toast({
+              title: "Capturing Photo",
+              description: "Coordinator has requested a photo capture",
+            });
+            
+            // Trigger capture on inspector's device
+            handleRemoteCapture(message.data?.videoRotation || 0);
+          }
+          break;
+
+        case "capture-complete":
+          // Only handle if we're the coordinator
+          if (userRole === "coordinator" && message.userId === "inspector") {
+            console.log("Capture completed by inspector:", message.data);
+            
+            // Clear the capture timeout
+            if (captureTimeoutRef.current) {
+              clearTimeout(captureTimeoutRef.current);
+              captureTimeoutRef.current = null;
+            }
+            
+            // Clear loading state
+            setIsCapturing(false);
+            
+            toast({
+              title: "Photo Captured",
+              description: "Inspector's device has captured a high-quality photo",
+            });
+          }
+          break;
+
+        case "capture-error":
+          // Only handle if we're the coordinator
+          if (userRole === "coordinator" && message.userId === "inspector") {
+            console.error("Capture failed on inspector:", message.data);
+            
+            // Clear the capture timeout
+            if (captureTimeoutRef.current) {
+              clearTimeout(captureTimeoutRef.current);
+              captureTimeoutRef.current = null;
+            }
+            
+            // Clear loading state
+            setIsCapturing(false);
+            
+            toast({
+              title: "Capture Failed",
+              description: message.data?.error || "Failed to capture photo from inspector's device",
+              variant: "destructive",
+            });
+          }
+          break;
       }
     } catch (error) {
       console.error("Error handling signaling message:", error);
@@ -383,25 +442,15 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, []);
 
-  const captureImage = useCallback(async (videoRotation = 0) => {
+  // Handle remote capture request from coordinator (for inspector only)
+  const handleRemoteCapture = useCallback(async (videoRotation = 0) => {
+    if (userRole !== "inspector") return;
+    
     try {
-      let imageBlob: Blob;
+      console.log("Starting remote capture on inspector device...");
       
-      if (userRole === "inspector") {
-        // For inspector: Use rear camera to take a high-quality photo
-        imageBlob = await capturePhotoFromCamera();
-      } else {
-        // For coordinator: Capture from inspector's video stream
-        if (!remoteStream) {
-          toast({
-            title: "Capture Failed",
-            description: "No inspector video feed available for capture",
-            variant: "destructive",
-          });
-          return;
-        }
-        imageBlob = await captureImageFromStream(remoteStream);
-      }
+      // Use rear camera to take a high-quality photo
+      const imageBlob = await capturePhotoFromCamera();
       
       // Ensure we have a valid blob
       if (!imageBlob || imageBlob.size === 0) {
@@ -441,34 +490,113 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       
       const result = await response.json();
       
-      // Notify other participants
+      // Send success message back to coordinator
       sendMessage({
-        type: "capture-image",
+        type: "capture-complete",
         callId,
         userId: userRole,
-        data: { timestamp: Date.now(), imageId: result.id },
+        data: { 
+          timestamp: Date.now(), 
+          imageId: result.id,
+          filename: filename
+        },
       });
 
       toast({
-        title: "Image Captured",
-        description: userRole === "coordinator" 
-          ? "Inspector's camera view captured successfully"
-          : "High-quality inspection photo captured and uploaded instantly",
+        title: "Photo Captured",
+        description: "High-quality inspection photo captured and uploaded",
       });
 
-      // Return the captured image data for immediate display
-      return result;
     } catch (error) {
-      console.error("Failed to capture image:", error);
+      console.error("Failed to capture image remotely:", error);
+      
+      // Send error message back to coordinator
+      sendMessage({
+        type: "capture-error",
+        callId,
+        userId: userRole,
+        data: { 
+          error: error instanceof Error ? error.message : "Failed to capture photo"
+        },
+      });
+      
       toast({
         title: "Capture Failed",
-        description: userRole === "inspector" 
-          ? "Failed to access camera for photo capture" 
-          : "Failed to capture inspection image",
+        description: "Failed to capture photo with camera",
         variant: "destructive",
       });
     }
-  }, [callId, userRole, remoteStream, sendMessage, toast]);
+  }, [callId, userRole, sendMessage, toast]);
+
+  const captureImage = useCallback(async (videoRotation = 0) => {
+    try {
+      if (userRole === "coordinator") {
+        // For coordinator: Send request to inspector to capture
+        if (!isConnected || !remoteStream) {
+          toast({
+            title: "Capture Failed",
+            description: "Inspector is not connected",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Don't allow multiple captures at once
+        if (isCapturing) {
+          toast({
+            title: "Please Wait",
+            description: "A photo capture is already in progress",
+          });
+          return;
+        }
+
+        // Set loading state
+        setIsCapturing(true);
+
+        // Send capture request to inspector
+        sendMessage({
+          type: "capture-request",
+          callId,
+          userId: userRole,
+          data: { 
+            videoRotation: videoRotation,
+            timestamp: Date.now()
+          },
+        });
+
+        // Set up timeout (10 seconds)
+        captureTimeoutRef.current = setTimeout(() => {
+          setIsCapturing(false);
+          toast({
+            title: "Capture Timeout",
+            description: "Photo capture took too long. Please try again.",
+            variant: "destructive",
+          });
+        }, 10000);
+
+        toast({
+          title: "Requesting Photo",
+          description: "Triggering inspector's camera to capture photo...",
+        });
+
+        // Return early - success/failure will be handled by message handlers
+        return;
+      } else {
+        // For inspector: This function should not be called directly anymore
+        // Remote capture is handled by handleRemoteCapture
+        console.warn("Direct capture not allowed for inspector - use remote capture");
+        return;
+      }
+    } catch (error) {
+      console.error("Failed to initiate capture:", error);
+      setIsCapturing(false);
+      toast({
+        title: "Capture Failed",
+        description: "Failed to initiate photo capture",
+        variant: "destructive",
+      });
+    }
+  }, [callId, userRole, remoteStream, sendMessage, toast, isConnected, isCapturing]);
 
   const sendChatMessage = useCallback((text: string) => {
     const messageData = {
@@ -751,6 +879,12 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }, [callId, userRole, sendMessage, isRecording, stopRecording, toast]);
 
   function cleanup() {
+    // Clean up capture timeout
+    if (captureTimeoutRef.current) {
+      clearTimeout(captureTimeoutRef.current);
+      captureTimeoutRef.current = null;
+    }
+    
     // Clean up canvas recording elements first
     if (canvasCleanupRef.current) {
       try {
@@ -831,6 +965,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     clearUnreadCount,
     isRecording,
     isRecordingSupported,
+    isCapturing,
     startRecording,
     stopRecording,
   };

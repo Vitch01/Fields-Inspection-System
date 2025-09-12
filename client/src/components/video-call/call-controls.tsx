@@ -29,6 +29,7 @@ interface CallControlsProps {
   videoRotation?: number;
   unreadCount?: number;
   isRecording?: boolean;
+  isCapturing?: boolean;
   onStartRecording?: () => void;
   onStopRecording?: () => void;
   hasStreamToRecord?: boolean;
@@ -49,6 +50,7 @@ export default function CallControls({
   videoRotation = 0,
   unreadCount = 0,
   isRecording = false,
+  isCapturing = false,
   onStartRecording,
   onStopRecording,
   hasStreamToRecord = false,
@@ -111,15 +113,16 @@ export default function CallControls({
 
         {/* Right Controls */}
         <div className="flex items-center space-x-3">
-          {/* Show capture button for both coordinators and inspectors */}
-          {onCaptureImage && (
+          {/* Show capture button only for coordinators */}
+          {onCaptureImage && isCoordinator && (
             <Button 
               variant="default"
               onClick={() => onCaptureImage?.(videoRotation)}
+              disabled={isCapturing}
               data-testid="button-capture-image"
             >
               <Camera className="w-4 h-4 mr-2" />
-              Capture Photo
+              {isCapturing ? "Capturing..." : "Capture Photo"}
             </Button>
           )}
 

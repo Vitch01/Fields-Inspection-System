@@ -50,6 +50,7 @@ export default function CoordinatorCall() {
     unreadCount,
     clearUnreadCount,
     isRecording,
+    isCapturing,
     startRecording,
     stopRecording,
   } = useWebRTC(callId!, "coordinator");
@@ -220,6 +221,7 @@ export default function CoordinatorCall() {
         videoRotation={videoRotation}
         unreadCount={unreadCount}
         isRecording={isRecording}
+        isCapturing={isCapturing}
         onStartRecording={() => startRecording(videoRotation)}
         onStopRecording={handleStopRecording}
         hasStreamToRecord={!!(remoteStream || localStream)}
