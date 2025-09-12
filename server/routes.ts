@@ -215,6 +215,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // API Routes
 
+  // Health check endpoint - handles frequent HEAD /api requests
+  app.get('/api', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  app.head('/api', (req, res) => {
+    res.status(200).end();
+  });
+
   // Auth routes
   app.post('/api/auth/login', async (req, res) => {
     try {
