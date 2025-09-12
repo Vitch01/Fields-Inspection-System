@@ -1,13 +1,23 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 interface UseWebSocketOptions {
   onMessage?: (message: any) => void;
   onConnect?: () => void;
   onDisconnect?: () => void;
+  autoJoin?: boolean; // Whether to automatically send join-call on connect
+}
+
+interface JoinState {
+  callId: string;
+  userId: string;
+  additionalData?: any;
 }
 
 export function useWebSocket(callId: string, userRole: string, options: UseWebSocketOptions = {}) {
+  const { autoJoin = false } = options;
   const [isConnected, setIsConnected] = useState(false);
+  const [pendingJoinMessage, setPendingJoinMessage] = useState<any>(null);
+  const [joinedState, setJoinedState] = useState<JoinState | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
@@ -31,12 +41,35 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
         setIsConnected(true);
         options.onConnect?.();
 
-        // Join the call room
-        sendMessage({
-          type: "join-call",
-          callId,
-          userId: userRole,
-        });
+        // Send buffered join message if exists
+        if (pendingJoinMessage) {
+          console.log("Sending buffered join message:", pendingJoinMessage);
+          ws.send(JSON.stringify(pendingJoinMessage));
+          setPendingJoinMessage(null);
+        }
+        
+        // Re-join if we were previously joined (after reconnection)
+        else if (joinedState && !autoJoin) {
+          console.log("Re-joining call after reconnection:", joinedState);
+          const rejoinMessage = {
+            type: "join-call",
+            callId: joinedState.callId,
+            userId: joinedState.userId,
+            ...joinedState.additionalData
+          };
+          ws.send(JSON.stringify(rejoinMessage));
+        }
+        
+        // Only auto-join if explicitly requested
+        else if (autoJoin) {
+          const autoJoinMessage = {
+            type: "join-call",
+            callId,
+            userId: userRole,
+          };
+          ws.send(JSON.stringify(autoJoinMessage));
+          setJoinedState({ callId, userId: userRole });
+        }
       };
 
       ws.onmessage = (event) => {
@@ -88,9 +121,34 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
     }
   }
 
+  const joinCall = useCallback((additionalData: any = {}) => {
+    const message = {
+      type: "join-call",
+      callId,
+      userId: userRole,
+      ...additionalData
+    };
+    
+    // Store join state for re-joining on reconnection
+    setJoinedState({
+      callId,
+      userId: userRole,
+      additionalData
+    });
+    
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      console.log("Sending join message immediately:", message);
+      wsRef.current.send(JSON.stringify(message));
+    } else {
+      console.log("Buffering join message until connected:", message);
+      setPendingJoinMessage(message);
+    }
+  }, [callId, userRole]);
+
   return {
     isConnected,
     sendMessage,
     disconnect,
+    joinCall,
   };
 }

@@ -54,6 +54,7 @@ export default function CoordinatorCall() {
     startRecording,
     stopRecording,
     networkQuality,
+    joinCall,
   } = useWebRTC(callId!, "coordinator");
 
   const { data: capturedImages = [], refetch: refetchImages } = useQuery<any[]>({
@@ -95,6 +96,17 @@ export default function CoordinatorCall() {
       refetchVideos();
     }, 1000);
   };
+
+  // Send join-call message when component loads
+  useEffect(() => {
+    if (callId) {
+      // Register coordinator with server immediately
+      joinCall({ 
+        role: 'coordinator',
+        name: 'Coordinator' 
+      });
+    }
+  }, [callId, joinCall]);
 
   // Call duration timer based on call start time
   useEffect(() => {

@@ -137,7 +137,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, []);
 
-  const { sendMessage, isConnected: wsConnected } = useWebSocket(callId, userRole, {
+  const { sendMessage, isConnected: wsConnected, joinCall } = useWebSocket(callId, userRole, {
     onMessage: handleSignalingMessage,
   });
 
@@ -687,14 +687,19 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           break;
 
         case "user-joined":
-          console.log("User joined:", message.userId);
+          console.log("User joined:", message.userId, "role:", message.role);
           // Track that a peer has joined (only if it's not our own join message)
-          if (message.userId !== userRole) {
+          if (message.role && message.role !== userRole) {
             setHasPeerJoined(true);
+            console.log("Peer joined, role:", message.role, "my role:", userRole);
           }
-          // Initiate offer when someone joins (for coordinator)
-          if (userRole === "coordinator" && message.userId !== userRole) {
-            setTimeout(() => createOffer(), 1000);
+          // Coordinator should create offer when inspector joins
+          if (userRole === "coordinator" && message.role === "inspector") {
+            console.log("Inspector joined, creating offer in 1 second...");
+            setTimeout(() => {
+              console.log("Creating offer for inspector...");
+              createOffer();
+            }, 1000);
           }
           break;
 
@@ -1437,7 +1442,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   return {
     localStream,
     remoteStream,
-    isConnected,
+    isConnected, // WebRTC peer connection status
+    wsConnected, // WebSocket connection status
     isMuted,
     isVideoEnabled,
     toggleMute,
@@ -1454,5 +1460,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     startRecording,
     stopRecording,
     networkQuality,
+    joinCall,
   };
 }
