@@ -532,9 +532,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     try {
       // Ensure at least one transceiver exists for BUNDLE group
       if (pc.getTransceivers().length === 0) {
-        console.log(`[${userRole}] No transceivers found, adding recvonly transceivers`);
-        pc.addTransceiver('audio', { direction: 'recvonly' });
-        pc.addTransceiver('video', { direction: 'recvonly' });
+        console.log(`[${userRole}] No transceivers found, adding sendrecv transceivers`);
+        pc.addTransceiver('audio', { direction: 'sendrecv' });
+        pc.addTransceiver('video', { direction: 'sendrecv' });
       }
       
       const offerOptions: RTCOfferOptions = {};
@@ -607,8 +607,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           const pc = peerConnectionRef.current;
           if (pc && pc.getTransceivers().length === 0) {
             console.log(`[${userRole}] Adding transceivers before reconnection offer`);
-            pc.addTransceiver('audio', { direction: 'recvonly' });
-            pc.addTransceiver('video', { direction: 'recvonly' });
+            pc.addTransceiver('audio', { direction: 'sendrecv' });
+            pc.addTransceiver('video', { direction: 'sendrecv' });
           }
           createOffer();
         } else {
@@ -632,8 +632,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           const pc = peerConnectionRef.current;
           if (pc && pc.getTransceivers().length === 0) {
             console.log(`[${userRole}] Adding transceivers before reconnection offer`);
-            pc.addTransceiver('audio', { direction: 'recvonly' });
-            pc.addTransceiver('video', { direction: 'recvonly' });
+            pc.addTransceiver('audio', { direction: 'sendrecv' });
+            pc.addTransceiver('video', { direction: 'sendrecv' });
           }
           createOffer();
         } else {
@@ -760,8 +760,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         // Ensure transceivers exist before creating offer for ICE restart
         if (pc.getTransceivers().length === 0) {
           console.log(`[${userRole}] Adding transceivers before ICE restart offer`);
-          pc.addTransceiver('audio', { direction: 'recvonly' });
-          pc.addTransceiver('video', { direction: 'recvonly' });
+          pc.addTransceiver('audio', { direction: 'sendrecv' });
+          pc.addTransceiver('video', { direction: 'sendrecv' });
         }
         await createOffer(true);
       } else {
@@ -913,8 +913,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
                 const pc = peerConnectionRef.current;
                 if (pc && pc.getTransceivers().length === 0) {
                   console.log(`[${userRole}] Adding transceivers before offer to inspector`);
-                  pc.addTransceiver('audio', { direction: 'recvonly' });
-                  pc.addTransceiver('video', { direction: 'recvonly' });
+                  pc.addTransceiver('audio', { direction: 'sendrecv' });
+                  pc.addTransceiver('video', { direction: 'sendrecv' });
                 }
                 createOffer();
               }, 1000);
