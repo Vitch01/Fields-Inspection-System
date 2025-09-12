@@ -124,82 +124,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, []);
 
-  // Enhanced WebSocket connection handler
-  const handleWebSocketConnect = useCallback(() => {
-    console.log('WebSocket connected - WebRTC will initialize');
-    setConnectionStatus('connecting');
-    
-    // Reset WebSocket-related connection failures
-    if (!isConnected && localStream) {
-      console.log('WebSocket reconnected, reinitializing peer connection');
-      // Clean up existing connection first
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-        peerConnectionRef.current = null;
-      }
-      setIsConnected(false);
-      setRemoteStream(null);
-    }
-  }, [isConnected, localStream]);
-
-  const handleWebSocketDisconnect = useCallback(() => {
-    console.log('WebSocket disconnected - WebRTC connection may be affected');
-    // Don't immediately close peer connection, give WebSocket time to reconnect
-    setTimeout(() => {
-      if (!wsConnected && isConnected) {
-        console.log('WebSocket still disconnected after timeout, may need full reconnection');
-      }
-    }, 5000);
-  }, [wsConnected, isConnected]);
-
-  const handleWebSocketAuthError = useCallback(() => {
-    console.error('WebSocket authentication failed - ending call');
-    toast({
-      title: "Authentication Required",
-      description: "Your session has expired. Please rejoin the call.",
-      variant: "destructive",
-    });
-    
-    // Clean up everything and redirect
-    cleanup();
-    setTimeout(() => {
-      if (userRole === "inspector") {
-        window.location.href = `/join/${callId}`;
-      } else {
-        window.location.href = "/";
-      }
-    }, 2000);
-  }, [toast, callId, userRole]);
-
-  const handleNetworkChange = useCallback(() => {
-    console.log('Network change detected - may need to refresh WebRTC connection');
-    toast({
-      title: "Network Changed",
-      description: "Reconnecting to the call...",
-      variant: "default",
-    });
-    
-    // Force WebRTC to use relay mode after network change
-    if (peerConnectionRef.current && peerConnectionRef.current.connectionState !== 'connected') {
-      console.log('Network change detected, will retry with relay mode');
-      setConnectionAttempts(prev => Math.min(prev + 1, maxRetryAttemptsRef.current));
-    }
-  }, [toast]);
-
-  // Initialize WebSocket with enhanced reconnection callbacks
-  const { 
-    sendMessage, 
-    isConnected: wsConnected, 
-    forceReconnect: forceWebSocketReconnect,
-    connectionAttempts: wsConnectionAttempts,
-    lastConnectionError: wsLastError,
-    isNetworkOnline 
-  } = useWebSocket(callId, userRole, {
+  const { sendMessage, isConnected: wsConnected } = useWebSocket(callId, userRole, {
     onMessage: handleSignalingMessage,
-    onConnect: handleWebSocketConnect,
-    onDisconnect: handleWebSocketDisconnect,
-    onAuthError: handleWebSocketAuthError,
-    onNetworkChange: handleNetworkChange,
   });
 
   // Initialize local media stream
@@ -213,25 +139,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   // Initialize peer connection when WebSocket is connected
   useEffect(() => {
     if (wsConnected && localStream) {
-      // Add small delay to ensure WebSocket is fully established
-      const initTimeout = setTimeout(() => {
-        if (wsConnected && localStream && !peerConnectionRef.current) {
-          initializePeerConnection();
-        }
-      }, 500);
-      
-      return () => clearTimeout(initTimeout);
+      initializePeerConnection();
     }
   }, [wsConnected, localStream]);
-  
-  // Monitor WebSocket connection state for recovery
-  useEffect(() => {
-    if (!wsConnected && isConnected) {
-      console.log('WebSocket lost but WebRTC still connected - monitoring for recovery');
-      // If WebSocket is down but WebRTC is up, WebRTC will likely fail soon
-      // Start monitoring for full reconnection need
-    }
-  }, [wsConnected, isConnected]);
 
   async function initializeLocalStream() {
     try {
@@ -328,24 +238,17 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         });
         
       } else if (pc.connectionState === "failed") {
-        console.error("WebRTC connection failed - checking WebSocket and network state");
+        console.error("WebRTC connection failed - attempting retry if available");
         setConnectionStatus('failed');
-        
-        // Check if failure is due to WebSocket issues
-        if (!wsConnected) {
-          console.log("WebRTC failed because WebSocket is disconnected");
-          setConnectionStatus('retrying');
-          return; // Let WebSocket reconnection handle this
-        }
         
         // Trigger retry logic for mobile connections
         if (connectionAttempts < maxRetryAttemptsRef.current && !isRetrying) {
-          console.log("WebRTC connection failed, initiating retry...");
+          console.log("Connection failed, initiating retry...");
           retryConnection();
         } else {
           toast({
             title: "Connection Failed", 
-            description: "Unable to establish connection. Please check your network connection and try rejoining the call.",
+            description: "Unable to establish connection. Please check your network connection and reload the page.",
             variant: "destructive",
           });
         }
@@ -353,12 +256,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       } else if (pc.connectionState === "disconnected") {
         console.warn("WebRTC connection disconnected");
         setConnectionStatus('connecting');
-        
-        // Check if WebSocket is still connected - if not, let it handle reconnection
-        if (!wsConnected) {
-          console.log("WebRTC disconnected and WebSocket is down - waiting for WebSocket recovery");
-          return;
-        }
         
         // For mobile networks, be more aggressive about reconnecting
         if (!isRetrying && connectionAttempts < maxRetryAttemptsRef.current) {
@@ -496,35 +393,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }, []);
 
   const retryConnection = useCallback(async () => {
-    // First check if WebSocket is connected - don't retry WebRTC without WebSocket
-    if (!wsConnected) {
-      console.log('WebSocket not connected, waiting for WebSocket recovery before WebRTC retry');
-      setConnectionStatus('retrying');
-      
-      // Check if WebSocket is actively trying to reconnect
-      if (wsConnectionAttempts > 0) {
-        toast({
-          title: "Reconnecting...",
-          description: `Waiting for network connection... (${wsConnectionAttempts}/10)`,
-          variant: "default",
-        });
-        
-        // Wait for WebSocket to recover
-        setTimeout(() => {
-          if (!wsConnected && wsConnectionAttempts < 10) {
-            retryConnection(); // Check again
-          }
-        }, 3000);
-        return;
-      } else {
-        // Force WebSocket reconnection if it's not trying
-        console.log('Forcing WebSocket reconnection before WebRTC retry');
-        forceWebSocketReconnect();
-        setTimeout(() => retryConnection(), 2000);
-        return;
-      }
-    }
-    
     if (connectionAttempts >= maxRetryAttemptsRef.current) {
       console.error("Maximum retry attempts reached for connection");
       setConnectionStatus('failed');
@@ -544,11 +412,10 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     setConnectionStatus('retrying');
     
     // Adaptive strategy: use relay mode after first failure for mobile compatibility
-    // Also use relay mode if we detect network issues
-    const useRelayMode = newAttempts > 1 || wsConnectionAttempts > 0 || !isNetworkOnline;
+    const useRelayMode = newAttempts > 1;
     
     const delay = calculateRetryDelay(newAttempts);
-    console.log(`Retrying WebRTC connection attempt ${newAttempts}/${maxRetryAttemptsRef.current} after ${delay}ms (Relay mode: ${useRelayMode})`);
+    console.log(`Retrying connection attempt ${newAttempts}/${maxRetryAttemptsRef.current} after ${delay}ms (Relay mode: ${useRelayMode})`);
     
     toast({
       title: "Retrying Connection",
@@ -566,14 +433,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
     connectionRetryTimeoutRef.current = setTimeout(async () => {
       try {
-        // Ensure WebSocket is still connected before proceeding
-        if (!wsConnected) {
-          console.log('WebSocket disconnected during retry, aborting WebRTC retry');
-          setIsRetrying(false);
-          retryConnection(); // Try again
-          return;
-        }
-        
         // Clean up the existing peer connection
         if (peerConnectionRef.current) {
           peerConnectionRef.current.close();
@@ -599,7 +458,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       }
     }, delay);
     
-  }, [connectionAttempts, calculateRetryDelay, wsConnected, localStream, toast, wsConnectionAttempts, forceWebSocketReconnect, isNetworkOnline]);
+  }, [connectionAttempts, calculateRetryDelay, wsConnected, localStream, toast]);
 
   const resetConnectionState = useCallback(() => {
     setConnectionAttempts(0);
@@ -1500,16 +1359,10 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     startRecording,
     stopRecording,
     
-    // Enhanced connection status and quality information
+    // Mobile connection status and quality information
     connectionStatus, // 'connecting' | 'connected' | 'failed' | 'retrying'
-    connectionAttempts, // Number of WebRTC retry attempts made
-    isRetrying, // Whether currently retrying WebRTC connection
-    
-    // WebSocket connection info for network transition handling
-    wsConnected,
-    wsConnectionAttempts,
-    wsLastError,
-    isNetworkOnline,
+    connectionAttempts, // Number of retry attempts made
+    isRetrying, // Whether currently retrying connection
     
     // Connection quality indicators for mobile networks
     connectionQuality: {
@@ -1519,10 +1372,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       maxAttempts: maxRetryAttemptsRef.current,
       hasEstablishedConnection: isConnectionEstablished,
       hasPeerJoined: hasPeerJoined,
-      // Enhanced network quality info
-      webSocketConnected: wsConnected,
-      networkOnline: isNetworkOnline,
-      wsRetryAttempts: wsConnectionAttempts,
     },
     
     // Mobile-specific diagnostic information
@@ -1532,31 +1381,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       iceGatheringState: peerConnectionRef.current?.iceGatheringState || 'unknown',
       localStreamActive: localStreamRef.current ? localStreamRef.current.active : false,
       remoteStreamActive: remoteStream ? remoteStream.active : false,
-      webSocketState: wsConnected ? 'connected' : 'disconnected',
-      lastWSError: wsLastError,
-    },
-    
-    // Force reconnect function for network transitions
-    forceReconnect: () => {
-      console.log('Forcing full reconnection (WebSocket + WebRTC) due to network change');
-      
-      // First force WebSocket reconnection
-      forceWebSocketReconnect();
-      
-      // Then clean up and reset WebRTC
-      setTimeout(() => {
-        if (peerConnectionRef.current) {
-          peerConnectionRef.current.close();
-          peerConnectionRef.current = null;
-        }
-        setIsConnected(false);
-        setRemoteStream(null);
-        setConnectionAttempts(0);
-        setIsRetrying(false);
-        setConnectionStatus('connecting');
-        
-        // WebRTC will reinitialize automatically when WebSocket reconnects
-      }, 1000);
     }
   };
 }
