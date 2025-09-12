@@ -30,10 +30,20 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
 
   function connect() {
     try {
-      // More robust WebSocket URL construction
-      const wsUrl = `${window.location.origin.replace(/^http/, 'ws')}/ws`;
-      console.log("[WebSocket] Attempting connection to:", wsUrl);
-      console.log("[WebSocket] Current location:", window.location.href);
+      // Properly handle HTTPS → WSS and HTTP → WS conversion for mobile compatibility
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      
+      // Enhanced logging for mobile debugging
+      console.log("[WebSocket] Connection details:", {
+        protocol: window.location.protocol,
+        wsProtocol: protocol,
+        host: window.location.host,
+        fullUrl: wsUrl,
+        userAgent: navigator.userAgent,
+        isMobile: /Mobile|Android|iPhone/i.test(navigator.userAgent),
+        timestamp: new Date().toISOString()
+      });
       
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -91,21 +101,34 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
         setIsConnected(false);
         options.onDisconnect?.();
         
-        // Attempt to reconnect after 3 seconds
-        console.log("[WebSocket] Will attempt reconnection in 3 seconds...");
+        // Attempt to reconnect with better timing for mobile networks
+        const isMobile = /Mobile|Android|iPhone/i.test(navigator.userAgent);
+        const reconnectDelay = isMobile ? 5000 : 3000; // Longer delay for mobile to handle network transitions
+        console.log(`[WebSocket] Will attempt reconnection in ${reconnectDelay / 1000} seconds (${isMobile ? 'mobile' : 'desktop'} device)...`);
         reconnectTimeoutRef.current = setTimeout(() => {
           connect();
-        }, 3000);
+        }, reconnectDelay);
       };
 
       ws.onerror = (error) => {
-        console.error("[WebSocket] Error occurred:", error);
-        console.error("[WebSocket] Connection state:", ws.readyState);
-        console.error("[WebSocket] URL attempted:", wsUrl);
+        console.error("[WebSocket] Error occurred:", {
+          error,
+          readyState: ws.readyState,
+          readyStateText: ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][ws.readyState],
+          url: wsUrl,
+          protocol: window.location.protocol,
+          isMobile: /Mobile|Android|iPhone/i.test(navigator.userAgent),
+          timestamp: new Date().toISOString()
+        });
       };
 
     } catch (error) {
-      console.error("[WebSocket] Failed to establish connection:", error);
+      console.error("[WebSocket] Failed to establish connection:", {
+        error,
+        protocol: window.location.protocol,
+        host: window.location.host,
+        isMobile: /Mobile|Android|iPhone/i.test(navigator.userAgent)
+      });
       setIsConnected(false);
     }
   }
