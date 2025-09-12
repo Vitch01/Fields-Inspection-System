@@ -35,6 +35,9 @@ export default function CoordinatorCall() {
     enabled: !!callId,
   });
 
+  // Only initialize WebRTC when callId is available
+  const webRTCResult = callId ? useWebRTC(callId, "coordinator") : null;
+  
   const {
     localStream,
     remoteStream,
@@ -53,7 +56,25 @@ export default function CoordinatorCall() {
     isCapturing,
     startRecording,
     stopRecording,
-  } = useWebRTC(callId!, "coordinator");
+  } = webRTCResult || {
+    localStream: null,
+    remoteStream: null,
+    isConnected: false,
+    isMuted: false,
+    isVideoEnabled: true,
+    toggleMute: () => {},
+    toggleVideo: () => {},
+    captureImage: async () => {},
+    endCall: () => {},
+    chatMessages: [],
+    sendChatMessage: () => {},
+    unreadCount: 0,
+    clearUnreadCount: () => {},
+    isRecording: false,
+    isCapturing: false,
+    startRecording: () => {},
+    stopRecording: () => {},
+  };
 
   const { data: capturedImages = [], refetch: refetchImages } = useQuery<any[]>({
     queryKey: ["/api/calls", callId, "images"],
