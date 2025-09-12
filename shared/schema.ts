@@ -78,7 +78,19 @@ export type VideoRecording = typeof videoRecordings.$inferSelect;
 
 // WebRTC signaling message types
 export const signalingMessageSchema = z.object({
-  type: z.enum(["offer", "answer", "ice-candidate", "join-call", "leave-call", "capture-image", "chat-message"]),
+  type: z.enum([
+    "offer", 
+    "answer", 
+    "ice-candidate", 
+    "join-call", 
+    "leave-call", 
+    "capture-image", 
+    "chat-message",
+    "capture-request",
+    "capture-complete",
+    "capture-error",
+    "ice-restart-request"
+  ]),
   callId: z.string(),
   userId: z.string(),
   data: z.any().optional(),

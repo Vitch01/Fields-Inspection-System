@@ -145,6 +145,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
               data: message.data
             }, message.userId);
             break;
+
+          case 'capture-request':
+            // Forward capture request from coordinator to inspector
+            broadcastToCall(message.callId, {
+              type: 'capture-request',
+              callId: message.callId,
+              userId: message.userId,
+              data: message.data
+            }, message.userId);
+            break;
+
+          case 'capture-complete':
+            // Forward capture complete notification from inspector to coordinator
+            broadcastToCall(message.callId, {
+              type: 'capture-complete',
+              callId: message.callId,
+              userId: message.userId,
+              data: message.data
+            }, message.userId);
+            break;
+
+          case 'capture-error':
+            // Forward capture error from inspector to coordinator
+            broadcastToCall(message.callId, {
+              type: 'capture-error',
+              callId: message.callId,
+              userId: message.userId,
+              data: message.data
+            }, message.userId);
+            break;
+
+          case 'ice-restart-request':
+            // Forward ICE restart request from inspector to coordinator
+            broadcastToCall(message.callId, {
+              type: 'ice-restart-request',
+              callId: message.callId,
+              userId: message.userId,
+              data: message.data
+            }, message.userId);
+            break;
         }
       } catch (error) {
         console.error('WebSocket message error:', error);
