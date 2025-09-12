@@ -27,11 +27,12 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log("WebSocket connected");
+        console.log(`[${userRole}] WebSocket connected`);
         setIsConnected(true);
         options.onConnect?.();
 
         // Join the call room
+        console.log(`[${userRole}] Sending join-call message`);
         sendMessage({
           type: "join-call",
           callId,

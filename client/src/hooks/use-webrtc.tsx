@@ -117,9 +117,264 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, []);
 
+  // Forward declare handleSignalingMessage for WebSocket hook
+  const handleSignalingMessageRef = useRef<(message: any) => void>();
+  
+  // Initialize WebSocket connection with ref callback
   const { sendMessage, isConnected: wsConnected } = useWebSocket(callId, userRole, {
-    onMessage: handleSignalingMessage,
+    onMessage: (message) => handleSignalingMessageRef.current?.(message),
   });
+
+  // Helper functions that don't depend on other callbacks
+  const flushPendingCandidates = useCallback(async () => {
+    const pc = peerConnectionRef.current;
+    if (!pc) return;
+
+    console.log(`Flushing ${pendingRemoteCandidatesRef.current.length} buffered ICE candidates`);
+    for (const candidate of pendingRemoteCandidatesRef.current) {
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch (error) {
+        console.error("Failed to add buffered ICE candidate:", error);
+      }
+    }
+    pendingRemoteCandidatesRef.current = []; // Clear the buffer
+  }, []);
+
+  // Upgrade video quality while maintaining connection
+  async function upgradeVideoQuality(newQuality: 'minimal' | 'low' | 'medium' | 'high') {
+    if (!peerConnectionRef.current || videoQuality === newQuality) {
+      return;
+    }
+    
+    try {
+      console.log(`Upgrading video quality from ${videoQuality} to ${newQuality}`);
+      
+      // Get new stream with better quality
+      const constraints = getAdaptiveVideoConstraints(userRole, newQuality);
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      // Replace video track in peer connection
+      const videoTrack = newStream.getVideoTracks()[0];
+      const sender = peerConnectionRef.current.getSenders().find(s => 
+        s.track && s.track.kind === 'video'
+      );
+      
+      if (sender && videoTrack) {
+        await sender.replaceTrack(videoTrack);
+        
+        // Stop old stream tracks
+        if (localStreamRef.current) {
+          localStreamRef.current.getVideoTracks().forEach(track => track.stop());
+        }
+        
+        // Update stream with new video track and existing audio
+        const audioTrack = localStreamRef.current?.getAudioTracks()[0];
+        const composedStream = new MediaStream();
+        composedStream.addTrack(videoTrack);
+        if (audioTrack) {
+          composedStream.addTrack(audioTrack);
+        }
+        
+        setLocalStream(composedStream);
+        localStreamRef.current = composedStream;
+        setVideoQuality(newQuality);
+        
+        console.log(`Successfully upgraded to ${newQuality} quality`);
+      }
+    } catch (error) {
+      console.error(`Failed to upgrade to ${newQuality} quality:`, error);
+    }
+  }
+
+  // Setup quality monitoring for adaptive video quality
+  const setupQualityMonitoring = useCallback((pc: RTCPeerConnection) => {
+    // Clean up existing monitor
+    if (qualityMonitorRef.current) {
+      qualityMonitorRef.current.stopMonitoring();
+    }
+    
+    // Create new monitor
+    const monitor = new ConnectionQualityMonitor(pc);
+    qualityMonitorRef.current = monitor;
+    
+    // Handle quality changes
+    monitor.onQualityChange((quality) => {
+      setConnectionQuality(quality);
+      
+      // Adapt video quality based on connection quality
+      const currentQuality = videoQuality;
+      let targetQuality: 'minimal' | 'low' | 'medium' | 'high' = currentQuality;
+      
+      if (quality === 'poor' && currentQuality !== 'minimal') {
+        // Downgrade quality on poor connection
+        targetQuality = currentQuality === 'high' ? 'medium' : 
+                       currentQuality === 'medium' ? 'low' : 'minimal';
+        console.log(`Poor connection detected, downgrading from ${currentQuality} to ${targetQuality}`);
+      } else if (quality === 'good' && currentQuality !== 'high') {
+        // Upgrade quality on good connection (but gradually)
+        if (currentQuality === 'minimal') {
+          targetQuality = 'low';
+        } else if (currentQuality === 'low' && Math.random() > 0.7) { // Only upgrade 30% of the time
+          targetQuality = 'medium';
+        }
+        console.log(`Good connection detected, upgrading from ${currentQuality} to ${targetQuality}`);
+      }
+      
+      // Apply quality change if different
+      if (targetQuality !== currentQuality) {
+        setTimeout(() => {
+          upgradeVideoQuality(targetQuality);
+        }, 2000); // Wait 2 seconds before changing quality
+      }
+    });
+    
+    // Start monitoring
+    monitor.startMonitoring();
+  }, [videoQuality]);
+
+  const createOffer = useCallback(async () => {
+    const pc = peerConnectionRef.current;
+    if (!pc) {
+      console.log(`[${userRole}] Cannot create offer - no peer connection`);
+      return;
+    }
+    console.log(`[${userRole}] Creating offer...`);
+
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      
+      sendMessage({
+        type: "offer",
+        callId,
+        userId: userRole,
+        data: offer,
+      });
+    } catch (error) {
+      console.error("Failed to create offer:", error);
+    }
+  }, [callId, userRole, sendMessage]);
+
+  const createAnswer = useCallback(async (offer: RTCSessionDescriptionInit) => {
+    const pc = peerConnectionRef.current;
+    if (!pc) return;
+
+    try {
+      await pc.setRemoteDescription(offer);
+      
+      // Flush buffered ICE candidates after setting remote description
+      await flushPendingCandidates();
+      
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      
+      sendMessage({
+        type: "answer",
+        callId,
+        userId: userRole,
+        data: answer,
+      });
+    } catch (error) {
+      console.error("Failed to create answer:", error);
+    }
+  }, [callId, userRole, sendMessage, flushPendingCandidates]);
+
+  const initializePeerConnection = useCallback(async () => {
+    console.log(`[${userRole}] Creating peer connection`);
+    // For inspector on mobile, force TURN-only for better reliability
+    const pc = userRole === "inspector" 
+      ? createPeerConnectionForMobile() 
+      : createPeerConnection();
+    peerConnectionRef.current = pc;
+    console.log(`[${userRole}] Peer connection created`);
+
+    // Add local stream tracks with bitrate limiting for mobile
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        const sender = pc.addTrack(track, localStreamRef.current!);
+        
+        // Limit initial bitrate for inspector on mobile
+        if (userRole === "inspector" && track.kind === "video") {
+          const params = sender.getParameters();
+          if (!params.encodings) {
+            params.encodings = [{}];
+          }
+          params.encodings[0].maxBitrate = 150000; // 150kbps initial
+          params.encodings[0].scaleResolutionDownBy = 2; // Scale down resolution
+          sender.setParameters(params).catch(e => console.error("Failed to set bitrate:", e));
+        }
+      });
+    }
+
+    // Handle remote stream
+    pc.ontrack = (event) => {
+      console.log(`[${userRole}] Received remote track:`, event.track.kind);
+      setRemoteStream(event.streams[0]);
+      console.log(`[${userRole}] Remote stream set:`, event.streams[0]);
+    };
+
+    // Handle connection state changes with auto-recovery
+    let connectionCheckTimer: number | null = null;
+    pc.onconnectionstatechange = () => {
+      const state = pc.connectionState;
+      console.log(`Connection state changed: ${state}`);
+      
+      const connected = state === "connected";
+      setIsConnected(connected);
+      
+      if (connected) {
+        setIsConnectionEstablished(true);
+        // Clear any recovery timer
+        if (connectionCheckTimer) {
+          clearTimeout(connectionCheckTimer);
+          connectionCheckTimer = null;
+        }
+        // Start quality monitoring once connected
+        setupQualityMonitoring(pc);
+      } else if (state === "failed" || state === "disconnected") {
+        // Start recovery timer
+        if (!connectionCheckTimer) {
+          connectionCheckTimer = window.setTimeout(() => {
+            console.log("Connection lost, attempting ICE restart");
+            // Trigger ICE restart
+            if (pc.restartIce) {
+              pc.restartIce();
+              // We'll recreate offer in a separate effect
+            }
+          }, 5000); // Wait 5 seconds before restarting
+        }
+      }
+    };
+
+    // Handle ICE candidates
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        sendMessage({
+          type: "ice-candidate",
+          callId,
+          userId: userRole,
+          data: event.candidate,
+        });
+      }
+    };
+
+    // Process any globally buffered ICE candidates
+    if (pendingGlobalCandidatesRef.current.length > 0) {
+      console.log(`Processing ${pendingGlobalCandidatesRef.current.length} globally buffered ICE candidates`);
+      // Move global candidates to the regular buffer
+      pendingRemoteCandidatesRef.current.push(...pendingGlobalCandidatesRef.current);
+      pendingGlobalCandidatesRef.current = [];
+      
+      // If we have remote description, flush them now
+      if (pc.remoteDescription) {
+        await flushPendingCandidates();
+      }
+    }
+    
+    // Return true to indicate success
+    return true;
+  }, [callId, userRole, sendMessage, setupQualityMonitoring, flushPendingCandidates]);
 
   // Don't auto-initialize stream - wait for user gesture (join button)
   useEffect(() => {
@@ -130,10 +385,24 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
   // Initialize peer connection when WebSocket is connected
   useEffect(() => {
-    if (wsConnected && localStream) {
-      initializePeerConnection();
+    console.log(`[${userRole}] Checking peer connection init: wsConnected=${wsConnected}, hasLocalStream=${!!localStream}`);
+    if (wsConnected && localStream && !peerConnectionRef.current) {
+      console.log(`[${userRole}] Initializing peer connection`);
+      initializePeerConnection().then(() => {
+        // After peer connection is initialized, handle role-specific logic
+        if (userRole === "coordinator") {
+          // Coordinator creates offer immediately
+          console.log("[coordinator] Creating initial offer after PC init");
+          createOffer();
+        } else if (userRole === "inspector" && pendingOfferRef.current) {
+          // Inspector processes buffered offer if any
+          console.log("[inspector] Processing buffered offer after PC init");
+          createAnswer(pendingOfferRef.current);
+          pendingOfferRef.current = null;
+        }
+      });
     }
-  }, [wsConnected, localStream]);
+  }, [wsConnected, localStream, userRole, initializePeerConnection, createOffer, createAnswer]);
 
   async function initializeLocalStream() {
     await initializeStreamWithQuality(videoQuality);
@@ -199,177 +468,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }
 
-  async function flushPendingCandidates() {
-    const pc = peerConnectionRef.current;
-    if (!pc) return;
-
-    console.log(`Flushing ${pendingRemoteCandidatesRef.current.length} buffered ICE candidates`);
-    for (const candidate of pendingRemoteCandidatesRef.current) {
-      try {
-        await pc.addIceCandidate(candidate);
-      } catch (error) {
-        console.error("Failed to add buffered ICE candidate:", error);
-      }
-    }
-    pendingRemoteCandidatesRef.current = []; // Clear the buffer
-  }
-
-  async function initializePeerConnection() {
-    // For inspector on mobile, force TURN-only for better reliability
-    const pc = userRole === "inspector" 
-      ? createPeerConnectionForMobile() 
-      : createPeerConnection();
-    peerConnectionRef.current = pc;
-
-    // Add local stream tracks with bitrate limiting for mobile
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        const sender = pc.addTrack(track, localStreamRef.current!);
-        
-        // Limit initial bitrate for inspector on mobile
-        if (userRole === "inspector" && track.kind === "video") {
-          const params = sender.getParameters();
-          if (!params.encodings) {
-            params.encodings = [{}];
-          }
-          params.encodings[0].maxBitrate = 150000; // 150kbps initial
-          params.encodings[0].scaleResolutionDownBy = 2; // Scale down resolution
-          sender.setParameters(params).catch(e => console.error("Failed to set bitrate:", e));
-        }
-      });
-    }
-
-    // Handle remote stream
-    pc.ontrack = (event) => {
-      setRemoteStream(event.streams[0]);
-    };
-
-    // Handle connection state changes with auto-recovery
-    let connectionCheckTimer: number | null = null;
-    pc.onconnectionstatechange = () => {
-      const state = pc.connectionState;
-      console.log(`Connection state changed: ${state}`);
-      
-      const connected = state === "connected";
-      setIsConnected(connected);
-      
-      if (connected) {
-        setIsConnectionEstablished(true);
-        // Clear any recovery timer
-        if (connectionCheckTimer) {
-          clearTimeout(connectionCheckTimer);
-          connectionCheckTimer = null;
-        }
-        // Start quality monitoring once connected
-        setupQualityMonitoring(pc);
-      } else if (state === "failed" || state === "disconnected") {
-        // Start recovery timer
-        if (!connectionCheckTimer) {
-          connectionCheckTimer = window.setTimeout(() => {
-            console.log("Connection lost, attempting ICE restart");
-            // Trigger ICE restart
-            if (pc.restartIce) {
-              pc.restartIce();
-              // Recreate offer/answer
-              if (userRole === "coordinator") {
-                createOffer();
-              }
-            }
-          }, 5000); // Wait 5 seconds before restarting
-        }
-      }
-    };
-
-    // Handle ICE candidates
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        sendMessage({
-          type: "ice-candidate",
-          callId,
-          userId: userRole,
-          data: event.candidate,
-        });
-      }
-    };
-
-    // Process any buffered offer (for inspector)
-    if (userRole === "inspector" && pendingOfferRef.current) {
-      console.log("Processing buffered offer");
-      await createAnswer(pendingOfferRef.current);
-      pendingOfferRef.current = null;
-    }
-
-    // Process any globally buffered ICE candidates
-    if (pendingGlobalCandidatesRef.current.length > 0) {
-      console.log(`Processing ${pendingGlobalCandidatesRef.current.length} globally buffered ICE candidates`);
-      // Move global candidates to the regular buffer
-      pendingRemoteCandidatesRef.current.push(...pendingGlobalCandidatesRef.current);
-      pendingGlobalCandidatesRef.current = [];
-      
-      // If we have remote description, flush them now
-      if (pc.remoteDescription) {
-        await flushPendingCandidates();
-      }
-    }
-
-    // Create offer if coordinator
-    if (userRole === "coordinator") {
-      createOffer();
-    }
-  }
-
-  async function createOffer() {
-    const pc = peerConnectionRef.current;
-    if (!pc) return;
-
-    try {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      
-      sendMessage({
-        type: "offer",
-        callId,
-        userId: userRole,
-        data: offer,
-      });
-    } catch (error) {
-      console.error("Failed to create offer:", error);
-    }
-  }
-
-  async function createAnswer(offer: RTCSessionDescriptionInit) {
-    const pc = peerConnectionRef.current;
-    if (!pc) return;
-
-    try {
-      await pc.setRemoteDescription(offer);
-      
-      // Flush buffered ICE candidates after setting remote description
-      console.log(`Flushing ${pendingRemoteCandidatesRef.current.length} buffered ICE candidates`);
-      for (const candidate of pendingRemoteCandidatesRef.current) {
-        try {
-          await pc.addIceCandidate(candidate);
-        } catch (error) {
-          console.error("Failed to add buffered ICE candidate:", error);
-        }
-      }
-      pendingRemoteCandidatesRef.current = []; // Clear the buffer
-      
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      
-      sendMessage({
-        type: "answer",
-        callId,
-        userId: userRole,
-        data: answer,
-      });
-    } catch (error) {
-      console.error("Failed to create answer:", error);
-    }
-  }
-
-  async function handleSignalingMessage(message: any) {
+  const handleSignalingMessage = useCallback(async (message: any) => {
     const pc = peerConnectionRef.current;
 
     try {
@@ -500,7 +599,12 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     } catch (error) {
       console.error("Error handling signaling message:", error);
     }
-  }
+  }, [userRole, callId, createAnswer, createOffer, hasPeerJoined, isConnectionEstablished, toast, playNotificationSound]);
+  
+  // Update the ref when handleSignalingMessage changes
+  useEffect(() => {
+    handleSignalingMessageRef.current = handleSignalingMessage;
+  }, [handleSignalingMessage]);
 
   const toggleMute = useCallback(() => {
     if (localStreamRef.current) {
@@ -889,98 +993,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, [callId, userRole, sendMessage, isRecording, stopRecording, toast]);
 
-  // Setup quality monitoring for adaptive video quality
-  function setupQualityMonitoring(pc: RTCPeerConnection) {
-    // Clean up existing monitor
-    if (qualityMonitorRef.current) {
-      qualityMonitorRef.current.stopMonitoring();
-    }
-    
-    // Create new monitor
-    const monitor = new ConnectionQualityMonitor(pc);
-    qualityMonitorRef.current = monitor;
-    
-    // Handle quality changes
-    monitor.onQualityChange((quality) => {
-      setConnectionQuality(quality);
-      
-      // Adapt video quality based on connection quality
-      const currentQuality = videoQuality;
-      let targetQuality: 'minimal' | 'low' | 'medium' | 'high' = currentQuality;
-      
-      if (quality === 'poor' && currentQuality !== 'minimal') {
-        // Downgrade quality on poor connection
-        targetQuality = currentQuality === 'high' ? 'medium' : 
-                       currentQuality === 'medium' ? 'low' : 'minimal';
-        console.log(`Poor connection detected, downgrading from ${currentQuality} to ${targetQuality}`);
-      } else if (quality === 'good' && currentQuality !== 'high') {
-        // Upgrade quality on good connection (but gradually)
-        if (currentQuality === 'minimal') {
-          targetQuality = 'low';
-        } else if (currentQuality === 'low' && Math.random() > 0.7) { // Only upgrade 30% of the time
-          targetQuality = 'medium';
-        }
-        console.log(`Good connection detected, upgrading from ${currentQuality} to ${targetQuality}`);
-      }
-      
-      // Apply quality change if different
-      if (targetQuality !== currentQuality) {
-        setTimeout(() => {
-          upgradeVideoQuality(targetQuality);
-        }, 2000); // Wait 2 seconds before changing quality
-      }
-    });
-    
-    // Start monitoring
-    monitor.startMonitoring();
-  }
-
-  // Upgrade video quality while maintaining connection
-  async function upgradeVideoQuality(newQuality: 'minimal' | 'low' | 'medium' | 'high') {
-    if (!peerConnectionRef.current || videoQuality === newQuality) {
-      return;
-    }
-    
-    try {
-      console.log(`Upgrading video quality from ${videoQuality} to ${newQuality}`);
-      
-      // Get new stream with better quality
-      const constraints = getAdaptiveVideoConstraints(userRole, newQuality);
-      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
-      
-      // Replace video track in peer connection
-      const videoTrack = newStream.getVideoTracks()[0];
-      const sender = peerConnectionRef.current.getSenders().find(s => 
-        s.track && s.track.kind === 'video'
-      );
-      
-      if (sender && videoTrack) {
-        await sender.replaceTrack(videoTrack);
-        
-        // Stop old stream tracks
-        if (localStreamRef.current) {
-          localStreamRef.current.getVideoTracks().forEach(track => track.stop());
-        }
-        
-        // Update stream with new video track and existing audio
-        const audioTrack = localStreamRef.current?.getAudioTracks()[0];
-        const composedStream = new MediaStream();
-        composedStream.addTrack(videoTrack);
-        if (audioTrack) {
-          composedStream.addTrack(audioTrack);
-        }
-        
-        setLocalStream(composedStream);
-        localStreamRef.current = composedStream;
-        setVideoQuality(newQuality);
-        
-        console.log(`Successfully upgraded to ${newQuality} quality`);
-      }
-    } catch (error) {
-      console.error(`Failed to upgrade to ${newQuality} quality:`, error);
-    }
-  }
-
   // Expose method to start media stream (call when user taps join)
   const startMediaStream = useCallback(async () => {
     console.log("Starting media stream after user gesture");
@@ -991,7 +1003,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       console.log("Inspector initializing peer connection after media stream");
       await initializePeerConnection();
     }
-  }, [userRole]);
+  }, [userRole, initializePeerConnection]);
 
   function cleanup() {
     // Clear any buffered ICE candidates
