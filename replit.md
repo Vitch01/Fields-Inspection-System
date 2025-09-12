@@ -3,13 +3,14 @@
 This is a real-time video calling application built for remote site inspections. The application enables coordinators to create video calls with inspectors for conducting site surveys and quality assessments. During calls, users can capture and share images for documentation purposes. The system uses React with TypeScript for the frontend, Express.js for the backend, and WebRTC for real-time video communication.
 
 **Recent Updates (Sep 2025):**
-- Fixed cellular connectivity issues for inspectors with working TURN servers and automatic relay fallback
-- Replaced non-functional Cloudflare TURN servers with Metered Open Relay Project servers (20GB/month free tier)
-- Added TURNS (TURN over TLS) on port 443 for better mobile network compatibility
-- Implemented automatic relay fallback when direct connection fails on mobile devices
-- Fixed photo capture by properly forwarding WebSocket messages between coordinator and inspector
-- Added inspector thank you page with company branding displayed after call completion
-- Enhanced home page with dual interface: coordinator call creation and inspector call joining
+- Optimized for slow cellular connections: reduced video to 300kbps, 640x360 @ 15fps for mobile devices
+- Fixed cellular connectivity with Metered Open Relay TURN servers (20GB/month free tier)
+- Force relay mode for mobile inspectors to ensure reliable connections on restrictive networks
+- Extended connection timeout to 30 seconds for slow cellular networks
+- Applied aggressive bitrate limits: 300kbps video, 24kbps audio for mobile
+- Fixed photo capture by properly forwarding WebSocket messages between participants
+- Added inspector thank you page with company branding after call completion
+- Enhanced home page with dual interface for coordinators and inspectors
 
 # User Preferences
 
