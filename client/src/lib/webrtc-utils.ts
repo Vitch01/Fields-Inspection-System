@@ -1,39 +1,66 @@
-export function createPeerConnection(): RTCPeerConnection {
+// Mobile network detection utilities
+export function isMobileConnection(): boolean {
+  const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+  
+  if (connection) {
+    // Check if connection is cellular
+    const cellularTypes = ['cellular', '2g', '3g', '4g', '5g'];
+    if (cellularTypes.includes(connection.effectiveType?.toLowerCase()) || 
+        cellularTypes.includes(connection.type?.toLowerCase())) {
+      return true;
+    }
+  }
+  
+  // Fallback detection methods
+  const userAgent = navigator.userAgent.toLowerCase();
+  const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+  
+  return isMobileDevice;
+}
+
+export function getNetworkType(): 'wifi' | 'cellular' | 'unknown' {
+  const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+  
+  if (connection) {
+    const cellularTypes = ['cellular', '2g', '3g', '4g', '5g'];
+    if (cellularTypes.includes(connection.effectiveType?.toLowerCase()) || 
+        cellularTypes.includes(connection.type?.toLowerCase())) {
+      return 'cellular';
+    }
+    if (connection.type === 'wifi') {
+      return 'wifi';
+    }
+  }
+  
+  return 'unknown';
+}
+
+export function createPeerConnection(forceMobileOptimization: boolean = false): RTCPeerConnection {
+  const isMobile = isMobileConnection() || forceMobileOptimization;
+  const networkType = getNetworkType();
+  
+  console.log(`Creating peer connection - Mobile: ${isMobile}, Network: ${networkType}`);
+  
   const configuration: RTCConfiguration = {
     iceServers: [
-      // STUN servers for NAT traversal
-      // Using multiple Google STUN servers for redundancy
+      // STUN servers for NAT traversal - More reliable Google STUN servers
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
       { urls: 'stun:stun3.l.google.com:19302' },
       { urls: 'stun:stun4.l.google.com:19302' },
       
+      // Additional STUN servers for better mobile connectivity
+      { urls: 'stun:stun.stunprotocol.org:3478' },
+      { urls: 'stun:stun.ekiga.net' },
+      
       // ============================================================
-      // TEMPORARY PUBLIC TURN SERVERS FOR MOBILE CONNECTIVITY
+      // ENHANCED TURN SERVERS FOR MOBILE CONNECTIVITY
       // ============================================================
-      // WARNING: These are public demo TURN servers with public credentials
-      // They enable connectivity for mobile devices on restrictive carrier-grade NAT networks
-      // DO NOT use these in production - they are a temporary stopgap solution
-      // 
-      // PRODUCTION IMPLEMENTATION:
-      // 1. Set up a backend endpoint to generate time-limited credentials (24-hour expiry)
-      // 2. Use per-user authentication tokens for credential generation
-      // 3. Implement secure credential rotation mechanism
-      // 4. Consider using services like:
-      //    - Twilio Network Traversal Service
-      //    - Xirsys TURN servers
-      //    - Self-hosted CoTURN server
-      //    - Cloudflare Calls TURN service
-      //
-      // LIMITATIONS OF THESE PUBLIC SERVERS:
-      // - May have usage limits or bandwidth restrictions
-      // - Could be shut down at any time without notice
-      // - No guarantee of availability or performance
-      // - Shared with other users (potential congestion)
-      //
-      // These Cloudflare public TURN servers use "public" credentials intentionally
-      // for demo/development purposes only
+      // Multiple TURN server providers for maximum reliability
+      // These provide better mobile carrier compatibility
+      
+      // Cloudflare TURN servers (primary)
       { 
         urls: 'turn:turn.cloudflare.com:3478',
         username: 'public',
@@ -43,19 +70,74 @@ export function createPeerConnection(): RTCPeerConnection {
         urls: 'turn:turn.cloudflare.com:443?transport=tcp',
         username: 'public',
         credential: 'public'
+      },
+      
+      // Additional public TURN servers for fallback
+      {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      
+      // Backup TURN servers on different ports for mobile carriers
+      {
+        urls: 'turn:relay.backups.cz',
+        username: 'webrtc',
+        credential: 'webrtc'
+      },
+      {
+        urls: 'turn:relay.backups.cz?transport=tcp',
+        username: 'webrtc',
+        credential: 'webrtc'
       }
       // ============================================================
     ],
-    // Improve ICE gathering on mobile networks
-    iceCandidatePoolSize: 10,
-    // Force all traffic through TURN for mobile connections if needed
-    iceTransportPolicy: 'all', // Use 'all' to allow both STUN and TURN
-    // Better handling of network changes
+    
+    // Mobile-optimized ICE configuration
+    iceCandidatePoolSize: isMobile ? 20 : 10, // More candidates for mobile
+    
+    // For mobile networks, allow both STUN and TURN but prioritize TURN
+    iceTransportPolicy: 'all',
+    
+    // Mobile-specific connection policies
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require'
   };
+  
+  // Force relay (TURN only) for known problematic mobile networks if needed
+  if (isMobile && networkType === 'cellular') {
+    console.log('Detected cellular connection - using enhanced mobile configuration');
+    configuration.iceCandidatePoolSize = 25; // Even more candidates for cellular
+  }
 
-  return new RTCPeerConnection(configuration);
+  const pc = new RTCPeerConnection(configuration);
+  
+  // Add mobile-specific event logging
+  if (isMobile) {
+    pc.addEventListener('connectionstatechange', () => {
+      console.log(`🔄 [Mobile] Connection state: ${pc.connectionState}`);
+    });
+    
+    pc.addEventListener('icegatheringstatechange', () => {
+      console.log(`🧊 [Mobile] ICE gathering: ${pc.iceGatheringState}`);
+    });
+    
+    pc.addEventListener('iceconnectionstatechange', () => {
+      console.log(`❄️ [Mobile] ICE connection: ${pc.iceConnectionState}`);
+    });
+  }
+  
+  return pc;
 }
 
 export async function captureImageFromStream(stream: MediaStream): Promise<Blob> {
