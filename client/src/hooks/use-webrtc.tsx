@@ -291,7 +291,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
     // Add local stream tracks with bitrate limiting for mobile
     if (localStreamRef.current) {
+      console.log(`[${userRole}] Adding ${localStreamRef.current.getTracks().length} tracks to peer connection`);
       localStreamRef.current.getTracks().forEach(track => {
+        console.log(`[${userRole}] Adding ${track.kind} track (id: ${track.id}, enabled: ${track.enabled})`);
         const sender = pc.addTrack(track, localStreamRef.current!);
         
         // Limit initial bitrate for inspector on mobile
@@ -385,21 +387,30 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
   // Initialize peer connection when WebSocket is connected
   useEffect(() => {
-    console.log(`[${userRole}] Checking peer connection init: wsConnected=${wsConnected}, hasLocalStream=${!!localStream}`);
+    console.log(`[${userRole}] Checking peer connection init: wsConnected=${wsConnected}, hasLocalStream=${!!localStream}, hasPeerConnection=${!!peerConnectionRef.current}`);
     if (wsConnected && localStream && !peerConnectionRef.current) {
-      console.log(`[${userRole}] Initializing peer connection`);
+      console.log(`[${userRole}] All conditions met, initializing peer connection`);
+      console.log(`[${userRole}] Local stream tracks available:`, localStream.getTracks().map(t => ({kind: t.kind, enabled: t.enabled})));
+      
       initializePeerConnection().then(() => {
+        console.log(`[${userRole}] Peer connection initialized successfully`);
         // After peer connection is initialized, handle role-specific logic
         if (userRole === "coordinator") {
-          // Coordinator creates offer immediately
+          // Coordinator creates offer immediately after tracks are added
           console.log("[coordinator] Creating initial offer after PC init");
-          createOffer();
+          // Small delay to ensure tracks are fully registered
+          setTimeout(() => {
+            console.log("[coordinator] Creating offer now");
+            createOffer();
+          }, 100);
         } else if (userRole === "inspector" && pendingOfferRef.current) {
           // Inspector processes buffered offer if any
           console.log("[inspector] Processing buffered offer after PC init");
           createAnswer(pendingOfferRef.current);
           pendingOfferRef.current = null;
         }
+      }).catch(error => {
+        console.error(`[${userRole}] Failed to initialize peer connection:`, error);
       });
     }
   }, [wsConnected, localStream, userRole, initializePeerConnection, createOffer, createAnswer]);
@@ -995,15 +1006,13 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
   // Expose method to start media stream (call when user taps join)
   const startMediaStream = useCallback(async () => {
-    console.log("Starting media stream after user gesture");
+    console.log(`[${userRole}] Starting media stream after user gesture`);
     await initializeLocalStream();
     
-    // For inspectors, also initialize peer connection after media is ready
-    if (userRole === "inspector" && localStreamRef.current) {
-      console.log("Inspector initializing peer connection after media stream");
-      await initializePeerConnection();
-    }
-  }, [userRole, initializePeerConnection]);
+    // Don't initialize peer connection here - let the useEffect handle it
+    // This avoids double initialization
+    console.log(`[${userRole}] Media stream started, local stream available:`, !!localStreamRef.current);
+  }, [userRole]);
 
   function cleanup() {
     // Clear any buffered ICE candidates

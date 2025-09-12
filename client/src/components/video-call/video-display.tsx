@@ -122,13 +122,30 @@ export default function VideoDisplay({
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
+      console.log(`[VideoDisplay] Setting local stream on video element`);
       localVideoRef.current.srcObject = localStream;
     }
   }, [localStream]);
 
   useEffect(() => {
+    console.log(`[VideoDisplay] Remote stream changed:`, remoteStream);
     if (remoteVideoRef.current && remoteStream) {
+      console.log(`[VideoDisplay] Setting remote stream on video element`);
+      console.log(`[VideoDisplay] Remote stream tracks:`, remoteStream.getTracks().map(t => ({kind: t.kind, enabled: t.enabled, id: t.id})));
       remoteVideoRef.current.srcObject = remoteStream;
+      
+      // Explicitly try to play the video to handle autoplay policies
+      remoteVideoRef.current.play().then(() => {
+        console.log(`[VideoDisplay] Remote video playback started`);
+        // Unmute after successful playback for non-coordinator roles
+        if (!isCoordinator && remoteVideoRef.current) {
+          remoteVideoRef.current.muted = false;
+          console.log(`[VideoDisplay] Remote video unmuted`);
+        }
+      }).catch(error => {
+        console.warn(`[VideoDisplay] Autoplay failed:`, error);
+        // Video will play when user interacts with the page
+      });
       
       // Listen for video metadata to get actual dimensions
       const video = remoteVideoRef.current;
@@ -136,6 +153,7 @@ export default function VideoDisplay({
         if (video.videoWidth && video.videoHeight) {
           const aspectRatio = video.videoWidth / video.videoHeight;
           setVideoAspectRatio(aspectRatio);
+          console.log(`[VideoDisplay] Video metadata loaded: ${video.videoWidth}x${video.videoHeight}, aspect ratio: ${aspectRatio}`);
         }
       };
       
@@ -144,8 +162,10 @@ export default function VideoDisplay({
       return () => {
         video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       };
+    } else if (!remoteStream) {
+      console.log(`[VideoDisplay] No remote stream available`);
     }
-  }, [remoteStream]);
+  }, [remoteStream, isCoordinator]);
 
 
   const handleCaptureImage = () => {
@@ -233,7 +253,7 @@ export default function VideoDisplay({
           ref={remoteVideoRef}
           autoPlay
           playsInline
-          muted={isCoordinator} // Coordinator doesn't hear their own audio
+          muted // Always mute initially to satisfy autoplay policies
           className={`${
             isFullscreen 
               ? getFullscreenVideoClass()
