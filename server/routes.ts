@@ -400,6 +400,61 @@ export async function registerRoutes(app: Express, middleware?: MiddlewareOption
     }
   });
 
+  // Session refresh endpoint for network transitions
+  app.post('/api/auth/refresh-session', middleware?.requireAuth || ((req: any, res: any, next: any) => next()), async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) {
+        console.warn(`Session refresh failed: User ${req.session.userId} not found`);
+        return res.status(404).json({ 
+          message: 'User not found',
+          code: 'USER_NOT_FOUND'
+        });
+      }
+      
+      // Refresh session by regenerating session ID and extending expiry
+      req.session.regenerate((err) => {
+        if (err) {
+          console.error('Session regeneration failed:', err);
+          return res.status(500).json({ 
+            message: 'Session refresh failed',
+            code: 'SESSION_REGENERATION_FAILED'
+          });
+        }
+        
+        // Re-set session data
+        req.session.userId = user.id;
+        req.session.role = user.role;
+        
+        // Save the session
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error('Session save failed:', saveErr);
+            return res.status(500).json({ 
+              message: 'Session refresh failed',
+              code: 'SESSION_SAVE_FAILED'
+            });
+          }
+          
+          console.log(`Session refreshed for user ${user.username} (${user.role})`);
+          res.json({ 
+            success: true,
+            user: { id: user.id, username: user.username, role: user.role, name: user.name },
+            sessionRefreshed: true,
+            timestamp: new Date().toISOString()
+          });
+        });
+      });
+      
+    } catch (error) {
+      console.error('Session refresh error:', error);
+      res.status(500).json({ 
+        message: 'Session refresh failed',
+        code: 'INTERNAL_ERROR'
+      });
+    }
+  });
+
   // Call management routes
   app.post('/api/calls', async (req, res) => {
     try {

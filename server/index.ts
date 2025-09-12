@@ -35,11 +35,22 @@ declare module 'express-session' {
   }
 }
 
-// Authentication middleware
+// Enhanced authentication middleware with better error handling for network transitions
 export const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   if (!req.session.userId) {
-    return res.status(401).json({ message: 'Authentication required' });
+    return res.status(401).json({ 
+      message: 'Authentication required',
+      code: 'AUTH_REQUIRED',
+      timestamp: new Date().toISOString()
+    });
   }
+  
+  // Extend session expiry on successful authentication check
+  // This helps with network transitions where sessions might be close to expiring
+  if (req.session) {
+    req.session.touch();
+  }
+  
   next();
 };
 
