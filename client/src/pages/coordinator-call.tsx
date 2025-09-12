@@ -6,16 +6,19 @@ import ChatPanel from "@/components/video-call/chat-panel";
 import InspectorLocation from "@/components/video-call/inspector-location";
 import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
+import QRCodeDisplay from "@/components/video-call/qr-code-display";
 import { useWebRTC } from "@/hooks/use-webrtc";
 import { useState, useEffect } from "react";
-import { Clock, Signal, Users, Copy, ExternalLink } from "lucide-react";
+import { Clock, Signal, Users, Copy, ExternalLink, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CoordinatorCall() {
   const { callId } = useParams();
   const [showSettings, setShowSettings] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [showQRCode, setShowQRCode] = useState(false);
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [callDuration, setCallDuration] = useState(0); // seconds
   const [videoRotation, setVideoRotation] = useState(0); // Track video rotation state
@@ -142,6 +145,10 @@ export default function CoordinatorCall() {
     window.open(inspectorUrl, '_blank');
   };
 
+  const getInspectorUrl = () => {
+    return `${window.location.origin}/join/${callId}`;
+  };
+
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header with Call Status */}
@@ -188,6 +195,15 @@ export default function CoordinatorCall() {
             >
               <ExternalLink className="w-3 h-3 mr-1" />
               Open Link
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => setShowQRCode(true)}
+              data-testid="button-show-qr-code"
+            >
+              <QrCode className="w-3 h-3 mr-1" />
+              QR Code
             </Button>
           </div>
           <div className="flex items-center space-x-1">
@@ -270,6 +286,23 @@ export default function CoordinatorCall() {
         selectedImage={selectedImage}
         onClose={() => setSelectedImage(null)}
       />
+
+      {/* QR Code Modal */}
+      <Dialog open={showQRCode} onOpenChange={setShowQRCode}>
+        <DialogContent className="max-w-sm" data-testid="dialog-qr-code">
+          <DialogHeader>
+            <DialogTitle className="text-center">Inspector Access QR Code</DialogTitle>
+          </DialogHeader>
+          <div className="flex justify-center">
+            <QRCodeDisplay
+              url={getInspectorUrl()}
+              title="Inspector Access"
+              description="Scan with mobile device to join call"
+              size={250}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
