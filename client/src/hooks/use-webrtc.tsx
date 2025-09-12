@@ -191,13 +191,14 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }
 
-  function initializePeerConnection(forceRelay: boolean = false) {
+  async function initializePeerConnection(forceRelay: boolean = false) {
     console.log(`Initializing peer connection... (Force Relay: ${forceRelay})`);
     
     // Reset connection state for new attempt
     setConnectionStatus('connecting');
     
-    const pc = createPeerConnection(forceRelay);
+    try {
+      const pc = await createPeerConnection(forceRelay);
     peerConnectionRef.current = pc;
 
     // Start connection timeout for mobile networks
@@ -342,6 +343,16 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           createOffer();
         }
       }, 1000);
+    }
+    } catch (error) {
+      console.error('Failed to initialize peer connection:', error);
+      setConnectionStatus('failed');
+      
+      toast({
+        title: "Connection Setup Failed",
+        description: "Failed to initialize connection. Please check your network and try again.",
+        variant: "destructive",
+      });
     }
   }
 
