@@ -53,6 +53,7 @@ export default function CoordinatorCall() {
     isCapturing,
     startRecording,
     stopRecording,
+    networkQuality,
   } = useWebRTC(callId!, "coordinator");
 
   const { data: capturedImages = [], refetch: refetchImages } = useQuery<any[]>({
@@ -178,8 +179,18 @@ export default function CoordinatorCall() {
             </Button>
           </div>
           <div className="flex items-center space-x-1">
-            <Signal className="w-4 h-4 text-green-500" />
-            <span className="text-xs text-muted-foreground">Excellent</span>
+            <Signal 
+              className={`w-4 h-4 ${
+                networkQuality.level === 'excellent' ? 'text-green-500' :
+                networkQuality.level === 'good' ? 'text-green-400' :
+                networkQuality.level === 'fair' ? 'text-yellow-500' :
+                networkQuality.level === 'poor' ? 'text-red-500' :
+                'text-gray-400'
+              }`} 
+            />
+            <span className="text-xs text-muted-foreground capitalize">
+              {!isConnected ? 'Connecting...' : networkQuality.level}
+            </span>
           </div>
         </div>
       </header>

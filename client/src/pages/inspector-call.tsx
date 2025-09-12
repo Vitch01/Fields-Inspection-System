@@ -39,6 +39,7 @@ export default function InspectorCall() {
     sendChatMessage,
     unreadCount,
     clearUnreadCount,
+    networkQuality,
   } = useWebRTC(callId!, "inspector");
 
   // Inspector doesn't need to fetch captured images
@@ -190,8 +191,18 @@ export default function InspectorCall() {
             Coordinator: <span className="text-white" data-testid="text-coordinator-name">Sarah Johnson</span>
           </div>
           <div className="flex items-center space-x-1">
-            <Signal className="w-4 h-4 text-white" />
-            <span className="text-xs text-white">Excellent</span>
+            <Signal 
+              className={`w-4 h-4 ${
+                networkQuality.level === 'excellent' ? 'text-green-500' :
+                networkQuality.level === 'good' ? 'text-green-400' :
+                networkQuality.level === 'fair' ? 'text-yellow-500' :
+                networkQuality.level === 'poor' ? 'text-red-500' :
+                'text-gray-400'
+              }`} 
+            />
+            <span className="text-xs text-white capitalize">
+              {!isConnected ? 'Connecting...' : networkQuality.level}
+            </span>
           </div>
         </div>
       </header>

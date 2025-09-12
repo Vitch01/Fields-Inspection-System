@@ -33,6 +33,13 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [isCapturing, setIsCapturing] = useState(false);
   const [isRelayOnly, setIsRelayOnly] = useState(false);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
+  const [networkQuality, setNetworkQuality] = useState<{
+    level: 'excellent' | 'good' | 'fair' | 'poor' | 'disconnected';
+    bars: number; // 0-4
+    rtt?: number;
+    packetLoss?: number;
+    bitrate?: number;
+  }>({ level: 'disconnected', bars: 0 });
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -43,6 +50,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const captureRequestIdRef = useRef<string | null>(null);
   const iceRestartInProgressRef = useRef<boolean>(false);
   const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const statsIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
   
   // Detect if mobile or inspector on mobile
@@ -501,6 +509,94 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       });
     }
   }, [connectionAttempts, shouldPreferRelay, isRelayOnly, userRole, toast]);
+  
+  // Monitor connection statistics for network quality
+  const monitorConnectionStats = useCallback(async () => {
+    const pc = peerConnectionRef.current;
+    if (!pc || pc.connectionState !== 'connected') {
+      setNetworkQuality({ level: 'disconnected', bars: 0 });
+      return;
+    }
+
+    try {
+      const stats = await pc.getStats();
+      let rtt = 0;
+      let packetLoss = 0;
+      let bytesReceived = 0;
+      let prevBytesReceived = 0;
+      let bitrate = 0;
+
+      stats.forEach((report: any) => {
+        // Get RTT from candidate-pair stats
+        if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+          rtt = (report.currentRoundTripTime || 0) * 1000; // Convert to ms
+        }
+        // Get packet loss and bitrate from inbound-rtp stats
+        if (report.type === 'inbound-rtp' && report.kind === 'video') {
+          const packetsLost = report.packetsLost || 0;
+          const packetsReceived = report.packetsReceived || 0;
+          if (packetsReceived > 0) {
+            packetLoss = (packetsLost / (packetsLost + packetsReceived)) * 100;
+          }
+          bytesReceived = report.bytesReceived || 0;
+          // Calculate bitrate based on bytes received (approximate)
+          if (prevBytesReceived > 0 && bytesReceived > prevBytesReceived) {
+            bitrate = ((bytesReceived - prevBytesReceived) * 8) / 2000; // kbps over 2 seconds
+          }
+        }
+      });
+
+      // Calculate quality level based on metrics
+      let level: 'excellent' | 'good' | 'fair' | 'poor' | 'disconnected';
+      let bars: number;
+
+      if (rtt < 100 && packetLoss < 1) {
+        level = 'excellent';
+        bars = 4;
+      } else if (rtt < 200 && packetLoss < 3) {
+        level = 'good';
+        bars = 3;
+      } else if (rtt < 400 && packetLoss < 5) {
+        level = 'fair';
+        bars = 2;
+      } else {
+        level = 'poor';
+        bars = 1;
+      }
+
+      setNetworkQuality({ level, bars, rtt, packetLoss, bitrate });
+    } catch (error) {
+      console.warn('Failed to get connection stats:', error);
+    }
+  }, []);
+  
+  // Set up network quality monitoring when connected
+  useEffect(() => {
+    if (isConnected && peerConnectionRef.current) {
+      // Clear any existing interval
+      if (statsIntervalRef.current) {
+        clearInterval(statsIntervalRef.current);
+      }
+      
+      // Start monitoring stats every 2 seconds
+      monitorConnectionStats(); // Initial check
+      statsIntervalRef.current = setInterval(monitorConnectionStats, 2000);
+      
+      return () => {
+        if (statsIntervalRef.current) {
+          clearInterval(statsIntervalRef.current);
+          statsIntervalRef.current = null;
+        }
+      };
+    } else {
+      // Clear stats when disconnected
+      setNetworkQuality({ level: 'disconnected', bars: 0 });
+      if (statsIntervalRef.current) {
+        clearInterval(statsIntervalRef.current);
+        statsIntervalRef.current = null;
+      }
+    }
+  }, [isConnected, monitorConnectionStats]);
   
   // Handle ICE restart with proper offer/answer negotiation
   const handleIceRestart = useCallback(async () => {
@@ -1267,6 +1363,11 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       connectionTimeoutRef.current = null;
     }
     
+    if (statsIntervalRef.current) {
+      clearInterval(statsIntervalRef.current);
+      statsIntervalRef.current = null;
+    }
+    
     // Clean up canvas recording elements first
     if (canvasCleanupRef.current) {
       try {
@@ -1352,5 +1453,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     isCapturing,
     startRecording,
     stopRecording,
+    networkQuality,
   };
 }
