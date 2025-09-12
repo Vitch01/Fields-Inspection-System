@@ -8,8 +8,9 @@ import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import QRCodeDisplay from "@/components/video-call/qr-code-display";
 import { useWebRTC } from "@/hooks/use-webrtc";
+import type { ConnectionState, ConnectionError } from "@/hooks/use-websocket";
 import { useState, useEffect } from "react";
-import { Clock, Signal, Users, Copy, ExternalLink, QrCode } from "lucide-react";
+import { Clock, Signal, Users, Copy, ExternalLink, QrCode, Wifi, WifiOff, AlertTriangle, RefreshCw, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -42,6 +43,9 @@ export default function CoordinatorCall() {
     localStream,
     remoteStream,
     isConnected,
+    wsConnected, // WebSocket connection status (backward compatibility)
+    connectionState, // Enhanced WebSocket connection state
+    connectionStats, // Enhanced WebSocket connection statistics
     isMuted,
     isVideoEnabled,
     toggleMute,
@@ -155,10 +159,27 @@ export default function CoordinatorCall() {
       <header className="bg-card border-b border-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2">
-            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 connection-indicator' : 'bg-red-500'}`}></div>
+            {/* Enhanced connection status indicator */}
+            <div className={`w-3 h-3 rounded-full ${
+              connectionState === 'connected' ? 'bg-green-500 connection-indicator' :
+              connectionState === 'connecting' || connectionState === 'reconnecting' ? 'bg-yellow-500' :
+              connectionState === 'failed' || connectionState === 'maximum-retries-exceeded' ? 'bg-red-500' :
+              'bg-gray-500'
+            }`}></div>
             <span className="text-sm font-medium text-muted-foreground">
-              {isConnected ? 'Connected' : 'Connecting...'}
+              {connectionState === 'connected' ? 'Connected' :
+               connectionState === 'connecting' ? 'Connecting...' :
+               connectionState === 'reconnecting' ? `Reconnecting... (Attempt ${connectionStats.attempts})` :
+               connectionState === 'failed' ? 'Connection Failed' :
+               connectionState === 'maximum-retries-exceeded' ? 'Connection Failed (Max Retries)' :
+               'Disconnected'}
             </span>
+            {connectionState === 'reconnecting' && (
+              <RefreshCw className="w-3 h-3 text-yellow-500 animate-spin" />
+            )}
+            {(connectionState === 'failed' || connectionState === 'maximum-retries-exceeded') && (
+              <AlertTriangle className="w-3 h-3 text-red-500" />
+            )}
           </div>
           <div className="text-sm text-muted-foreground">
             <Clock className="w-4 h-4 inline mr-1" />
@@ -217,7 +238,11 @@ export default function CoordinatorCall() {
               }`} 
             />
             <span className="text-xs text-muted-foreground capitalize">
-              {!isConnected ? 'Connecting...' : networkQuality.level}
+              {connectionState !== 'connected' ? 
+                (connectionState === 'reconnecting' ? `Reconnecting... (${connectionStats.attempts})` : 
+                 connectionState === 'connecting' ? 'Connecting...' : 
+                 'Disconnected') : 
+                networkQuality.level}
             </span>
           </div>
         </div>

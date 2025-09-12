@@ -6,8 +6,9 @@ import ChatPanel from "@/components/video-call/chat-panel";
 import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import { useWebRTC } from "@/hooks/use-webrtc";
+import type { ConnectionState, ConnectionError } from "@/hooks/use-websocket";
 import { useState, useEffect } from "react";
-import { Clock, Signal, Video, UserCheck, Wifi, WifiOff } from "lucide-react";
+import { Clock, Signal, Video, UserCheck, Wifi, WifiOff, AlertTriangle, RefreshCw, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -29,7 +30,9 @@ export default function InspectorCall() {
     localStream,
     remoteStream,
     isConnected,
-    wsConnected, // WebSocket connection status
+    wsConnected, // WebSocket connection status (backward compatibility)
+    connectionState, // Enhanced WebSocket connection state
+    connectionStats, // Enhanced WebSocket connection statistics
     isMuted,
     isVideoEnabled,
     toggleMute,
@@ -124,22 +127,55 @@ export default function InspectorCall() {
               You've been invited to join an inspection video call
             </p>
             
-            {/* Connection Status Indicator */}
+            {/* Enhanced Connection Status Indicator */}
             <div className={`flex items-center justify-center space-x-2 mt-3 px-3 py-2 rounded-md ${
-              wsConnected ? 'bg-green-100 border border-green-200' : 'bg-red-100 border border-red-200'
+              connectionState === 'connected' ? 'bg-green-100 border border-green-200' :
+              connectionState === 'connecting' || connectionState === 'reconnecting' ? 'bg-yellow-100 border border-yellow-200' :
+              connectionState === 'failed' || connectionState === 'maximum-retries-exceeded' ? 'bg-red-100 border border-red-200' :
+              'bg-gray-100 border border-gray-200'
             }`} data-testid="connection-status">
-              {wsConnected ? (
+              {connectionState === 'connected' ? (
                 <>
                   <Wifi className="w-4 h-4 text-green-600" />
                   <span className="text-sm font-medium text-green-700">Connected - Ready to Join</span>
                 </>
+              ) : connectionState === 'connecting' ? (
+                <>
+                  <RefreshCw className="w-4 h-4 text-yellow-600 animate-spin" />
+                  <span className="text-sm font-medium text-yellow-700">Connecting...</span>
+                </>
+              ) : connectionState === 'reconnecting' ? (
+                <>
+                  <RefreshCw className="w-4 h-4 text-yellow-600 animate-spin" />
+                  <span className="text-sm font-medium text-yellow-700">
+                    Reconnecting... (Attempt {connectionStats.attempts})
+                  </span>
+                </>
+              ) : connectionState === 'maximum-retries-exceeded' ? (
+                <>
+                  <XCircle className="w-4 h-4 text-red-600" />
+                  <span className="text-sm font-medium text-red-700">Connection Failed</span>
+                </>
               ) : (
                 <>
-                  <WifiOff className="w-4 h-4 text-red-600" />
-                  <span className="text-sm font-medium text-red-700">Connecting...</span>
+                  <AlertTriangle className="w-4 h-4 text-red-600" />
+                  <span className="text-sm font-medium text-red-700">Connection Issues</span>
                 </>
               )}
             </div>
+            
+            {/* Connection Error Details */}
+            {(connectionState === 'failed' || connectionState === 'maximum-retries-exceeded') && connectionStats.lastError && (
+              <div className="mt-2 px-3 py-2 bg-red-50 border border-red-200 rounded-md text-xs text-red-700">
+                <div className="font-medium mb-1">Connection Error:</div>
+                <div className="mb-2">{connectionStats.lastError.message}</div>
+                {connectionState === 'maximum-retries-exceeded' && (
+                  <div className="text-red-600 font-medium">
+                    Maximum retry attempts reached. Please check your internet connection and try refreshing the page.
+                  </div>
+                )}
+              </div>
+            )}
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -169,19 +205,45 @@ export default function InspectorCall() {
             <Button 
               onClick={handleJoinCall} 
               className="w-full bg-black text-white hover:bg-gray-800 border-black disabled:bg-gray-400 disabled:cursor-not-allowed" 
-              disabled={!wsConnected || !inspectorName.trim()}
+              disabled={connectionState !== 'connected' || !inspectorName.trim()}
               data-testid="button-join-inspection-call"
             >
-              {!wsConnected ? 'Connecting...' : 'Join Inspection Call'}
+              {connectionState === 'connecting' ? 'Connecting...' :
+               connectionState === 'reconnecting' ? `Reconnecting... (${connectionStats.attempts})` :
+               connectionState === 'failed' || connectionState === 'maximum-retries-exceeded' ? 'Connection Failed' :
+               connectionState === 'connected' ? 'Join Inspection Call' :
+               'Connecting...'}
             </Button>
             
-            {/* Helper text */}
-            <p className="text-xs text-gray-500 text-center mt-2">
-              {!wsConnected 
-                ? 'Please wait while we establish connection...' 
-                : 'Ready to join the call'
-              }
-            </p>
+            {/* Enhanced Helper text */}
+            <div className="text-xs text-gray-500 text-center mt-2">
+              {connectionState === 'connecting' && (
+                <p>Please wait while we establish connection...</p>
+              )}
+              {connectionState === 'reconnecting' && (
+                <p>Reconnecting... Please wait while we restore your connection.</p>
+              )}
+              {connectionState === 'connected' && (
+                <p>Ready to join the call</p>
+              )}
+              {connectionState === 'failed' && (
+                <div>
+                  <p className="text-red-600 mb-1">Connection failed. This may be due to:</p>
+                  <ul className="text-left space-y-1 ml-4">
+                    <li>• Poor internet connection</li>
+                    <li>• Network firewall restrictions</li>
+                    <li>• Server maintenance</li>
+                  </ul>
+                  <p className="mt-1 text-red-600">Please try refreshing the page.</p>
+                </div>
+              )}
+              {connectionState === 'maximum-retries-exceeded' && (
+                <div>
+                  <p className="text-red-600 mb-1">Unable to connect after multiple attempts.</p>
+                  <p className="text-red-600">Please check your internet connection and refresh the page to try again.</p>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
