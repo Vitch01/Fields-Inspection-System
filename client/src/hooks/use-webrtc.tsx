@@ -52,6 +52,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const iceRestartInProgressRef = useRef<boolean>(false);
   const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const statsIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const iceCandidateQueueRef = useRef<RTCIceCandidateInit[]>([]);
   const { toast } = useToast();
   
   // Detect if mobile or inspector on mobile
@@ -411,7 +412,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     // Handle ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        console.log(`ICE candidate type: ${event.candidate.type}, protocol: ${event.candidate.protocol}`);
+        console.log(`[${userRole}] Sending ICE candidate type: ${event.candidate.type}, protocol: ${event.candidate.protocol}, callId: ${callId}`);
         sendMessage({
           type: "ice-candidate",
           callId,
@@ -419,38 +420,43 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           data: event.candidate,
         });
       } else {
-        console.log("ICE candidate gathering complete");
+        console.log(`[${userRole}] ICE candidate gathering complete`);
       }
     };
 
-    // Create offer if coordinator
-    if (userRole === "coordinator") {
-      createOffer();
-    }
+    // Do NOT create offer here - wait for inspector to join
+    // The offer will be created in handleSignalingMessage when we receive 'user-joined' from inspector
+    console.log(`[${userRole}] Peer connection initialized, waiting for peer to join`);
   }
 
   async function createOffer(iceRestart = false) {
     const pc = peerConnectionRef.current;
-    if (!pc) return;
+    if (!pc) {
+      console.error(`[${userRole}] Cannot create offer - no peer connection`);
+      return;
+    }
 
     try {
       const offerOptions: RTCOfferOptions = {};
       if (iceRestart) {
         offerOptions.iceRestart = true;
-        console.log("Creating offer with ICE restart");
+        console.log(`[${userRole}] Creating offer with ICE restart`);
       }
       
+      console.log(`[${userRole}] Creating offer for callId: ${callId}`);
       const offer = await pc.createOffer(offerOptions);
       await pc.setLocalDescription(offer);
       
-      sendMessage({
+      const message = {
         type: "offer",
         callId,
         userId: userRole,
         data: offer,
-      });
+      };
+      console.log(`[${userRole}] Sending offer message with callId: ${callId}, userId: ${userRole}`);
+      sendMessage(message);
     } catch (error) {
-      console.error("Failed to create offer:", error);
+      console.error(`[${userRole}] Failed to create offer:`, error);
     }
   }
 
@@ -494,8 +500,12 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       // Reinitialize with relay mode
       setTimeout(() => {
         initializePeerConnection(true);
-        if (userRole === "coordinator") {
+        // Only create offer if we know the inspector is already in the call
+        if (userRole === "coordinator" && hasPeerJoined) {
+          console.log(`[${userRole}] Reconnecting with relay mode, creating offer since peer is in call`);
           createOffer();
+        } else {
+          console.log(`[${userRole}] Reconnecting with relay mode, waiting for peer to join before offer`);
         }
       }, 1000);
     } else if (attempts < 3) {
@@ -508,8 +518,12 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       
       setTimeout(() => {
         initializePeerConnection(isRelayOnly);
-        if (userRole === "coordinator") {
+        // Only create offer if we know the inspector is already in the call
+        if (userRole === "coordinator" && hasPeerJoined) {
+          console.log(`[${userRole}] Reconnecting attempt ${attempts}, creating offer since peer is in call`);
           createOffer();
+        } else {
+          console.log(`[${userRole}] Reconnecting attempt ${attempts}, waiting for peer to join before offer`);
         }
       }, 2000);
     } else {
@@ -653,66 +667,133 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
   async function createAnswer(offer: RTCSessionDescriptionInit) {
     const pc = peerConnectionRef.current;
-    if (!pc) return;
+    if (!pc) {
+      console.error(`[${userRole}] Cannot create answer - no peer connection`);
+      return;
+    }
 
     try {
+      console.log(`[${userRole}] Setting remote description (offer) for callId: ${callId}`);
       await pc.setRemoteDescription(offer);
+      
+      // Drain queued ICE candidates after setting remote description
+      if (iceCandidateQueueRef.current.length > 0) {
+        console.log(`[${userRole}] Adding ${iceCandidateQueueRef.current.length} queued ICE candidates`);
+        for (const candidate of iceCandidateQueueRef.current) {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        }
+        iceCandidateQueueRef.current = [];
+      }
+      
+      console.log(`[${userRole}] Creating answer for callId: ${callId}`);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       
-      sendMessage({
+      const message = {
         type: "answer",
         callId,
         userId: userRole,
         data: answer,
-      });
+      };
+      console.log(`[${userRole}] Sending answer message with callId: ${callId}, userId: ${userRole}`);
+      sendMessage(message);
     } catch (error) {
-      console.error("Failed to create answer:", error);
+      console.error(`[${userRole}] Failed to create answer:`, error);
     }
   }
 
   // Define the signaling message handler as a regular function (gets hoisted)
   async function handleSignalingMessage(message: any) {
     const pc = peerConnectionRef.current;
+    
+    console.log(`[${userRole}] Received signaling message:`, {
+      type: message.type,
+      callId: message.callId,
+      userId: message.userId,
+      hasData: !!message.data,
+      role: message.role
+    });
 
     try {
       switch (message.type) {
         case "offer":
-          if (!pc) return;
+          console.log(`[${userRole}] Received offer from ${message.userId} for callId: ${message.callId}`);
+          if (!pc) {
+            console.error(`[${userRole}] No peer connection when offer received`);
+            return;
+          }
           if (userRole === "inspector") {
+            console.log(`[${userRole}] Inspector processing offer and creating answer`);
             await createAnswer(message.data);
+          } else {
+            console.log(`[${userRole}] Coordinator ignoring offer (not for us)`);
           }
           break;
 
         case "answer":
-          if (!pc) return;
+          console.log(`[${userRole}] Received answer from ${message.userId} for callId: ${message.callId}`);
+          if (!pc) {
+            console.error(`[${userRole}] No peer connection when answer received`);
+            return;
+          }
           if (userRole === "coordinator") {
+            console.log(`[${userRole}] Coordinator setting remote description (answer)`);
             await pc.setRemoteDescription(message.data);
+            console.log(`[${userRole}] Remote description set successfully`);
+            
+            // Drain queued ICE candidates after setting remote description
+            if (iceCandidateQueueRef.current.length > 0) {
+              console.log(`[${userRole}] Adding ${iceCandidateQueueRef.current.length} queued ICE candidates`);
+              for (const candidate of iceCandidateQueueRef.current) {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+              }
+              iceCandidateQueueRef.current = [];
+            }
+          } else {
+            console.log(`[${userRole}] Inspector ignoring answer (not for us)`);
           }
           break;
 
         case "ice-candidate":
-          if (!pc) return;
+          console.log(`[${userRole}] Received ICE candidate from ${message.userId}`);
+          if (!pc) {
+            console.error(`[${userRole}] No peer connection when ICE candidate received`);
+            return;
+          }
           // Only add ICE candidate if we have remote description set
           if (pc.remoteDescription) {
-            await pc.addIceCandidate(message.data);
+            console.log(`[${userRole}] Adding ICE candidate`);
+            await pc.addIceCandidate(new RTCIceCandidate(message.data));
+          } else {
+            iceCandidateQueueRef.current.push(message.data);
+            console.log(`[${userRole}] Queued ICE candidate (${iceCandidateQueueRef.current.length} in queue)`);
           }
           break;
 
         case "user-joined":
-          console.log("User joined:", message.userId, "role:", message.role);
+          console.log(`[${userRole}] User joined: userId=${message.userId}, role=${message.role}, callId=${message.callId}`);
           // Track that a peer has joined (only if it's not our own join message)
           if (message.role && message.role !== userRole) {
             setHasPeerJoined(true);
-            console.log("Peer joined, role:", message.role, "my role:", userRole);
-          }
-          // Coordinator should create offer when inspector joins
-          if (userRole === "coordinator" && message.role === "inspector") {
-            console.log("Inspector joined, creating offer in 1 second...");
-            setTimeout(() => {
-              console.log("Creating offer for inspector...");
-              createOffer();
-            }, 1000);
+            console.log(`[${userRole}] Peer joined - their role: ${message.role}, my role: ${userRole}`);
+            
+            // Coordinator should create offer when inspector joins
+            if (userRole === "coordinator" && message.role === "inspector") {
+              console.log(`[${userRole}] Inspector joined, will create offer in 1 second...`);
+              
+              // Ensure peer connection exists before creating offer
+              if (!peerConnectionRef.current) {
+                console.log(`[${userRole}] No peer connection yet, initializing first...`);
+                initializePeerConnection();
+              }
+              
+              setTimeout(() => {
+                console.log(`[${userRole}] Now creating offer for inspector...`);
+                createOffer();
+              }, 1000);
+            }
+          } else {
+            console.log(`[${userRole}] Ignoring our own join message`);
           }
           break;
 
