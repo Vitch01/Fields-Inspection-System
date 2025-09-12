@@ -129,7 +129,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, []);
 
-  const { sendMessage, isConnected: wsConnected } = useWebSocket(callId, userRole, {
+  const { sendMessage, isConnected: wsConnected, wsRef } = useWebSocket(callId, userRole, {
     onMessage: handleSignalingMessage,
   });
 
@@ -137,9 +137,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const handleNetworkChange = useCallback(async (newNetworkInfo: any) => {
     console.log('[WebRTC] Network change detected:', newNetworkInfo);
     
-    // Don't trigger recovery too frequently - increased for slow networks
+    // Don't trigger recovery too frequently
     const now = Date.now();
-    const minInterval = networkCapabilities?.quality === 'poor' ? 15000 : 8000; // Longer intervals for poor networks
+    const minInterval = 8000; // Fixed interval to avoid dependency issues
     if (now - lastConnectionAttemptRef.current < minInterval) {
       console.log('[WebRTC] Network change ignored - too frequent');
       return;
@@ -171,14 +171,13 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       clearTimeout(networkChangeTimeoutRef.current);
     }
     
-    // Wait longer for slow networks to stabilize before triggering ICE restart
-    const stabilizationDelay = networkCapabilities?.quality === 'poor' ? 8000 : 
-                              networkCapabilities?.quality === 'fair' ? 5000 : 2000;
+    // Fixed delay to avoid dependency on networkCapabilities
+    const stabilizationDelay = 5000;
     networkChangeTimeoutRef.current = setTimeout(() => {
       handleIceRestart();
     }, stabilizationDelay);
     
-  }, []);
+  }, []); // Keep empty deps to prevent infinite loops
   
   // Handle connection restoration after network comes back online (declared before useNetworkMonitor)
   const handleConnectionRestore = useCallback(async () => {
@@ -187,7 +186,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     const pc = peerConnectionRef.current;
     if (!pc) {
       console.log('[WebRTC] No peer connection, attempting to reinitialize');
-      if (wsConnected && localStream) {
+      // Use refs to avoid dependencies
+      if (wsRef.current && localStreamRef.current) {
         console.log('[WebRTC] Reinitializing peer connection after network restore');
         initializePeerConnection();
       }
@@ -200,7 +200,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       console.log('[WebRTC] Connection needs recovery after network restore');
       await handleConnectionRecovery();
     }
-  }, [wsConnected, localStream]);
+  }, []); // Remove dependencies to prevent loops
 
   // Monitor network changes and trigger connection recovery
   const { isOnline, networkInfo, isNetworkStable } = useNetworkMonitor({
@@ -555,25 +555,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     try {
       console.log('[WebRTC] Starting connection recovery process');
       
-      // Check network capabilities first
-      const capabilities = await checkNetworkCapabilities();
-      console.log('[WebRTC] Network capabilities:', capabilities);
-      
-      if (!capabilities.hasReliableConnection) {
-        console.warn('[WebRTC] Network connection is unreliable, delaying recovery');
-        connectionRestoreInProgressRef.current = false;
-        
-        // Retry after network stabilizes - longer delay for poor networks
-        const retryDelay = capabilities?.quality === 'poor' ? 15000 : 
-                          capabilities?.quality === 'fair' ? 10000 : 5000;
-        setTimeout(() => {
-          if (isOnline && isNetworkStable) {
-            handleConnectionRecovery();
-          }
-        }, retryDelay);
-        return;
-      }
-      
+      // Simplified recovery without network capability checks to avoid deps
       const pc = peerConnectionRef.current;
       
       if (!pc || pc.connectionState === 'closed') {
@@ -596,8 +578,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
             currentPc.close();
             peerConnectionRef.current = null;
             
-            // Create new connection
-            if (wsConnected && localStream) {
+            // Create new connection using refs
+            if (wsRef.current && localStreamRef.current) {
               initializePeerConnection();
             }
           }
@@ -620,7 +602,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     } finally {
       connectionRestoreInProgressRef.current = false;
     }
-  }, [isOnline, isNetworkStable, wsConnected, localStream, toast]);
+  }, []); // Remove all dependencies to prevent loops
   
   // Manual quality controls for users
   const changeVideoQuality = useCallback(async (newQuality: VideoQuality) => {

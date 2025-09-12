@@ -92,5 +92,6 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
     isConnected,
     sendMessage,
     disconnect,
+    wsRef,
   };
 }
