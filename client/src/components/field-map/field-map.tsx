@@ -202,26 +202,30 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
         `https://www.google.com/maps/d/u/0/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1&lid=mkit35Kg0lY`, // Try with user path
       ];
       
-      // Try loading each URL until we find one that works
+      // Test KML URLs directly first
+      console.log('Testing KML URLs for accessibility:');
+      kmlUrls.forEach((url, index) => {
+        console.log(`URL ${index + 1}:`, url);
+        // Test if URL is accessible by creating a simple fetch request
+        fetch(url, { method: 'HEAD', mode: 'no-cors' })
+          .then(() => console.log(`URL ${index + 1} is accessible`))
+          .catch(error => console.log(`URL ${index + 1} failed:`, error));
+      });
+      
+      // Try loading the first KML URL (with your layer ID)
       let kmlLayer: any = null;
       let successfulUrl: string = '';
       
-      for (const kmlUrl of kmlUrls) {
-        try {
-          console.log('Attempting to load KML from:', kmlUrl);
-          kmlLayer = new window.google.maps.KmlLayer({
-            url: kmlUrl,
-            suppressInfoWindows: false, // Allow info windows temporarily to see if features load
-            preserveViewport: true, // Keep the map centered on specified coordinates
-            map: map
-          });
-          successfulUrl = kmlUrl;
-          break; // Use the first URL (will check status in the status_changed listener)
-        } catch (error) {
-          console.warn('Failed to load KML from:', kmlUrl, error);
-          continue;
-        }
-      }
+      const primaryKmlUrl = kmlUrls[0]; // Use your specific layer URL
+      console.log('Loading KML from primary URL:', primaryKmlUrl);
+      
+      kmlLayer = new window.google.maps.KmlLayer({
+        url: primaryKmlUrl,
+        suppressInfoWindows: false, // Allow info windows to see if features load
+        preserveViewport: true, // Keep the map centered on specified coordinates
+        map: map
+      });
+      successfulUrl = primaryKmlUrl;
 
       kmlLayerRef.current = kmlLayer;
 
@@ -262,16 +266,58 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
               try {
                 const viewport = kmlLayer.getDefaultViewport();
                 console.log('KML viewport:', viewport);
+                
+                // Get detailed KML layer information
+                console.log('KML Layer details:', {
+                  url: kmlLayer.getUrl(),
+                  status: kmlLayer.getStatus(),
+                  map: kmlLayer.getMap(),
+                  metadata: kmlLayer.getMetadata()
+                });
+                
                 if (!viewport || (!viewport.getNorthEast() && !viewport.getSouthWest())) {
-                  console.warn('KML loaded but no visible features found. The map may need layer-specific access.');
-                  setMapError(`Map loaded successfully, but no inspector locations are visible. This usually means we need the specific layer ID for your "Infini Rep. Field" layer.`);
+                  console.warn('KML loaded but no visible features found.');
+                  
+                  // Try alternative URLs as fallback
+                  console.log('Trying fallback KML URLs...');
+                  kmlLayer.setMap(null); // Remove current layer
+                  
+                  // Try the second URL (without layer ID)
+                  const fallbackUrl = kmlUrls[1];
+                  console.log('Attempting fallback URL:', fallbackUrl);
+                  
+                  const fallbackLayer = new window.google.maps.KmlLayer({
+                    url: fallbackUrl,
+                    suppressInfoWindows: false,
+                    preserveViewport: true,
+                    map: map
+                  });
+                  
+                  kmlLayerRef.current = fallbackLayer;
+                  
+                  // Check fallback layer after delay
+                  setTimeout(() => {
+                    const fallbackViewport = fallbackLayer.getDefaultViewport();
+                    console.log('Fallback viewport:', fallbackViewport);
+                    if (!fallbackViewport || (!fallbackViewport.getNorthEast() && !fallbackViewport.getSouthWest())) {
+                      setMapError(`Unable to load inspector locations from Google My Maps. Please verify:
+1. Your map is shared as "Anyone with the link - Viewer"
+2. The map contains visible markers or polygons
+3. The layer "Infini Rep. Field" has content`);
+                    } else {
+                      console.log('Fallback KML features found!', fallbackViewport.toJSON());
+                      setMapError(null);
+                    }
+                  }, 2000);
                 } else {
                   console.log('KML features found! Viewport bounds:', viewport.toJSON());
+                  setMapError(null);
                 }
               } catch (e) {
-                console.warn('Could not check KML viewport:', e);
+                console.error('Error checking KML viewport:', e);
+                setMapError(`Error loading map data: ${e instanceof Error ? e.message : 'Unknown error'}`);
               }
-            }, 1000); // Wait a second for KML to fully render
+            }, 2000); // Wait longer for KML to fully render
           } else if (status === 'DOCUMENT_NOT_FOUND') {
             setMapError("Google My Maps data not found. Please check if the map is publicly accessible.");
             setIsMapLoaded(false);
