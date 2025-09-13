@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Camera, Expand, RotateCw, RotateCcw } from "lucide-react";
+import { Camera, Expand, RotateCw, RotateCcw, Play } from "lucide-react";
 
 interface VideoDisplayProps {
   localStream: MediaStream | null;
@@ -28,6 +28,8 @@ export default function VideoDisplay({
   const [manualRotation, setManualRotation] = useState(isCoordinator ? -90 : 0); // Start coordinator with -90 degrees (horizontal, opposite side), inspector with 0
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
+  const [isVideoBlocked, setIsVideoBlocked] = useState(false);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
 
   // Calculate call duration
   useEffect(() => {
@@ -128,30 +130,100 @@ export default function VideoDisplay({
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
+      console.log('VideoDisplay: Setting remote video stream', {
+        streamId: remoteStream.id,
+        tracks: remoteStream.getTracks().map(t => ({ kind: t.kind, id: t.id, enabled: t.enabled })),
+        isCoordinator
+      });
+      
       remoteVideoRef.current.srcObject = remoteStream;
       
       // Listen for video metadata to get actual dimensions
       const video = remoteVideoRef.current;
       const handleLoadedMetadata = () => {
+        console.log('VideoDisplay: Video metadata loaded', {
+          width: video.videoWidth,
+          height: video.videoHeight,
+          aspectRatio: video.videoWidth / video.videoHeight
+        });
+        
         if (video.videoWidth && video.videoHeight) {
           const aspectRatio = video.videoWidth / video.videoHeight;
           setVideoAspectRatio(aspectRatio);
         }
       };
       
+      // Handle video play events
+      const handlePlay = () => {
+        console.log('VideoDisplay: Video started playing');
+        setIsVideoPlaying(true);
+        setIsVideoBlocked(false);
+      };
+      
+      const handlePause = () => {
+        console.log('VideoDisplay: Video paused');
+        setIsVideoPlaying(false);
+      };
+      
       video.addEventListener('loadedmetadata', handleLoadedMetadata);
+      video.addEventListener('play', handlePlay);
+      video.addEventListener('pause', handlePause);
+      
+      // Attempt programmatic play after a short delay to ensure srcObject is set
+      const playVideo = async () => {
+        try {
+          console.log('VideoDisplay: Attempting programmatic video play');
+          await video.play();
+          console.log('VideoDisplay: Video play succeeded');
+        } catch (error: any) {
+          console.error('VideoDisplay: Video play failed:', error);
+          
+          if (error.name === 'NotAllowedError' || error.name === 'NotSupportedError') {
+            console.log('VideoDisplay: Autoplay blocked, showing play button');
+            setIsVideoBlocked(true);
+          } else {
+            console.error('VideoDisplay: Unexpected video play error:', error);
+          }
+        }
+      };
+      
+      // Delay play attempt to ensure video element is ready
+      const playTimeout = setTimeout(playVideo, 100);
       
       return () => {
         video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        video.removeEventListener('play', handlePlay);
+        video.removeEventListener('pause', handlePause);
+        clearTimeout(playTimeout);
       };
     }
-  }, [remoteStream]);
+  }, [remoteStream, isCoordinator]);
 
 
   const handleCaptureImage = () => {
     setCaptureFlash(true);
     setTimeout(() => setCaptureFlash(false), 200);
     onCaptureImage(manualRotation);
+  };
+
+  // Handle manual video play for when autoplay is blocked
+  const handleManualPlay = async () => {
+    if (remoteVideoRef.current) {
+      try {
+        console.log('VideoDisplay: Manual play button clicked');
+        await remoteVideoRef.current.play();
+        console.log('VideoDisplay: Manual play succeeded');
+        setIsVideoBlocked(false);
+        setIsVideoPlaying(true);
+      } catch (error: any) {
+        console.error('VideoDisplay: Manual play failed:', error);
+        
+        // Even user gesture failed - might be a deeper issue
+        if (error.name === 'NotAllowedError') {
+          console.error('VideoDisplay: Manual play still not allowed - may need user interaction on document first');
+        }
+      }
+    }
   };
 
   // Track fullscreen state
@@ -313,6 +385,26 @@ export default function VideoDisplay({
             </>
           )}
         </div>
+
+        {/* Video Blocked Overlay - Centered Play Button */}
+        {isVideoBlocked && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="text-center text-white">
+              <Button
+                size="icon"
+                className="w-20 h-20 rounded-full bg-blue-600 hover:bg-blue-700 mb-4"
+                onClick={handleManualPlay}
+                data-testid="button-manual-play"
+              >
+                <Play className="w-10 h-10" />
+              </Button>
+              <div className="text-lg font-medium mb-2">Video Paused</div>
+              <div className="text-sm opacity-75">
+                Click to start video playback
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Local Video Feed (Picture-in-Picture) */}

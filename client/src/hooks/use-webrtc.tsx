@@ -202,9 +202,46 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       });
     }
 
-    // Handle remote stream
+    // Handle remote stream with comprehensive logging
     pc.ontrack = (event) => {
-      setRemoteStream(event.streams[0]);
+      console.log('🎥 WebRTC: ontrack event received', {
+        streamsCount: event.streams.length,
+        trackKind: event.track.kind,
+        trackId: event.track.id,
+        trackEnabled: event.track.enabled,
+        trackReadyState: event.track.readyState,
+        trackMuted: event.track.muted,
+        userRole
+      });
+      
+      if (event.streams.length > 0) {
+        const stream = event.streams[0];
+        console.log('🎥 WebRTC: Setting remote stream', {
+          streamId: stream.id,
+          streamActive: stream.active,
+          tracks: stream.getTracks().map(track => ({
+            kind: track.kind,
+            id: track.id,
+            enabled: track.enabled,
+            readyState: track.readyState,
+            muted: track.muted
+          }))
+        });
+        
+        setRemoteStream(stream);
+        
+        // Log stream status after a brief delay
+        setTimeout(() => {
+          console.log('🎥 WebRTC: Stream status check', {
+            streamActive: stream.active,
+            videoTracks: stream.getVideoTracks().length,
+            audioTracks: stream.getAudioTracks().length,
+            allTracksEnabled: stream.getTracks().every(t => t.enabled)
+          });
+        }, 1000);
+      } else {
+        console.warn('🎥 WebRTC: ontrack event with no streams');
+      }
     };
 
     // Enhanced connection state handling with mobile diagnostics
