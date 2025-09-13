@@ -233,7 +233,7 @@ export default function VideoDisplay({
           ref={remoteVideoRef}
           autoPlay
           playsInline
-          muted={isCoordinator} // Coordinator doesn't hear their own audio
+          muted={false} // Allow audio communication between coordinator and inspector
           className={`${
             isFullscreen 
               ? getFullscreenVideoClass()
