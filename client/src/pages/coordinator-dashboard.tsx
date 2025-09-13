@@ -69,15 +69,15 @@ function getCurrentUserFromToken() {
 
 // Mock data for coordinators and departments (in real app, fetch from API)
 const mockCoordinators = [
-  { id: "coordinator1", name: "Sarah Johnson", department: "Engineering" },
-  { id: "coordinator2", name: "Mike Chen", department: "Facilities" },
-  { id: "coordinator3", name: "Lisa Rodriguez", department: "Safety" }
+  { id: "60fdfee6-cf4b-4841-b3e1-d52d36910eab", name: "Sarah Johnson", department: "Engineering" },
+  { id: "baaafcf3-5306-4a53-a264-143e71902f22", name: "Sarah Johnson (Alt)", department: "Facilities" },
+  { id: "550e8400-e29b-41d4-a716-446655440002", name: "Lisa Rodriguez", department: "Safety" }
 ];
 
 const mockDepartments = [
-  { id: "dept1", name: "Engineering", description: "Structural and mechanical inspections" },
-  { id: "dept2", name: "Facilities", description: "Building and infrastructure assessments" },
-  { id: "dept3", name: "Safety", description: "Safety compliance and risk assessments" }
+  { id: "550e8400-e29b-41d4-a716-446655440010", name: "Engineering", description: "Structural and mechanical inspections" },
+  { id: "550e8400-e29b-41d4-a716-446655440011", name: "Facilities", description: "Building and infrastructure assessments" },
+  { id: "550e8400-e29b-41d4-a716-446655440012", name: "Safety", description: "Safety compliance and risk assessments" }
 ];
 
 interface RequestDetailsProps {
