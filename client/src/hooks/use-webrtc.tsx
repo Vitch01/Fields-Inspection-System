@@ -11,6 +11,18 @@ interface ChatMessage {
   timestamp: Date;
 }
 
+interface EnhancedCaptureMetadata {
+  categoryId: string;
+  notes?: string;
+  tags?: string[];
+  inspectorLocation?: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+    timestamp: number;
+  };
+}
+
 export function useWebRTC(callId: string, userRole: "coordinator" | "inspector") {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -24,6 +36,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingSupported, setIsRecordingSupported] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [showCaptureDialog, setShowCaptureDialog] = useState(false);
+  const [captureType, setCaptureType] = useState<'image' | 'video'>('image');
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -508,6 +522,28 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           }
           break;
 
+        case "enhanced-capture-request":
+          // Only handle if we're the inspector
+          if (userRole === "inspector" && message.userId === "coordinator") {
+            const requestId = message.data?.requestId;
+            const enhancedMetadata: EnhancedCaptureMetadata = {
+              categoryId: message.data?.categoryId,
+              notes: message.data?.notes,
+              tags: message.data?.tags,
+              inspectorLocation: message.data?.inspectorLocation
+            };
+            
+            console.log("Received enhanced capture request from coordinator with ID:", requestId);
+            toast({
+              title: "Capturing Enhanced Photo",
+              description: "Coordinator has requested a photo with category metadata",
+            });
+            
+            // Trigger enhanced capture on inspector's device
+            handleRemoteCapture(message.data?.videoRotation || 0, requestId, enhancedMetadata);
+          }
+          break;
+
         case "capture-complete":
           // Only handle if we're the coordinator and request ID matches
           if (userRole === "coordinator" && message.userId === "inspector") {
@@ -605,7 +641,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }, []);
 
   // Handle remote capture request from coordinator (for inspector only)
-  const handleRemoteCapture = useCallback(async (videoRotation = 0, requestId?: string) => {
+  const handleRemoteCapture = useCallback(async (videoRotation = 0, requestId?: string, enhancedMetadata?: EnhancedCaptureMetadata) => {
     if (userRole !== "inspector") return;
     
     try {
@@ -641,13 +677,29 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       
       console.log(`Created File object: name=${imageFile.name}, size=${imageFile.size}, type=${imageFile.type}`);
       
-      // Upload image to server using proper FormData
+      // Upload image to server using proper FormData with enhanced metadata
       const formData = new FormData();
-      formData.append('image', imageFile);  // Use the File object
+      formData.append('image', imageFile);
       formData.append('filename', filename);
       formData.append('videoRotation', videoRotation.toString());
       
-      console.log('Uploading image to server...');
+      // Add enhanced metadata if provided
+      if (enhancedMetadata) {
+        if (enhancedMetadata.categoryId) {
+          formData.append('categoryId', enhancedMetadata.categoryId);
+        }
+        if (enhancedMetadata.notes) {
+          formData.append('notes', enhancedMetadata.notes);
+        }
+        if (enhancedMetadata.tags && enhancedMetadata.tags.length > 0) {
+          formData.append('tags', JSON.stringify(enhancedMetadata.tags));
+        }
+        if (enhancedMetadata.inspectorLocation) {
+          formData.append('inspectorLocation', JSON.stringify(enhancedMetadata.inspectorLocation));
+        }
+      }
+      
+      console.log('Uploading image to server with enhanced metadata...');
       
       // Make request without manually setting Content-Type (let FormData handle it)
       const response = await fetch(`/api/calls/${callId}/images`, {
@@ -661,6 +713,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       }
       
       const result = await response.json();
+      console.log('Enhanced image capture result:', result);
       
       // Send success message back to coordinator with request ID
       sendMessage({
@@ -701,6 +754,275 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       });
     }
   }, [callId, userRole, sendMessage, toast]);
+
+  // Get current location for enhanced metadata
+  const getCurrentLocation = useCallback((): Promise<EnhancedCaptureMetadata['inspectorLocation'] | undefined> => {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        resolve(undefined);
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            timestamp: position.timestamp,
+          });
+        },
+        (error) => {
+          console.warn('Could not get current location:', error);
+          resolve(undefined);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000, // 5 minutes
+        }
+      );
+    });
+  }, []);
+
+  // Enhanced capture methods with category support
+  const showImageCaptureDialog = useCallback(() => {
+    setCaptureType('image');
+    setShowCaptureDialog(true);
+  }, []);
+
+  const showVideoCaptureDialog = useCallback(() => {
+    setCaptureType('video');
+    setShowCaptureDialog(true);
+  }, []);
+
+  const captureImageWithCategory = useCallback(async (categoryId: string, notes: string = '', tags: string[] = [], videoRotation = 0) => {
+    if (userRole !== "coordinator") {
+      console.warn("Category capture only available for coordinators");
+      return;
+    }
+
+    if (!isConnected || !remoteStream) {
+      toast({
+        title: "Capture Failed",
+        description: "Inspector is not connected",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Don't allow multiple captures at once
+    if (isCapturing) {
+      toast({
+        title: "Please Wait",
+        description: "A photo capture is already in progress",
+      });
+      return;
+    }
+
+    try {
+      // Set loading state and generate unique request ID
+      setIsCapturing(true);
+      const requestId = `enhanced-capture-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      captureRequestIdRef.current = requestId;
+
+      // Get current location for enhanced metadata
+      const inspectorLocation = await getCurrentLocation();
+
+      // Send enhanced capture request to inspector with metadata
+      sendMessage({
+        type: "enhanced-capture-request",
+        callId,
+        userId: userRole,
+        data: { 
+          videoRotation: videoRotation,
+          timestamp: Date.now(),
+          requestId: requestId,
+          categoryId,
+          notes,
+          tags,
+          inspectorLocation
+        },
+      });
+
+      // Set up timeout
+      const CAPTURE_TIMEOUT = 15000; // 15 seconds for enhanced capture
+      captureTimeoutRef.current = setTimeout(() => {
+        if (captureRequestIdRef.current === requestId) {
+          setIsCapturing(false);
+          captureTimeoutRef.current = null;
+          captureRequestIdRef.current = null;
+          
+          toast({
+            title: "Capture Failed",
+            description: "Enhanced capture timed out. Please try again.",
+            variant: "destructive",
+          });
+        }
+      }, CAPTURE_TIMEOUT);
+
+      toast({
+        title: "Requesting Enhanced Photo",
+        description: "Capturing photo with category and metadata...",
+      });
+      
+    } catch (error) {
+      console.error('Error in enhanced capture:', error);
+      setIsCapturing(false);
+      toast({
+        title: "Capture Failed",
+        description: "Failed to initiate enhanced photo capture",
+        variant: "destructive",
+      });
+      throw error;
+    }
+  }, [callId, userRole, remoteStream, sendMessage, toast, isConnected, isCapturing, getCurrentLocation]);
+
+  // Enhanced video recording with category support
+  const startRecordingWithCategory = useCallback(async (categoryId: string, notes: string = '', tags: string[] = [], videoRotation = 0) => {
+    if (userRole !== "coordinator") {
+      toast({
+        title: "Recording Error",
+        description: "Only coordinators can record inspections",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const streamToRecord = remoteStream || localStream;
+    if (!streamToRecord) {
+      toast({
+        title: "Recording Error",
+        description: "No video stream available for recording",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!isRecordingSupported) {
+      toast({
+        title: "Recording Not Supported",
+        description: "Your browser doesn't support video recording",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (isRecording) {
+      toast({
+        title: "Already Recording",
+        description: "Recording is already in progress",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const recordingStream = streamToRecord;
+      canvasCleanupRef.current = null;
+
+      const supportedMimeType = getSupportedMimeType();
+      if (!supportedMimeType) {
+        throw new Error('No supported video format found');
+      }
+
+      const mediaRecorder = new MediaRecorder(recordingStream, {
+        mimeType: supportedMimeType
+      });
+      
+      recordedChunksRef.current = [];
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+      
+      mediaRecorder.onstop = async () => {
+        const supportedMimeType = getSupportedMimeType();
+        const mimeTypeForBlob = supportedMimeType || 'video/webm';
+        const baseMimeType = mimeTypeForBlob.split(';')[0];
+        
+        const blob = new Blob(recordedChunksRef.current, { type: baseMimeType });
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const extension = baseMimeType.includes('mp4') ? 'mp4' : 'webm';
+        const filename = `inspection-${callId}-${timestamp}.${extension}`;
+        
+        try {
+          const videoFile = new File([blob], filename, { 
+            type: baseMimeType 
+          });
+          
+          // Get current location for enhanced metadata
+          const inspectorLocation = await getCurrentLocation();
+          
+          const formData = new FormData();
+          formData.append('video', videoFile);
+          formData.append('callId', callId);
+          formData.append('timestamp', new Date().toISOString());
+          formData.append('videoRotation', videoRotation.toString());
+          formData.append('categoryId', categoryId);
+          formData.append('notes', notes);
+          formData.append('tags', JSON.stringify(tags));
+          if (inspectorLocation) {
+            formData.append('inspectorLocation', JSON.stringify(inspectorLocation));
+          }
+          
+          const response = await fetch('/api/recordings', {
+            method: 'POST',
+            body: formData,
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => 'Unknown server error');
+            throw new Error(`Upload failed: ${response.status} ${response.statusText}. ${errorText}`);
+          }
+          
+          const result = await response.json();
+          console.log('Enhanced video recording saved:', result);
+          
+          // Invalidate queries to refresh the recordings list
+          queryClient.invalidateQueries({ queryKey: ['/api/calls', callId, 'recordings'] });
+          
+          toast({
+            title: "Recording Saved",
+            description: `Video recording with category saved successfully`,
+          });
+          
+        } catch (uploadError) {
+          console.error('Failed to save enhanced recording:', uploadError);
+          toast({
+            title: "Save Failed", 
+            description: "Recording captured but failed to save to server",
+            variant: "destructive"
+          });
+        }
+        
+        setIsRecording(false);
+        if (mediaRecorderRef.current) {
+          mediaRecorderRef.current = null;
+        }
+      };
+
+      mediaRecorderRef.current = mediaRecorder;
+      setIsRecording(true);
+      mediaRecorder.start(1000); // Collect data every second
+      
+      toast({
+        title: "Enhanced Recording Started",
+        description: "Recording with category metadata...",
+      });
+
+    } catch (error) {
+      console.error("Failed to start enhanced recording:", error);
+      setIsRecording(false);
+      toast({
+        title: "Recording Failed",
+        description: "Failed to start enhanced video recording",
+        variant: "destructive"
+      });
+    }
+  }, [userRole, remoteStream, localStream, isRecordingSupported, isRecording, getSupportedMimeType, callId, getCurrentLocation, queryClient, toast]);
 
   const captureImage = useCallback(async (videoRotation = 0, retryCount = 0) => {
     const MAX_RETRIES = 2;
@@ -1167,6 +1489,12 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     toggleMute,
     toggleVideo,
     captureImage,
+    captureImageWithCategory,
+    showImageCaptureDialog,
+    showVideoCaptureDialog,
+    showCaptureDialog,
+    setShowCaptureDialog,
+    captureType,
     endCall,
     chatMessages,
     sendChatMessage,

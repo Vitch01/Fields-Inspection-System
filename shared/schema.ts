@@ -90,20 +90,42 @@ export const calls = pgTable("calls", {
 export const capturedImages = pgTable("captured_images", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   callId: varchar("call_id").notNull().references(() => calls.id),
+  categoryId: varchar("category_id").references(() => mediaCategories.id),
   filename: text("filename").notNull(),
   originalUrl: text("original_url").notNull(),
   thumbnailUrl: text("thumbnail_url"),
+  tags: text("tags").array(), // Array of tags for searching
+  notes: text("notes"), // Inspector notes/annotations
+  inspectorLocation: json("inspector_location"), // GPS coordinates when captured
+  sequenceNumber: integer("sequence_number").default(1), // Order within category
   capturedAt: timestamp("captured_at").default(sql`now()`),
   metadata: json("metadata"),
+});
+
+// New table: media categories for standardized categorization
+export const mediaCategories = pgTable("media_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  icon: text("icon"), // Icon name for UI display
+  color: text("color"), // Color for category badges
+  sortOrder: integer("sort_order").default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").default(sql`now()`),
 });
 
 export const videoRecordings = pgTable("video_recordings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   callId: varchar("call_id").notNull().references(() => calls.id),
+  categoryId: varchar("category_id").references(() => mediaCategories.id),
   filename: text("filename").notNull(),
   originalUrl: text("original_url").notNull(),
   duration: text("duration"),
   size: text("size"),
+  tags: text("tags").array(), // Array of tags for searching
+  notes: text("notes"), // Inspector notes/annotations
+  inspectorLocation: json("inspector_location"), // GPS coordinates when captured
+  sequenceNumber: integer("sequence_number").default(1), // Order within category
   recordedAt: timestamp("recorded_at").default(sql`now()`),
   metadata: json("metadata"),
 });
@@ -290,6 +312,11 @@ export const insertEmailLogSchema = createInsertSchema(emailLogs).omit({
   createdAt: true,
 });
 
+export const insertMediaCategorySchema = createInsertSchema(mediaCategories).omit({
+  id: true,
+  createdAt: true,
+});
+
 // TypeScript types for all tables
 export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
 export type Department = typeof departments.$inferSelect;
@@ -326,6 +353,9 @@ export type InspectionReport = typeof inspectionReports.$inferSelect;
 
 export type InsertEmailLog = z.infer<typeof insertEmailLogSchema>;
 export type EmailLog = typeof emailLogs.$inferSelect;
+
+export type InsertMediaCategory = z.infer<typeof insertMediaCategorySchema>;
+export type MediaCategory = typeof mediaCategories.$inferSelect;
 
 // WebRTC signaling message types
 export const signalingMessageSchema = z.object({

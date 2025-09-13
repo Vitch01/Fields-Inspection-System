@@ -1002,7 +1002,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Image capture routes
+  // Media categories routes
+  app.get('/api/media-categories', async (req, res) => {
+    try {
+      const categories = await storage.getMediaCategories();
+      res.json(categories);
+    } catch (error) {
+      console.error('Failed to fetch media categories:', error);
+      res.status(500).json({ message: 'Failed to fetch media categories' });
+    }
+  });
+
+  // Enhanced file organization - create directory structure
+  function createEnhancedDirectory(inspectionRequestId: string, callId: string, categoryName?: string): string {
+    const basePath = 'uploads';
+    let fullPath = basePath;
+    
+    if (inspectionRequestId && inspectionRequestId !== 'undefined') {
+      fullPath = path.join(fullPath, inspectionRequestId);
+    }
+    
+    if (callId) {
+      fullPath = path.join(fullPath, callId);
+    }
+    
+    if (categoryName && categoryName !== 'undefined') {
+      // Sanitize category name for folder
+      const safeCategoryName = categoryName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      fullPath = path.join(fullPath, safeCategoryName);
+    }
+    
+    // Create directory if it doesn't exist
+    try {
+      if (!fs.existsSync(fullPath)) {
+        fs.mkdirSync(fullPath, { recursive: true });
+        console.log(`Created directory: ${fullPath}`);
+      }
+    } catch (error) {
+      console.error(`Failed to create directory ${fullPath}:`, error);
+      // Fall back to basic uploads directory
+      return basePath;
+    }
+    
+    return fullPath;
+  }
+
+  // Enhanced image capture routes with category support
   app.post('/api/calls/:callId/images', imageUpload.single('image'), async (req, res) => {
     try {
       if (!req.file) {
@@ -1010,20 +1055,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { callId } = req.params;
-      const { filename = req.file.originalname, videoRotation = "0" } = req.body;
+      const { 
+        filename = req.file.originalname, 
+        videoRotation = "0",
+        categoryId,
+        notes,
+        tags,
+        inspectorLocation,
+        inspectionRequestId 
+      } = req.body;
+      
+      // Parse enhanced metadata
+      let parsedTags: string[] = [];
+      let parsedInspectorLocation = null;
+      
+      try {
+        if (tags) {
+          parsedTags = typeof tags === 'string' ? JSON.parse(tags) : tags;
+        }
+        if (inspectorLocation && inspectorLocation !== 'null' && inspectorLocation !== 'undefined') {
+          parsedInspectorLocation = typeof inspectorLocation === 'string' ? JSON.parse(inspectorLocation) : inspectorLocation;
+        }
+      } catch (parseError) {
+        console.warn('Failed to parse enhanced metadata:', parseError);
+      }
+      
+      // Get category for enhanced file organization
+      let categoryName;
+      if (categoryId) {
+        try {
+          const category = await storage.getMediaCategory(categoryId);
+          categoryName = category?.name;
+        } catch (error) {
+          console.warn('Failed to get category for file organization:', error);
+        }
+      }
+      
+      // Create enhanced directory structure
+      const enhancedDirectory = createEnhancedDirectory(inspectionRequestId, callId, categoryName);
+      
+      // Move file to enhanced directory if different from original
+      let finalFilename = req.file.filename;
+      let finalPath = req.file.path;
+      
+      if (enhancedDirectory !== 'uploads') {
+        const enhancedFilename = categoryName 
+          ? `${categoryName.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`
+          : req.file.filename;
+        const enhancedPath = path.join(enhancedDirectory, enhancedFilename);
+        
+        try {
+          fs.renameSync(req.file.path, enhancedPath);
+          finalFilename = enhancedFilename;
+          finalPath = enhancedPath;
+          console.log(`Moved file to enhanced path: ${enhancedPath}`);
+        } catch (moveError) {
+          console.warn('Failed to move file to enhanced directory:', moveError);
+          // Continue with original path
+        }
+      }
+      
+      // Get sequence number for this category
+      let sequenceNumber = 1;
+      if (categoryId) {
+        try {
+          const existingImages = await storage.getCapturedImages(callId, categoryId);
+          sequenceNumber = existingImages.length + 1;
+        } catch (error) {
+          console.warn('Failed to get sequence number:', error);
+        }
+      }
 
-      const imageData = insertCapturedImageSchema.parse({
+      const imageData = {
         callId,
-        filename,
-        originalUrl: `/uploads/${req.file.filename}`,
-        thumbnailUrl: `/uploads/${req.file.filename}`, // In production, generate actual thumbnail
+        categoryId: categoryId || null,
+        filename: finalFilename,
+        originalUrl: `/uploads/${finalFilename}`,
+        thumbnailUrl: `/uploads/${finalFilename}`, // In production, generate actual thumbnail
+        tags: parsedTags,
+        notes: notes || null,
+        inspectorLocation: parsedInspectorLocation,
+        sequenceNumber,
         metadata: {
           originalName: req.file.originalname,
           size: req.file.size,
           mimetype: req.file.mimetype,
-          videoRotation: parseInt(videoRotation, 10)
+          videoRotation: parseInt(videoRotation, 10),
+          enhancedCapture: true,
+          directory: enhancedDirectory
         }
-      });
+      };
 
       const image = await storage.createCapturedImage(imageData);
       
@@ -1031,17 +1152,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const formattedImage = {
         id: image.id,
         callId: image.callId,
+        categoryId: image.categoryId,
         filename: image.filename,
         originalUrl: image.originalUrl,
         thumbnailUrl: image.thumbnailUrl,
+        tags: image.tags,
+        notes: image.notes,
+        inspectorLocation: image.inspectorLocation,
+        sequenceNumber: image.sequenceNumber,
         capturedAt: image.capturedAt,
         metadata: image.metadata
       };
       
       res.json(formattedImage);
     } catch (error) {
-      console.error('Image upload error:', error);
-      res.status(400).json({ message: 'Failed to save image' });
+      console.error('Enhanced image upload error:', error);
+      res.status(400).json({ message: 'Failed to save image with enhanced metadata' });
     }
   });
 
@@ -1078,7 +1204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Video recording routes with comprehensive security validation
+  // Enhanced video recording routes with category support
   app.post('/api/recordings', videoUpload.single('video'), async (req, res) => {
     try {
       // Validate uploaded file exists
@@ -1105,7 +1231,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { callId, timestamp } = validationResult.data;
-      const { videoRotation = "0" } = req.body;
+      const { 
+        videoRotation = "0",
+        categoryId,
+        notes,
+        tags,
+        inspectorLocation,
+        inspectionRequestId 
+      } = req.body;
+      
+      // Parse enhanced metadata
+      let parsedTags: string[] = [];
+      let parsedInspectorLocation = null;
+      
+      try {
+        if (tags) {
+          parsedTags = typeof tags === 'string' ? JSON.parse(tags) : tags;
+        }
+        if (inspectorLocation && inspectorLocation !== 'null' && inspectorLocation !== 'undefined') {
+          parsedInspectorLocation = typeof inspectorLocation === 'string' ? JSON.parse(inspectorLocation) : inspectorLocation;
+        }
+      } catch (parseError) {
+        console.warn('Failed to parse enhanced metadata:', parseError);
+      }
+      
+      // Get category for enhanced file organization
+      let categoryName;
+      if (categoryId) {
+        try {
+          const category = await storage.getMediaCategory(categoryId);
+          categoryName = category?.name;
+        } catch (error) {
+          console.warn('Failed to get category for file organization:', error);
+        }
+      }
+      
+      // Create enhanced directory structure
+      const enhancedDirectory = createEnhancedDirectory(inspectionRequestId, callId, categoryName);
 
       // Double-check MIME type (defense in depth) - handle codec information
       const baseType = req.file.mimetype.split(';')[0]; // Remove codec information
@@ -1122,42 +1284,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // File has already been saved with proper name by multer
-      const uniqueFilename = req.file.filename;
+      // Move file to enhanced directory if different from original
+      let finalFilename = req.file.filename;
+      let finalPath = req.file.path;
       
-      console.log(`Recording saved: ${uniqueFilename} for call ${callId}, size: ${req.file.size} bytes`);
+      if (enhancedDirectory !== 'uploads') {
+        const enhancedFilename = categoryName 
+          ? `${categoryName.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}_${Math.random().toString(36).substring(7)}.webm`
+          : req.file.filename;
+        const enhancedPath = path.join(enhancedDirectory, enhancedFilename);
+        
+        try {
+          fs.renameSync(req.file.path, enhancedPath);
+          finalFilename = enhancedFilename;
+          finalPath = enhancedPath;
+          console.log(`Moved video file to enhanced path: ${enhancedPath}`);
+        } catch (moveError) {
+          console.warn('Failed to move video file to enhanced directory:', moveError);
+          // Continue with original path
+        }
+      }
+      
+      // Get sequence number for this category
+      let sequenceNumber = 1;
+      if (categoryId) {
+        try {
+          const existingVideos = await storage.getVideoRecordings(callId, categoryId);
+          sequenceNumber = existingVideos.length + 1;
+        } catch (error) {
+          console.warn('Failed to get sequence number:', error);
+        }
+      }
+      
+      console.log(`Recording saved: ${finalFilename} for call ${callId}, size: ${req.file.size} bytes`);
       
       // Save recording metadata to database
       try {
         const videoData = insertVideoRecordingSchema.parse({
           callId,
-          filename: uniqueFilename,
-          originalUrl: `/uploads/${uniqueFilename}`,
+          categoryId: categoryId || null,
+          filename: finalFilename,
+          originalUrl: `/uploads/${finalFilename}`,
           duration: req.body.duration || null,
           size: req.file.size.toString(),
+          tags: parsedTags,
+          notes: notes || null,
+          inspectorLocation: parsedInspectorLocation,
+          sequenceNumber,
           metadata: {
             originalName: req.file.originalname,
             size: req.file.size,
             mimetype: req.file.mimetype,
             timestamp,
-            videoRotation: parseInt(videoRotation, 10)
+            videoRotation: parseInt(videoRotation, 10),
+            enhancedCapture: true,
+            directory: enhancedDirectory
           }
         });
 
         const recording = await storage.createVideoRecording(videoData);
         console.log('Recording metadata saved to database:', recording.id);
         
-        res.json({ 
-          success: true, 
+        // Convert to camelCase for frontend compatibility
+        const formattedRecording = {
           id: recording.id,
-          filename: uniqueFilename,
-          callId,
-          timestamp,
-          url: `/uploads/${uniqueFilename}`,
-          size: req.file.size,
-          mimetype: req.file.mimetype,
-          recordedAt: recording.recordedAt
-        });
+          callId: recording.callId,
+          categoryId: recording.categoryId,
+          filename: recording.filename,
+          originalUrl: recording.originalUrl,
+          duration: recording.duration,
+          size: recording.size,
+          tags: recording.tags,
+          notes: recording.notes,
+          inspectorLocation: recording.inspectorLocation,
+          sequenceNumber: recording.sequenceNumber,
+          recordedAt: recording.recordedAt,
+          metadata: recording.metadata
+        };
+        
+        res.json(formattedRecording);
       } catch (dbError) {
         console.error('Database save failed for video recording:', dbError);
         // File was saved successfully, but DB save failed - still return success

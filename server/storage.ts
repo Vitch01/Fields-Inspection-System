@@ -1,8 +1,8 @@
-import { type User, type InsertUser, type Call, type InsertCall, type CapturedImage, type InsertCapturedImage, type VideoRecording, type InsertVideoRecording, type Client, type InsertClient, type InspectionRequest, type InsertInspectionRequest, type EmailLog, type InsertEmailLog } from "@shared/schema";
+import { type User, type InsertUser, type Call, type InsertCall, type CapturedImage, type InsertCapturedImage, type VideoRecording, type InsertVideoRecording, type Client, type InsertClient, type InspectionRequest, type InsertInspectionRequest, type EmailLog, type InsertEmailLog, type MediaCategory, type InsertMediaCategory } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { users, calls, capturedImages, videoRecordings, clients, inspectionRequests, emailLogs } from "@shared/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { users, calls, capturedImages, videoRecordings, clients, inspectionRequests, emailLogs, mediaCategories } from "@shared/schema";
+import { eq, and, sql, or, ilike, inArray } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
 export interface IStorage {
@@ -45,13 +45,31 @@ export interface IStorage {
   updateCallLocation(id: string, locationData: any): Promise<boolean>;
   getActiveCallForUser(userId: string): Promise<Call | undefined>;
   
-  getCapturedImages(callId: string): Promise<CapturedImage[]>;
+  // Enhanced media category management
+  getMediaCategories(): Promise<MediaCategory[]>;
+  getMediaCategory(id: string): Promise<MediaCategory | undefined>;
+  createMediaCategory(category: InsertMediaCategory): Promise<MediaCategory>;
+  updateMediaCategory(id: string, updates: Partial<MediaCategory>): Promise<MediaCategory | undefined>;
+  
+  // Enhanced captured images methods with category support
+  getCapturedImages(callId: string, categoryId?: string): Promise<CapturedImage[]>;
+  getCapturedImagesByTags(callId: string, tags: string[]): Promise<CapturedImage[]>;
   createCapturedImage(image: InsertCapturedImage): Promise<CapturedImage>;
+  updateCapturedImageMetadata(id: string, updates: { categoryId?: string; tags?: string[]; notes?: string; }): Promise<CapturedImage | undefined>;
   deleteCapturedImage(id: string): Promise<boolean>;
   
-  getVideoRecordings(callId: string): Promise<VideoRecording[]>;
+  // Enhanced video recordings methods with category support
+  getVideoRecordings(callId: string, categoryId?: string): Promise<VideoRecording[]>;
+  getVideoRecordingsByTags(callId: string, tags: string[]): Promise<VideoRecording[]>;
   createVideoRecording(recording: InsertVideoRecording): Promise<VideoRecording>;
+  updateVideoRecordingMetadata(id: string, updates: { categoryId?: string; tags?: string[]; notes?: string; }): Promise<VideoRecording | undefined>;
   deleteVideoRecording(id: string): Promise<boolean>;
+  
+  // Bulk operations for media management
+  bulkUpdateCapturedImages(ids: string[], updates: { categoryId?: string; tags?: string[]; notes?: string; }): Promise<number>;
+  bulkUpdateVideoRecordings(ids: string[], updates: { categoryId?: string; tags?: string[]; notes?: string; }): Promise<number>;
+  getAllMediaForCall(callId: string): Promise<{ images: CapturedImage[]; videos: VideoRecording[]; }>;
+  searchMediaByNotes(callId: string, searchTerm: string): Promise<{ images: CapturedImage[]; videos: VideoRecording[]; }>;
   
   // Email logging methods
   createEmailLog(emailLog: InsertEmailLog): Promise<EmailLog>;
@@ -69,6 +87,9 @@ export class DbStorage implements IStorage {
 
   private async seedTestDataIfNeeded() {
     try {
+      // Seed default media categories
+      await this.seedDefaultMediaCategories();
+      
       // Check if we already have users
       const existingUsers = await db.select().from(users).limit(1);
       if (existingUsers.length === 0) {
@@ -364,18 +385,144 @@ export class DbStorage implements IStorage {
     return result.find(call => call.coordinatorId === userId || call.inspectorId === userId);
   }
 
-  async getCapturedImages(callId: string): Promise<CapturedImage[]> {
-    const result = await db.select()
-      .from(capturedImages)
-      .where(eq(capturedImages.callId, callId))
-      .orderBy(capturedImages.capturedAt);
-    
-    return result;
+  // Media category management methods
+  private async seedDefaultMediaCategories() {
+    try {
+      const existingCategories = await db.select().from(mediaCategories).limit(1);
+      if (existingCategories.length === 0) {
+        const defaultCategories = [
+          { name: 'Arrival', description: 'Initial photos upon arrival at inspection site', icon: 'MapPin', color: 'blue', sortOrder: 1 },
+          { name: 'Overview', description: 'General overview and establishing shots', icon: 'Camera', color: 'green', sortOrder: 2 },
+          { name: 'Detailed Inspection', description: 'Close-up photos of specific components', icon: 'Search', color: 'orange', sortOrder: 3 },
+          { name: 'Damage Documentation', description: 'Photos documenting wear, damage, or issues', icon: 'AlertTriangle', color: 'red', sortOrder: 4 },
+          { name: 'Completion', description: 'Final photos before leaving inspection site', icon: 'CheckCircle', color: 'purple', sortOrder: 5 },
+        ];
+        
+        for (const category of defaultCategories) {
+          await db.insert(mediaCategories).values({
+            id: randomUUID(),
+            ...category,
+          });
+        }
+        console.log('Default media categories seeded successfully');
+      }
+    } catch (error) {
+      console.error('Error seeding default media categories:', error);
+    }
+  }
+
+  async getMediaCategories(): Promise<MediaCategory[]> {
+    try {
+      const result = await db.select()
+        .from(mediaCategories)
+        .where(eq(mediaCategories.isActive, true))
+        .orderBy(mediaCategories.sortOrder);
+      return result;
+    } catch (error) {
+      console.error('Error fetching media categories:', error);
+      return [];
+    }
+  }
+
+  async getMediaCategory(id: string): Promise<MediaCategory | undefined> {
+    try {
+      const result = await db.select()
+        .from(mediaCategories)
+        .where(eq(mediaCategories.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error) {
+      console.error('Error fetching media category:', error);
+      return undefined;
+    }
+  }
+
+  async createMediaCategory(category: InsertMediaCategory): Promise<MediaCategory> {
+    try {
+      const result = await db.insert(mediaCategories)
+        .values({ id: randomUUID(), ...category })
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error creating media category:', error);
+      throw error;
+    }
+  }
+
+  async updateMediaCategory(id: string, updates: Partial<MediaCategory>): Promise<MediaCategory | undefined> {
+    try {
+      const result = await db.update(mediaCategories)
+        .set(updates)
+        .where(eq(mediaCategories.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error updating media category:', error);
+      return undefined;
+    }
+  }
+
+  // Enhanced captured images methods with category support
+  async getCapturedImages(callId: string, categoryId?: string): Promise<CapturedImage[]> {
+    try {
+      let query = db.select()
+        .from(capturedImages)
+        .where(eq(capturedImages.callId, callId));
+      
+      if (categoryId) {
+        query = query.where(eq(capturedImages.categoryId, categoryId));
+      }
+      
+      const result = await query.orderBy(capturedImages.sequenceNumber, capturedImages.capturedAt);
+      return result;
+    } catch (error) {
+      console.error('Error fetching captured images:', error);
+      return [];
+    }
+  }
+
+  async getCapturedImagesByTags(callId: string, tags: string[]): Promise<CapturedImage[]> {
+    try {
+      const result = await db.select()
+        .from(capturedImages)
+        .where(and(
+          eq(capturedImages.callId, callId),
+          sql`${capturedImages.tags} && ${tags}`
+        ))
+        .orderBy(capturedImages.capturedAt);
+      return result;
+    } catch (error) {
+      console.error('Error fetching captured images by tags:', error);
+      return [];
+    }
   }
 
   async createCapturedImage(image: InsertCapturedImage): Promise<CapturedImage> {
-    const result = await db.insert(capturedImages).values(image).returning();
-    return result[0];
+    try {
+      const result = await db.insert(capturedImages)
+        .values({ id: randomUUID(), ...image })
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error creating captured image:', error);
+      throw error;
+    }
+  }
+
+  async updateCapturedImageMetadata(
+    id: string, 
+    updates: { categoryId?: string; tags?: string[]; notes?: string; }
+  ): Promise<CapturedImage | undefined> {
+    try {
+      const result = await db.update(capturedImages)
+        .set(updates)
+        .where(eq(capturedImages.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error updating captured image metadata:', error);
+      return undefined;
+    }
   }
 
   async deleteCapturedImage(id: string): Promise<boolean> {
@@ -386,16 +533,37 @@ export class DbStorage implements IStorage {
     return result.length > 0;
   }
 
-  async getVideoRecordings(callId: string): Promise<VideoRecording[]> {
+  // Enhanced video recordings methods with category support
+  async getVideoRecordings(callId: string, categoryId?: string): Promise<VideoRecording[]> {
     try {
-      const recordings = await db
-        .select()
+      let query = db.select()
         .from(videoRecordings)
-        .where(eq(videoRecordings.callId, callId))
-        .orderBy(videoRecordings.recordedAt);
+        .where(eq(videoRecordings.callId, callId));
+      
+      if (categoryId) {
+        query = query.where(eq(videoRecordings.categoryId, categoryId));
+      }
+      
+      const recordings = await query.orderBy(videoRecordings.sequenceNumber, videoRecordings.recordedAt);
       return recordings;
     } catch (error) {
       console.error('Error fetching video recordings:', error);
+      return [];
+    }
+  }
+
+  async getVideoRecordingsByTags(callId: string, tags: string[]): Promise<VideoRecording[]> {
+    try {
+      const result = await db.select()
+        .from(videoRecordings)
+        .where(and(
+          eq(videoRecordings.callId, callId),
+          sql`${videoRecordings.tags} && ${tags}`
+        ))
+        .orderBy(videoRecordings.recordedAt);
+      return result;
+    } catch (error) {
+      console.error('Error fetching video recordings by tags:', error);
       return [];
     }
   }
@@ -416,6 +584,22 @@ export class DbStorage implements IStorage {
     }
   }
 
+  async updateVideoRecordingMetadata(
+    id: string, 
+    updates: { categoryId?: string; tags?: string[]; notes?: string; }
+  ): Promise<VideoRecording | undefined> {
+    try {
+      const result = await db.update(videoRecordings)
+        .set(updates)
+        .where(eq(videoRecordings.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error updating video recording metadata:', error);
+      return undefined;
+    }
+  }
+
   async deleteVideoRecording(id: string): Promise<boolean> {
     try {
       const deleted = await db.delete(videoRecordings).where(eq(videoRecordings.id, id));
@@ -423,6 +607,82 @@ export class DbStorage implements IStorage {
     } catch (error) {
       console.error('Error deleting video recording:', error);
       return false;
+    }
+  }
+
+  // Bulk operations for media management
+  async bulkUpdateCapturedImages(
+    ids: string[], 
+    updates: { categoryId?: string; tags?: string[]; notes?: string; }
+  ): Promise<number> {
+    try {
+      const result = await db.update(capturedImages)
+        .set(updates)
+        .where(inArray(capturedImages.id, ids));
+      return result.rowCount || 0;
+    } catch (error) {
+      console.error('Error bulk updating captured images:', error);
+      return 0;
+    }
+  }
+
+  async bulkUpdateVideoRecordings(
+    ids: string[], 
+    updates: { categoryId?: string; tags?: string[]; notes?: string; }
+  ): Promise<number> {
+    try {
+      const result = await db.update(videoRecordings)
+        .set(updates)
+        .where(inArray(videoRecordings.id, ids));
+      return result.rowCount || 0;
+    } catch (error) {
+      console.error('Error bulk updating video recordings:', error);
+      return 0;
+    }
+  }
+
+  async getAllMediaForCall(callId: string): Promise<{ images: CapturedImage[]; videos: VideoRecording[]; }> {
+    try {
+      const [images, videos] = await Promise.all([
+        this.getCapturedImages(callId),
+        this.getVideoRecordings(callId)
+      ]);
+      return { images, videos };
+    } catch (error) {
+      console.error('Error fetching all media for call:', error);
+      return { images: [], videos: [] };
+    }
+  }
+
+  async searchMediaByNotes(
+    callId: string, 
+    searchTerm: string
+  ): Promise<{ images: CapturedImage[]; videos: VideoRecording[]; }> {
+    try {
+      const searchPattern = `%${searchTerm.toLowerCase()}%`;
+      
+      const [images, videos] = await Promise.all([
+        db.select()
+          .from(capturedImages)
+          .where(and(
+            eq(capturedImages.callId, callId),
+            ilike(capturedImages.notes, searchPattern)
+          ))
+          .orderBy(capturedImages.capturedAt),
+        
+        db.select()
+          .from(videoRecordings)
+          .where(and(
+            eq(videoRecordings.callId, callId),
+            ilike(videoRecordings.notes, searchPattern)
+          ))
+          .orderBy(videoRecordings.recordedAt)
+      ]);
+      
+      return { images, videos };
+    } catch (error) {
+      console.error('Error searching media by notes:', error);
+      return { images: [], videos: [] };
     }
   }
 
