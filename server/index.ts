@@ -39,7 +39,15 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
+    console.log('Initializing routes and server...');
     const server = await registerRoutes(app);
+
+    // Validate that registerRoutes returned a proper server instance
+    if (!server || typeof server.listen !== 'function') {
+      throw new Error('registerRoutes failed to return a valid HTTP server instance');
+    }
+
+    console.log('Routes registered successfully');
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -58,13 +66,29 @@ app.use((req, res, next) => {
     });
   });
 
+  // Determine environment mode safely without mutating NODE_ENV
+  // If NODE_ENV is not set, fall back to Express default behavior, otherwise respect the explicit value
+  const isDev = process.env.NODE_ENV ? process.env.NODE_ENV === 'development' : app.get('env') === 'development';
+  const envMode = isDev ? 'development' : 'production';
+
+  console.log(`Starting server in ${envMode} mode`);
+
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
+  if (isDev) {
+    console.log('Setting up Vite development server...');
     await setupVite(app, server);
+    console.log('Vite development server configured');
   } else {
-    serveStatic(app);
+    console.log('Setting up static file serving for production...');
+    try {
+      serveStatic(app);
+      console.log('Static file serving configured for production');
+    } catch (staticError) {
+      console.error('Failed to setup static file serving:', staticError);
+      throw new Error(`Production static file setup failed: ${staticError}`);
+    }
   }
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
@@ -72,12 +96,33 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
     const port = parseInt(process.env.PORT || '5000', 10);
+    const host = "0.0.0.0";
+
+    // Validate port number
+    if (isNaN(port) || port < 1 || port > 65535) {
+      throw new Error(`Invalid port number: ${process.env.PORT}. Port must be between 1 and 65535.`);
+    }
+
+    console.log(`Attempting to start server on ${host}:${port}`);
+
     server.listen({
       port,
-      host: "0.0.0.0",
-      reusePort: true,
+      host,
     }, () => {
+      console.log(`✅ Server successfully started on ${host}:${port}`);
+      console.log(`🌍 Application ready for connections`);
       log(`serving on port ${port}`);
+    });
+
+    // Add error handling for server listen failures
+    server.on('error', (serverError) => {
+      console.error('❌ Server failed to start:', serverError);
+      if ((serverError as any).code === 'EADDRINUSE') {
+        console.error(`Port ${port} is already in use. Please use a different port or free up port ${port}.`);
+      } else if ((serverError as any).code === 'EACCES') {
+        console.error(`Permission denied to bind to port ${port}. Try using a port number above 1024.`);
+      }
+      process.exit(1);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
