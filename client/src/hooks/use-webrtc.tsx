@@ -11,7 +11,13 @@ interface ChatMessage {
   timestamp: Date;
 }
 
-export function useWebRTC(callId: string, userRole: "coordinator" | "inspector") {
+interface UseWebRTCOptions {
+  enabled?: boolean;
+  displayName?: string;
+}
+
+export function useWebRTC(callId: string, userRole: "coordinator" | "inspector", options: UseWebRTCOptions = {}) {
+  const { enabled = true, displayName } = options;
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -124,22 +130,26 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
   const { sendMessage, isConnected: wsConnected } = useWebSocket(callId, userRole, {
     onMessage: handleSignalingMessage,
+    enabled,
+    displayName,
   });
 
-  // Initialize local media stream
+  // Initialize local media stream only when enabled
   useEffect(() => {
-    initializeLocalStream();
+    if (enabled) {
+      initializeLocalStream();
+    }
     return () => {
       cleanup();
     };
-  }, []);
+  }, [enabled]);
 
-  // Initialize peer connection when WebSocket is connected
+  // Initialize peer connection when WebSocket is connected and enabled
   useEffect(() => {
-    if (wsConnected && localStream) {
+    if (enabled && wsConnected && localStream) {
       initializePeerConnection();
     }
-  }, [wsConnected, localStream]);
+  }, [enabled, wsConnected, localStream]);
 
   async function initializeLocalStream() {
     try {

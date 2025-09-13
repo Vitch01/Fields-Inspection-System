@@ -39,7 +39,10 @@ export default function InspectorCall() {
     sendChatMessage,
     unreadCount,
     clearUnreadCount,
-  } = useWebRTC(callId!, "inspector");
+  } = useWebRTC(callId!, "inspector", {
+    enabled: hasJoined,
+    displayName: inspectorName,
+  });
 
   // Inspector doesn't need to fetch captured images
   const capturedImages: any[] = [];

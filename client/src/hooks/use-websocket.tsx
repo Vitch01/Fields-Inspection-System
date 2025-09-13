@@ -5,11 +5,14 @@ interface UseWebSocketOptions {
   onMessage?: (message: any) => void;
   onConnect?: () => void;
   onDisconnect?: () => void;
+  enabled?: boolean;
+  displayName?: string;
 }
 
 type TransportMode = 'websocket' | 'http-polling' | 'connecting' | 'failed';
 
 export function useWebSocket(callId: string, userRole: string, options: UseWebSocketOptions = {}) {
+  const { enabled = true, displayName, ...otherOptions } = options;
   const [isConnected, setIsConnected] = useState(false);
   const [transportMode, setTransportMode] = useState<TransportMode>('connecting');
   const wsRef = useRef<WebSocket | null>(null);
@@ -20,11 +23,13 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
   const fallbackTriggeredRef = useRef(false);
 
   useEffect(() => {
-    connect();
+    if (enabled) {
+      connect();
+    }
     return () => {
       disconnect();
     };
-  }, [callId]);
+  }, [callId, enabled]);
 
   // ============================================================
   // HTTP POLLING FUNCTIONS (MOBILE FALLBACK)
@@ -60,17 +65,21 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
     
     // First, join the call via HTTP
     if (!httpPollingJoinedRef.current) {
-      const joinSuccess = await sendHttpMessage({
+      const joinMessage: any = {
         type: "join-call",
         callId,
         userId: userRole,
-      });
+      };
+      if (displayName) {
+        joinMessage.displayName = displayName;
+      }
+      const joinSuccess = await sendHttpMessage(joinMessage);
       
       if (joinSuccess) {
         httpPollingJoinedRef.current = true;
         setIsConnected(true);
         setTransportMode('http-polling');
-        options.onConnect?.();
+        otherOptions.onConnect?.();
         console.log(`✅ [HTTP Polling] Successfully joined call ${callId} as ${userRole}`);
       } else {
         console.error(`❌ [HTTP Polling] Failed to join call ${callId}`);
@@ -121,7 +130,7 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
       if (data.messages && data.messages.length > 0) {
         data.messages.forEach((message: any) => {
           console.log(`📨 [HTTP Polling] Processing message:`, { type: message.type, from: message.userId });
-          options.onMessage?.(message);
+          otherOptions.onMessage?.(message);
         });
       }
       
@@ -261,14 +270,17 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
         console.log("📱 [Mobile] Network info at connection time:", connectionInfo.network);
         setIsConnected(true);
         setTransportMode('websocket');
-        options.onConnect?.();
+        otherOptions.onConnect?.();
 
         // Join the call room with enhanced logging
-        const joinMessage = {
+        const joinMessage: any = {
           type: "join-call",
           callId,
           userId: userRole,
         };
+        if (displayName) {
+          joinMessage.displayName = displayName;
+        }
         console.log("📞 [WebSocket] Sending join-call message:", joinMessage);
         sendMessage(joinMessage);
       };
@@ -277,7 +289,7 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
         try {
           const message = JSON.parse(event.data);
           console.log("📨 [WebSocket] Received message:", { type: message.type, from: message.userId });
-          options.onMessage?.(message);
+          otherOptions.onMessage?.(message);
         } catch (error) {
           console.error("❌ [WebSocket] Failed to parse message:", {
             error: error instanceof Error ? error.message : String(error),
@@ -316,7 +328,7 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
           }
         }
         
-        options.onDisconnect?.();
+        otherOptions.onDisconnect?.();
         
         // Only retry WebSocket if not switching to HTTP polling
         if (!fallbackTriggeredRef.current) {
