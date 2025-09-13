@@ -408,7 +408,65 @@ export const inspectionRequestFormSchema = insertInspectionRequestSchema.extend(
   estimatedValue: z.number().optional(),
 });
 
+// Coordinator endpoint validation schemas
+export const coordinatorInspectionRequestsQuerySchema = z.object({
+  status: z.enum(["pending", "assigned", "in_progress", "completed", "cancelled"]).optional(),
+  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+  departmentId: z.string().uuid().optional(),
+  assignedCoordinatorId: z.string().uuid().optional(),
+  assetType: z.enum(["building", "equipment", "infrastructure", "vehicle", "other"]).optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+export const assignDepartmentSchema = z.object({
+  departmentId: z.string().uuid("Invalid department ID format"),
+});
+
+export const assignCoordinatorSchema = z.object({
+  coordinatorId: z.string().uuid("Invalid coordinator ID format"),
+});
+
+export const updateInspectionRequestSchema = z.object({
+  status: z.enum(["pending", "assigned", "in_progress", "completed", "cancelled"]).optional(),
+  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+  scheduledDate: z.coerce.date().optional(),
+  assignedDepartmentId: z.string().uuid().optional(),
+  assignedCoordinatorId: z.string().uuid().optional(),
+  metadata: z.record(z.any()).optional(),
+}).refine(data => Object.keys(data).length > 0, {
+  message: "At least one field must be provided for update",
+});
+
+export const coordinatorParamsSchema = z.object({
+  coordinatorId: z.string().uuid("Invalid coordinator ID format"),
+});
+
+export const departmentParamsSchema = z.object({
+  departmentId: z.string().uuid("Invalid department ID format"),
+});
+
+export const inspectionRequestParamsSchema = z.object({
+  id: z.string().uuid("Invalid inspection request ID format"),
+});
+
+// Coordinator login schema
+export const coordinatorLoginSchema = z.object({
+  username: z.string().min(1, "Username is required"),
+  password: z.string().optional(), // Optional for coordinators with default auth
+});
+
 // Types for client authentication
 export type ClientLogin = z.infer<typeof clientLoginSchema>;
 export type ClientRegistration = z.infer<typeof clientRegistrationSchema>;
 export type InspectionRequestForm = z.infer<typeof inspectionRequestFormSchema>;
+
+// Types for coordinator endpoints
+export type CoordinatorInspectionRequestsQuery = z.infer<typeof coordinatorInspectionRequestsQuerySchema>;
+export type AssignDepartment = z.infer<typeof assignDepartmentSchema>;
+export type AssignCoordinator = z.infer<typeof assignCoordinatorSchema>;
+export type UpdateInspectionRequest = z.infer<typeof updateInspectionRequestSchema>;
+export type CoordinatorParams = z.infer<typeof coordinatorParamsSchema>;
+export type DepartmentParams = z.infer<typeof departmentParamsSchema>;
+export type InspectionRequestParams = z.infer<typeof inspectionRequestParamsSchema>;
+export type CoordinatorLogin = z.infer<typeof coordinatorLoginSchema>;

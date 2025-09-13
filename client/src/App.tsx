@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import CoordinatorCall from "@/pages/coordinator-call";
+import CoordinatorDashboard from "@/pages/coordinator-dashboard";
 import InspectorCall from "@/pages/inspector-call";
 import InspectorThankYou from "@/pages/inspector-thank-you";
 import ClientLogin from "@/pages/client-login";
@@ -16,6 +17,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/coordinator/dashboard" component={CoordinatorDashboard} />
       <Route path="/coordinator/:callId" component={CoordinatorCall} />
       <Route path="/inspector/:callId" component={InspectorCall} />
       <Route path="/join/:callId" component={InspectorCall} />

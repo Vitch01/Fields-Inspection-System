@@ -2,7 +2,7 @@ import { type User, type InsertUser, type Call, type InsertCall, type CapturedIm
 import { randomUUID } from "crypto";
 import { db } from "./db";
 import { users, calls, capturedImages, videoRecordings, clients, inspectionRequests } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
 export interface IStorage {
@@ -22,6 +22,22 @@ export interface IStorage {
   getInspectionRequestsByClient(clientId: string): Promise<InspectionRequest[]>;
   createInspectionRequest(request: InsertInspectionRequest): Promise<InspectionRequest>;
   updateInspectionRequestStatus(id: string, status: string): Promise<InspectionRequest | undefined>;
+  
+  // Coordinator-specific request management
+  getAllInspectionRequests(filters?: {
+    status?: string;
+    priority?: string;
+    departmentId?: string;
+    assignedCoordinatorId?: string;
+    assetType?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<InspectionRequest[]>;
+  assignRequestToDepartment(requestId: string, departmentId: string): Promise<InspectionRequest | undefined>;
+  assignRequestToCoordinator(requestId: string, coordinatorId: string): Promise<InspectionRequest | undefined>;
+  getInspectionRequestsForCoordinator(coordinatorId: string): Promise<InspectionRequest[]>;
+  getInspectionRequestsForDepartment(departmentId: string): Promise<InspectionRequest[]>;
+  updateInspectionRequest(id: string, updates: Partial<InspectionRequest>): Promise<InspectionRequest | undefined>;
   
   getCall(id: string): Promise<Call | undefined>;
   createCall(call: InsertCall): Promise<Call>;
@@ -157,6 +173,144 @@ export class DbStorage implements IStorage {
   async updateInspectionRequestStatus(id: string, status: string): Promise<InspectionRequest | undefined> {
     const result = await db.update(inspectionRequests)
       .set({ status, updatedAt: new Date() })
+      .where(eq(inspectionRequests.id, id))
+      .returning();
+    
+    return result[0];
+  }
+
+  // Coordinator-specific request management
+  async getAllInspectionRequests(filters?: {
+    status?: string;
+    priority?: string;
+    departmentId?: string;
+    assignedCoordinatorId?: string;
+    assetType?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<InspectionRequest[]> {
+    // Collect all filter conditions
+    const conditions = [];
+    
+    if (filters?.status) {
+      conditions.push(eq(inspectionRequests.status, filters.status));
+    }
+    if (filters?.priority) {
+      conditions.push(eq(inspectionRequests.priority, filters.priority));
+    }
+    if (filters?.departmentId) {
+      conditions.push(eq(inspectionRequests.assignedDepartmentId, filters.departmentId));
+    }
+    if (filters?.assignedCoordinatorId) {
+      conditions.push(eq(inspectionRequests.assignedCoordinatorId, filters.assignedCoordinatorId));
+    }
+    if (filters?.assetType) {
+      conditions.push(eq(inspectionRequests.assetType, filters.assetType));
+    }
+    
+    // Build query with proper filter combination
+    let query = db.select().from(inspectionRequests);
+    
+    // Apply combined filters using and()
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+    
+    // Order by created date (newest first)
+    query = query.orderBy(sql`${inspectionRequests.createdAt} DESC`);
+    
+    // Apply pagination
+    if (filters?.limit) {
+      query = query.limit(filters.limit);
+    }
+    if (filters?.offset) {
+      query = query.offset(filters.offset);
+    }
+    
+    return await query;
+  }
+
+  async assignRequestToDepartment(requestId: string, departmentId: string): Promise<InspectionRequest | undefined> {
+    // First check the current status to prevent assignment conflicts
+    const currentRequest = await this.getInspectionRequest(requestId);
+    if (!currentRequest) {
+      return undefined;
+    }
+    
+    // Prevent reassignment if request is in progress or completed
+    if (currentRequest.status === 'in_progress') {
+      throw new Error('Cannot reassign request that is currently in progress');
+    }
+    if (currentRequest.status === 'completed') {
+      throw new Error('Cannot reassign completed request');
+    }
+    if (currentRequest.status === 'cancelled') {
+      throw new Error('Cannot assign cancelled request');
+    }
+    
+    const result = await db.update(inspectionRequests)
+      .set({ 
+        assignedDepartmentId: departmentId,
+        status: 'assigned',
+        updatedAt: new Date()
+      })
+      .where(eq(inspectionRequests.id, requestId))
+      .returning();
+    
+    return result[0];
+  }
+
+  async assignRequestToCoordinator(requestId: string, coordinatorId: string): Promise<InspectionRequest | undefined> {
+    // First check the current status to prevent assignment conflicts
+    const currentRequest = await this.getInspectionRequest(requestId);
+    if (!currentRequest) {
+      return undefined;
+    }
+    
+    // Prevent reassignment if request is in progress or completed
+    if (currentRequest.status === 'in_progress') {
+      throw new Error('Cannot reassign request that is currently in progress');
+    }
+    if (currentRequest.status === 'completed') {
+      throw new Error('Cannot reassign completed request');
+    }
+    if (currentRequest.status === 'cancelled') {
+      throw new Error('Cannot assign cancelled request');
+    }
+    
+    const result = await db.update(inspectionRequests)
+      .set({ 
+        assignedCoordinatorId: coordinatorId,
+        status: 'assigned',
+        updatedAt: new Date()
+      })
+      .where(eq(inspectionRequests.id, requestId))
+      .returning();
+    
+    return result[0];
+  }
+
+  async getInspectionRequestsForCoordinator(coordinatorId: string): Promise<InspectionRequest[]> {
+    const result = await db.select()
+      .from(inspectionRequests)
+      .where(eq(inspectionRequests.assignedCoordinatorId, coordinatorId))
+      .orderBy(inspectionRequests.createdAt);
+    
+    return result;
+  }
+
+  async getInspectionRequestsForDepartment(departmentId: string): Promise<InspectionRequest[]> {
+    const result = await db.select()
+      .from(inspectionRequests)
+      .where(eq(inspectionRequests.assignedDepartmentId, departmentId))
+      .orderBy(inspectionRequests.createdAt);
+    
+    return result;
+  }
+
+  async updateInspectionRequest(id: string, updates: Partial<InspectionRequest>): Promise<InspectionRequest | undefined> {
+    const result = await db.update(inspectionRequests)
+      .set({ ...updates, updatedAt: new Date() })
       .where(eq(inspectionRequests.id, id))
       .returning();
     

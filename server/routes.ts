@@ -3,8 +3,8 @@ import express from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertCallSchema, insertCapturedImageSchema, insertVideoRecordingSchema, signalingMessageSchema, videoRecordingSchema, allowedVideoMimeTypes, allowedVideoExtensions, clientLoginSchema, clientRegistrationSchema, inspectionRequestFormSchema } from "@shared/schema";
-import { generateToken, authenticateClient, authorizeClientResource, type AuthenticatedRequest } from "./auth";
+import { insertCallSchema, insertCapturedImageSchema, insertVideoRecordingSchema, signalingMessageSchema, videoRecordingSchema, allowedVideoMimeTypes, allowedVideoExtensions, clientLoginSchema, clientRegistrationSchema, inspectionRequestFormSchema, coordinatorInspectionRequestsQuerySchema, assignDepartmentSchema, assignCoordinatorSchema, updateInspectionRequestSchema, coordinatorParamsSchema, departmentParamsSchema, inspectionRequestParamsSchema, coordinatorLoginSchema } from "@shared/schema";
+import { generateToken, generateUserToken, authenticateClient, authenticateCoordinator, authenticateUser, authorizeClientResource, authorizeCoordinatorResource, type AuthenticatedRequest } from "./auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -363,7 +363,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
 
-      res.json({ user: { id: user.id, username: user.username, role: user.role, name: user.name } });
+      // Generate JWT token for authenticated coordinator/inspector session
+      const token = generateUserToken(user);
+      
+      res.json({ 
+        user: { 
+          id: user.id, 
+          username: user.username, 
+          role: user.role, 
+          name: user.name 
+        },
+        token
+      });
     } catch (error) {
       res.status(500).json({ message: 'Login failed' });
     }
@@ -572,6 +583,184 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Coordinator request management endpoints
+  app.get('/api/coordinator/inspection-requests', authenticateCoordinator, async (req: AuthenticatedRequest, res) => {
+    try {
+      // Validate query parameters
+      const queryValidation = coordinatorInspectionRequestsQuerySchema.safeParse(req.query);
+      if (!queryValidation.success) {
+        return res.status(400).json({ 
+          message: 'Invalid query parameters', 
+          errors: queryValidation.error.issues 
+        });
+      }
+
+      const filters = queryValidation.data;
+      const requests = await storage.getAllInspectionRequests(filters);
+      res.json(requests);
+    } catch (error: any) {
+      console.error('Failed to get inspection requests:', error.message);
+      res.status(500).json({ message: 'Failed to get inspection requests' });
+    }
+  });
+
+  app.patch('/api/coordinator/inspection-requests/:id/assign-department', authenticateCoordinator, async (req: AuthenticatedRequest, res) => {
+    try {
+      // Validate path parameters
+      const paramsValidation = inspectionRequestParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return res.status(400).json({ 
+          message: 'Invalid request ID', 
+          errors: paramsValidation.error.issues 
+        });
+      }
+
+      // Validate request body
+      const bodyValidation = assignDepartmentSchema.safeParse(req.body);
+      if (!bodyValidation.success) {
+        return res.status(400).json({ 
+          message: 'Invalid request body', 
+          errors: bodyValidation.error.issues 
+        });
+      }
+
+      const { id } = paramsValidation.data;
+      const { departmentId } = bodyValidation.data;
+
+      const updatedRequest = await storage.assignRequestToDepartment(id, departmentId);
+      if (!updatedRequest) {
+        return res.status(404).json({ message: 'Inspection request not found' });
+      }
+
+      res.json(updatedRequest);
+    } catch (error: any) {
+      console.error('Failed to assign request to department:', error.message);
+      
+      // Handle conflict errors specifically
+      if (error.message.includes('Cannot reassign') || error.message.includes('Cannot assign')) {
+        return res.status(409).json({ message: error.message });
+      }
+      
+      res.status(500).json({ message: 'Failed to assign request to department' });
+    }
+  });
+
+  app.patch('/api/coordinator/inspection-requests/:id/assign-coordinator', authenticateCoordinator, async (req: AuthenticatedRequest, res) => {
+    try {
+      // Validate path parameters
+      const paramsValidation = inspectionRequestParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return res.status(400).json({ 
+          message: 'Invalid request ID', 
+          errors: paramsValidation.error.issues 
+        });
+      }
+
+      // Validate request body
+      const bodyValidation = assignCoordinatorSchema.safeParse(req.body);
+      if (!bodyValidation.success) {
+        return res.status(400).json({ 
+          message: 'Invalid request body', 
+          errors: bodyValidation.error.issues 
+        });
+      }
+
+      const { id } = paramsValidation.data;
+      const { coordinatorId } = bodyValidation.data;
+
+      const updatedRequest = await storage.assignRequestToCoordinator(id, coordinatorId);
+      if (!updatedRequest) {
+        return res.status(404).json({ message: 'Inspection request not found' });
+      }
+
+      res.json(updatedRequest);
+    } catch (error: any) {
+      console.error('Failed to assign request to coordinator:', error.message);
+      
+      // Handle conflict errors specifically
+      if (error.message.includes('Cannot reassign') || error.message.includes('Cannot assign')) {
+        return res.status(409).json({ message: error.message });
+      }
+      
+      res.status(500).json({ message: 'Failed to assign request to coordinator' });
+    }
+  });
+
+  app.get('/api/coordinator/:coordinatorId/inspection-requests', authenticateCoordinator, authorizeCoordinatorResource, async (req: AuthenticatedRequest, res) => {
+    try {
+      // Validate path parameters
+      const paramsValidation = coordinatorParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return res.status(400).json({ 
+          message: 'Invalid coordinator ID', 
+          errors: paramsValidation.error.issues 
+        });
+      }
+
+      const { coordinatorId } = paramsValidation.data;
+      const requests = await storage.getInspectionRequestsForCoordinator(coordinatorId);
+      res.json(requests);
+    } catch (error: any) {
+      console.error('Failed to get coordinator requests:', error.message);
+      res.status(500).json({ message: 'Failed to get coordinator requests' });
+    }
+  });
+
+  app.get('/api/departments/:departmentId/inspection-requests', authenticateCoordinator, authorizeCoordinatorResource, async (req: AuthenticatedRequest, res) => {
+    try {
+      // Validate path parameters
+      const paramsValidation = departmentParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return res.status(400).json({ 
+          message: 'Invalid department ID', 
+          errors: paramsValidation.error.issues 
+        });
+      }
+
+      const { departmentId } = paramsValidation.data;
+      const requests = await storage.getInspectionRequestsForDepartment(departmentId);
+      res.json(requests);
+    } catch (error: any) {
+      console.error('Failed to get department requests:', error.message);
+      res.status(500).json({ message: 'Failed to get department requests' });
+    }
+  });
+
+  app.patch('/api/coordinator/inspection-requests/:id', authenticateCoordinator, async (req: AuthenticatedRequest, res) => {
+    try {
+      // Validate path parameters
+      const paramsValidation = inspectionRequestParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return res.status(400).json({ 
+          message: 'Invalid request ID', 
+          errors: paramsValidation.error.issues 
+        });
+      }
+
+      // Validate request body
+      const bodyValidation = updateInspectionRequestSchema.safeParse(req.body);
+      if (!bodyValidation.success) {
+        return res.status(400).json({ 
+          message: 'Invalid request body', 
+          errors: bodyValidation.error.issues 
+        });
+      }
+
+      const { id } = paramsValidation.data;
+      const updates = bodyValidation.data;
+
+      const updatedRequest = await storage.updateInspectionRequest(id, updates);
+      if (!updatedRequest) {
+        return res.status(404).json({ message: 'Inspection request not found' });
+      }
+
+      res.json(updatedRequest);
+    } catch (error: any) {
+      console.error('Failed to update inspection request:', error.message);
+      res.status(500).json({ message: 'Failed to update inspection request' });
+    }
+  });
+
   // TURN credentials endpoint for WebRTC with Twilio Network Traversal Service
   app.get('/api/turn-credentials', async (_req, res) => {
     try {
@@ -620,11 +809,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Call management routes
-  app.post('/api/calls', async (req, res) => {
+  app.post('/api/calls', authenticateUser, async (req: AuthenticatedRequest, res) => {
     try {
       console.log('Creating call with data:', JSON.stringify(req.body, null, 2));
       const callData = insertCallSchema.parse(req.body);
       console.log('Parsed call data:', JSON.stringify(callData, null, 2));
+      
+      // Verify the authenticated user has permission to create this call
+      if (req.user?.role === 'coordinator' && callData.coordinatorId !== req.user.id) {
+        return res.status(403).json({ message: 'Cannot create calls for other coordinators' });
+      }
+      if (req.user?.role === 'inspector' && callData.inspectorId !== req.user.id) {
+        return res.status(403).json({ message: 'Cannot create calls for other inspectors' });
+      }
+      
       const call = await storage.createCall(callData);
       console.log('Created call:', JSON.stringify(call, null, 2));
       res.json(call);
@@ -637,28 +835,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/calls/:id', async (req, res) => {
+  app.get('/api/calls/:id', authenticateUser, async (req: AuthenticatedRequest, res) => {
     try {
       const call = await storage.getCall(req.params.id);
       if (!call) {
         return res.status(404).json({ message: 'Call not found' });
       }
+      
+      // Verify the authenticated user has permission to access this call
+      if (req.user?.role === 'coordinator' && call.coordinatorId !== req.user.id) {
+        return res.status(403).json({ message: 'Cannot access other coordinators\' calls' });
+      }
+      if (req.user?.role === 'inspector' && call.inspectorId !== req.user.id) {
+        return res.status(403).json({ message: 'Cannot access other inspectors\' calls' });
+      }
+      
       res.json(call);
     } catch (error) {
       res.status(500).json({ message: 'Failed to get call' });
     }
   });
 
-  app.patch('/api/calls/:id/status', async (req, res) => {
+  app.patch('/api/calls/:id/status', authenticateUser, async (req: AuthenticatedRequest, res) => {
     try {
       const { status } = req.body;
       const endedAt = status === 'ended' ? new Date() : undefined;
       
-      const call = await storage.updateCallStatus(req.params.id, status, endedAt);
-      if (!call) {
+      // First get the call to verify permissions
+      const existingCall = await storage.getCall(req.params.id);
+      if (!existingCall) {
         return res.status(404).json({ message: 'Call not found' });
       }
       
+      // Verify the authenticated user has permission to update this call
+      if (req.user?.role === 'coordinator' && existingCall.coordinatorId !== req.user.id) {
+        return res.status(403).json({ message: 'Cannot update other coordinators\' calls' });
+      }
+      if (req.user?.role === 'inspector' && existingCall.inspectorId !== req.user.id) {
+        return res.status(403).json({ message: 'Cannot update other inspectors\' calls' });
+      }
+      
+      const call = await storage.updateCallStatus(req.params.id, status, endedAt);
       res.json(call);
     } catch (error) {
       res.status(500).json({ message: 'Failed to update call status' });
