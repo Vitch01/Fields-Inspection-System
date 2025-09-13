@@ -286,7 +286,7 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
             // Parse KML as fallback if Google Maps layer fails
             (window as any).parsedKmlData = kmlText;
             
-            // Extract field rep data from KML
+            // Extract field rep data from KML and display immediately
             try {
               const parser = new DOMParser();
               const kmlDoc = parser.parseFromString(kmlText, 'text/xml');
@@ -324,7 +324,86 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
                 }
               });
               
-              (window as any).parsedFieldReps = fieldReps;
+              if (fieldReps.length > 0) {
+                console.log(`✓ Successfully parsed ${fieldReps.length} field representatives - displaying immediately!`);
+                
+                // Clear any existing markers
+                markersRef.current.forEach((marker: any) => marker.setMap(null));
+                markersRef.current = [];
+
+                // Add parsed field reps as markers immediately
+                fieldReps.forEach((rep: any) => {
+                  const marker = new window.google.maps.Marker({
+                    position: rep.position,
+                    map: map,
+                    title: rep.name,
+                    icon: {
+                      url: 'data:image/svg+xml;base64,' + btoa(`
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="${rep.status === 'available' ? '#10B981' : '#6B7280'}"/>
+                        </svg>
+                      `),
+                      scaledSize: new window.google.maps.Size(24, 24),
+                    }
+                  });
+
+                  // Add info window with your field rep data
+                  const infoWindow = new window.google.maps.InfoWindow({
+                    content: `
+                      <div style="padding: 8px; max-width: 300px;">
+                        <h3 style="margin: 0 0 8px 0; color: #1f2937;">${rep.name}</h3>
+                        <div style="margin-bottom: 8px;">
+                          <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: ${rep.status === 'available' ? '#10B981' : '#6B7280'}; margin-right: 8px;"></span>
+                          <span style="color: ${rep.status === 'available' ? '#059669' : '#6B7280'}; font-weight: 500;">
+                            ${rep.status === 'available' ? 'Available' : 'Check Availability'}
+                          </span>
+                        </div>
+                        ${rep.phone ? `<p style="margin: 4px 0;"><strong>Phone:</strong> ${rep.phone}</p>` : ''}
+                        ${rep.email ? `<p style="margin: 4px 0;"><strong>Email:</strong> ${rep.email}</p>` : ''}
+                        ${rep.price ? `<p style="margin: 4px 0;"><strong>Price:</strong> ${rep.price}</p>` : ''}
+                        <button 
+                          onclick="selectInspector('${rep.id}', '${rep.name}')"
+                          style="margin-top: 12px; padding: 8px 16px; background-color: #3B82F6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;"
+                          data-testid="button-select-inspector-${rep.id}"
+                        >
+                          Select Inspector
+                        </button>
+                      </div>
+                    `
+                  });
+
+                  marker.addListener('click', () => {
+                    infoWindow.open(map, marker);
+                  });
+
+                  markersRef.current.push(marker);
+                });
+
+                // Zoom to show all field reps
+                const bounds = new window.google.maps.LatLngBounds();
+                fieldReps.forEach((rep: any) => {
+                  bounds.extend(rep.position);
+                });
+                map.fitBounds(bounds);
+                
+                // Don't zoom too close if there's only one marker
+                if (fieldReps.length === 1) {
+                  setTimeout(() => {
+                    if (map.getZoom() && map.getZoom()! > 16) {
+                      map.setZoom(16);
+                    }
+                  }, 1000);
+                }
+                
+                // Map is loaded with your real data!
+                setIsMapLoaded(true);
+                setMapError(null);
+                
+                // Still save for fallback use
+                (window as any).parsedFieldReps = fieldReps;
+                return; // Skip the Google Maps KML layer loading since we have the data
+              }
+              
               console.log('Parsed field representatives:', fieldReps);
               
             } catch (parseError) {
