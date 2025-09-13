@@ -359,7 +359,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // TURN credentials endpoint for WebRTC with Twilio Network Traversal Service
-  app.get('/api/turn-credentials', async (req, res) => {
+  app.get('/api/turn-credentials', async (_req, res) => {
     try {
       // Check for required Twilio credentials
       const accountSid = process.env.TWILIO_ACCOUNT_SID;
