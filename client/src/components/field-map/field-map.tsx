@@ -3,6 +3,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { MapPin, Phone, X } from 'lucide-react';
 
+/// <reference types="google.maps" />
+
+declare global {
+  interface Window {
+    google: any;
+  }
+}
+
 interface Inspector {
   id: string;
   name: string;
@@ -56,69 +64,100 @@ const MOCK_INSPECTORS: Inspector[] = [
 
 export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspectorId }: FieldMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const googleMapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
+  const googleMapRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
   const [selectedInspector, setSelectedInspector] = useState<Inspector | null>(null);
   const [isMapLoaded, setIsMapLoaded] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
+
+    // Check if Google Maps API key is available
+    if (!import.meta.env.VITE_GOOGLE_MAPS_API_KEY) {
+      setMapError("Google Maps API key is not configured");
+      return;
+    }
 
     // Load Google Maps Script
     if (!window.google) {
       const script = document.createElement('script');
       script.src = `https://maps.googleapis.com/maps/api/js?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&libraries=geometry`;
       script.async = true;
-      script.onload = initializeMap;
+      script.onload = () => {
+        // Add a small delay to ensure Google Maps is fully initialized
+        setTimeout(initializeMap, 100);
+      };
+      script.onerror = () => {
+        setMapError("Failed to load Google Maps. Please check your internet connection and API key validity.");
+      };
       document.head.appendChild(script);
     } else {
       initializeMap();
     }
+
+    // Cleanup function
+    return () => {
+      // Reset state on unmount
+      setMapError(null);
+      setIsMapLoaded(false);
+    };
   }, [isOpen]);
 
   const initializeMap = () => {
-    if (!mapRef.current || !window.google) return;
+    if (!mapRef.current || !window.google) {
+      setMapError("Google Maps API failed to load");
+      return;
+    }
 
-    // Initialize map centered on the field location
-    const map = new google.maps.Map(mapRef.current, {
-      center: { lat: 37.104181, lng: -113.585664 },
-      zoom: 15,
-      mapTypeId: google.maps.MapTypeId.SATELLITE,
-      styles: [
-        {
-          featureType: "poi",
-          elementType: "labels",
-          stylers: [{ visibility: "off" }]
-        }
-      ]
-    });
+    try {
+      // Initialize map centered on the field location
+      const map = new window.google.maps.Map(mapRef.current, {
+        center: { lat: 37.104181, lng: -113.585664 },
+        zoom: 15,
+        mapTypeId: window.google.maps.MapTypeId.SATELLITE,
+        styles: [
+          {
+            featureType: "poi",
+            elementType: "labels",
+            stylers: [{ visibility: "off" }]
+          }
+        ]
+      });
 
-    googleMapRef.current = map;
+      googleMapRef.current = map;
 
-    // Add field boundary from the provided Google Maps data
-    // This is a simplified version - in a real app, you'd load the actual KML/GeoJSON
-    const fieldBoundary = new google.maps.Polygon({
-      paths: [
-        { lat: 37.103, lng: -113.588 },
-        { lat: 37.105, lng: -113.588 },
-        { lat: 37.105, lng: -113.583 },
-        { lat: 37.103, lng: -113.583 }
-      ],
-      strokeColor: '#FF0000',
-      strokeOpacity: 0.8,
-      strokeWeight: 2,
-      fillColor: '#FF0000',
-      fillOpacity: 0.1,
-    });
+      // Add field boundary from the provided Google Maps data
+      // This is a simplified version - in a real app, you'd load the actual KML/GeoJSON
+      const fieldBoundary = new window.google.maps.Polygon({
+        paths: [
+          { lat: 37.103, lng: -113.588 },
+          { lat: 37.105, lng: -113.588 },
+          { lat: 37.105, lng: -113.583 },
+          { lat: 37.103, lng: -113.583 }
+        ],
+        strokeColor: '#FF0000',
+        strokeOpacity: 0.8,
+        strokeWeight: 2,
+        fillColor: '#FF0000',
+        fillOpacity: 0.1,
+      });
 
-    fieldBoundary.setMap(map);
+      fieldBoundary.setMap(map);
 
-    // Add inspector markers
-    addInspectorMarkers(map);
-    setIsMapLoaded(true);
+      // Add inspector markers
+      addInspectorMarkers(map);
+      setIsMapLoaded(true);
+      setMapError(null);
+    } catch (error) {
+      console.error('Error initializing Google Maps:', error);
+      setMapError("Failed to initialize map. This may be due to an invalid API key or quota exceeded.");
+      setIsMapLoaded(false);
+    }
   };
 
-  const addInspectorMarkers = (map: google.maps.Map) => {
+  const addInspectorMarkers = (map: any) => {
     // Clear existing markers
     markersRef.current.forEach(marker => marker.setMap(null));
     markersRef.current = [];
@@ -129,12 +168,12 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
                          inspector.status === 'available' ? '#3b82f6' :
                          inspector.status === 'busy' ? '#ef4444' : '#6b7280';
 
-      const marker = new google.maps.Marker({
+      const marker = new window.google.maps.Marker({
         position: { lat: inspector.latitude, lng: inspector.longitude },
         map: map,
         title: inspector.name,
         icon: {
-          path: google.maps.SymbolPath.CIRCLE,
+          path: window.google.maps.SymbolPath.CIRCLE,
           scale: 10,
           fillColor: markerColor,
           fillOpacity: 1,
@@ -143,20 +182,38 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
         }
       });
 
-      const infoWindow = new google.maps.InfoWindow({
-        content: `
-          <div style="padding: 8px; min-width: 200px;">
-            <h3 style="margin: 0 0 8px 0; color: #1f2937;">${inspector.name}</h3>
-            <p style="margin: 0 0 4px 0; color: #6b7280; font-size: 14px;">${inspector.specialization}</p>
-            <p style="margin: 0 0 8px 0; color: ${markerColor}; font-weight: 500; font-size: 14px; text-transform: capitalize;">
-              ${isCurrentCall ? 'On Current Call' : inspector.status}
-            </p>
-            ${!isCurrentCall && inspector.status === 'available' ? 
-              '<button onclick="window.selectInspectorFromMap(\'' + inspector.id + '\')" style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px;">Start Call</button>' : 
-              ''
-            }
-          </div>
-        `
+      // Create info window content using DOM to avoid XSS
+      const infoWindowContent = document.createElement('div');
+      infoWindowContent.style.cssText = 'padding: 8px; min-width: 200px;';
+      
+      const nameEl = document.createElement('h3');
+      nameEl.style.cssText = 'margin: 0 0 8px 0; color: #1f2937;';
+      nameEl.textContent = inspector.name;
+      infoWindowContent.appendChild(nameEl);
+
+      const specializationEl = document.createElement('p');
+      specializationEl.style.cssText = 'margin: 0 0 4px 0; color: #6b7280; font-size: 14px;';
+      specializationEl.textContent = inspector.specialization || '';
+      infoWindowContent.appendChild(specializationEl);
+
+      const statusEl = document.createElement('p');
+      statusEl.style.cssText = `margin: 0 0 8px 0; color: ${markerColor}; font-weight: 500; font-size: 14px; text-transform: capitalize;`;
+      statusEl.textContent = isCurrentCall ? 'On Current Call' : inspector.status;
+      infoWindowContent.appendChild(statusEl);
+
+      if (!isCurrentCall && inspector.status === 'available') {
+        const buttonEl = document.createElement('button');
+        buttonEl.style.cssText = 'background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px;';
+        buttonEl.textContent = 'Start Call';
+        buttonEl.addEventListener('click', () => {
+          onSelectInspector(inspector);
+          onClose();
+        });
+        infoWindowContent.appendChild(buttonEl);
+      }
+
+      const infoWindow = new window.google.maps.InfoWindow({
+        content: infoWindowContent
       });
 
       marker.addListener('click', () => {
@@ -166,15 +223,44 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
       markersRef.current.push(marker);
     });
+  };
 
-    // Add global function to handle inspector selection from info window
-    (window as any).selectInspectorFromMap = (inspectorId: string) => {
-      const inspector = MOCK_INSPECTORS.find(i => i.id === inspectorId);
-      if (inspector) {
-        onSelectInspector(inspector);
-        onClose();
-      }
+  const retryLoadMap = () => {
+    setIsRetrying(true);
+    setMapError(null);
+    setIsMapLoaded(false);
+
+    // Check if Google Maps API key is available
+    if (!import.meta.env.VITE_GOOGLE_MAPS_API_KEY) {
+      setMapError("Google Maps API key is not configured. Please set VITE_GOOGLE_MAPS_API_KEY in your environment.");
+      setIsRetrying(false);
+      return;
+    }
+
+    // Remove any existing Google Maps script
+    const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
+    if (existingScript) {
+      existingScript.remove();
+    }
+
+    // Reset google object to force reload
+    if (window.google) {
+      delete (window as any).google;
+    }
+
+    // Load fresh Google Maps script
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&libraries=geometry`;
+    script.async = true;
+    script.onload = () => {
+      setIsRetrying(false);
+      initializeMap();
     };
+    script.onerror = () => {
+      setIsRetrying(false);
+      setMapError("Failed to load Google Maps. Please check your internet connection, API key validity, and try again.");
+    };
+    document.head.appendChild(script);
   };
 
   const getStatusColor = (status: string, isCurrentCall: boolean) => {
@@ -223,11 +309,33 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
                 className="w-full h-full"
                 data-testid="google-map-container"
               />
-              {!isMapLoaded && (
+              {!isMapLoaded && !mapError && (
                 <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
                   <div className="text-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
                     <p className="text-gray-600">Loading field map...</p>
+                  </div>
+                </div>
+              )}
+              {mapError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+                  <div className="text-center">
+                    <div className="text-red-600 mb-4">
+                      <p className="font-medium">Map Loading Error</p>
+                      <p className="text-sm text-gray-600 mt-1">{mapError}</p>
+                    </div>
+                    <Button 
+                      onClick={retryLoadMap} 
+                      size="sm"
+                      disabled={isRetrying || !import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
+                    >
+                      {isRetrying ? "Retrying..." : "Retry"}
+                    </Button>
+                    {!import.meta.env.VITE_GOOGLE_MAPS_API_KEY && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        Contact administrator to configure Google Maps API key
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

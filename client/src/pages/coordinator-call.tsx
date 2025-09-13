@@ -6,9 +6,10 @@ import ChatPanel from "@/components/video-call/chat-panel";
 import InspectorLocation from "@/components/video-call/inspector-location";
 import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
+import { FieldMap } from "@/components/field-map/field-map";
 import { useWebRTC } from "@/hooks/use-webrtc";
 import { useState, useEffect } from "react";
-import { Clock, Signal, Users, Copy, ExternalLink } from "lucide-react";
+import { Clock, Signal, Users, Copy, ExternalLink, Map } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
@@ -16,6 +17,7 @@ export default function CoordinatorCall() {
   const { callId } = useParams();
   const [showSettings, setShowSettings] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [showFieldMap, setShowFieldMap] = useState(false);
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [callDuration, setCallDuration] = useState(0); // seconds
   const [videoRotation, setVideoRotation] = useState(0); // Track video rotation state
@@ -129,6 +131,15 @@ export default function CoordinatorCall() {
     window.open(inspectorUrl, '_blank');
   };
 
+  const handleSelectInspector = (inspector: any) => {
+    toast({
+      title: "Inspector Selected",
+      description: `Selected ${inspector.name} for inspection. Create a new call to connect.`,
+    });
+    console.log("Selected inspector:", inspector);
+    // In a real app, you would navigate to create a new call with this inspector
+  };
+
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header with Call Status */}
@@ -158,6 +169,15 @@ export default function CoordinatorCall() {
             </span>
           </div>
           <div className="flex items-center space-x-2">
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => setShowFieldMap(true)}
+              data-testid="button-open-field-map"
+            >
+              <Map className="w-3 h-3 mr-1" />
+              Field Map
+            </Button>
             <Button 
               size="sm" 
               variant="outline"
@@ -246,6 +266,14 @@ export default function CoordinatorCall() {
         images={capturedMedia}
         selectedImage={selectedImage}
         onClose={() => setSelectedImage(null)}
+      />
+
+      {/* Field Map */}
+      <FieldMap
+        isOpen={showFieldMap}
+        onClose={() => setShowFieldMap(false)}
+        onSelectInspector={handleSelectInspector}
+        currentCallInspectorId={(call as any)?.inspectorId}
       />
     </div>
   );
