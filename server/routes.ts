@@ -80,6 +80,8 @@ try {
 interface WebSocketClient extends WebSocket {
   userId?: string;
   callId?: string;
+  lastPing?: number;
+  isAlive?: boolean;
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -89,9 +91,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
   const clients = new Map<string, WebSocketClient>();
 
-  // WebSocket connection handling
-  wss.on('connection', (ws: WebSocketClient) => {
-    console.log('New WebSocket connection');
+  // WebSocket connection handling with mobile-friendly configuration
+  wss.on('connection', (ws: WebSocketClient, req) => {
+    // Initialize client properties for mobile tracking
+    ws.isAlive = true;
+    ws.lastPing = Date.now();
+    
+    // Detect mobile connections from User-Agent
+    const userAgent = req.headers['user-agent'] || '';
+    const isMobile = /android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+    
+    console.log(`New WebSocket connection (mobile: ${isMobile}, UA: ${userAgent.substring(0, 50)})`);
 
     ws.on('message', async (data) => {
       try {
@@ -99,6 +109,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         switch (message.type) {
           case 'join-call':
+            if (!message.callId || !message.userId) {
+              console.error('Missing callId or userId in join-call message');
+              return;
+            }
             ws.userId = message.userId;
             ws.callId = message.callId;
             clients.set(message.userId, ws);
@@ -112,6 +126,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             break;
 
           case 'leave-call':
+            if (!message.callId || !message.userId) {
+              console.error('Missing callId or userId in leave-call message');
+              return;
+            }
             clients.delete(message.userId);
             broadcastToCall(message.callId, {
               type: 'user-left',
@@ -123,11 +141,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           case 'offer':
           case 'answer':
           case 'ice-candidate':
+            if (!message.callId || !message.userId) {
+              console.error(`Missing callId or userId in ${message.type} message`);
+              return;
+            }
             // Forward WebRTC signaling to other participants
             broadcastToCall(message.callId, message, message.userId);
             break;
 
           case 'capture-image':
+            if (!message.callId) {
+              console.error('Missing callId in capture-image message');
+              return;
+            }
             // Notify about image capture
             broadcastToCall(message.callId, {
               type: 'image-captured',
@@ -137,6 +163,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             break;
 
           case 'chat-message':
+            if (!message.callId || !message.userId) {
+              console.error('Missing callId or userId in chat-message');
+              return;
+            }
             // Forward chat message to other participants
             broadcastToCall(message.callId, {
               type: 'chat-message',
@@ -147,6 +177,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             break;
 
           case 'capture-request':
+            if (!message.callId || !message.userId) {
+              console.error('Missing callId or userId in capture-request');
+              return;
+            }
             // Forward capture request from coordinator to inspector
             broadcastToCall(message.callId, {
               type: 'capture-request',
@@ -157,6 +191,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             break;
 
           case 'capture-complete':
+            if (!message.callId || !message.userId) {
+              console.error('Missing callId or userId in capture-complete');
+              return;
+            }
             // Forward capture complete notification from inspector to coordinator
             broadcastToCall(message.callId, {
               type: 'capture-complete',
@@ -167,6 +205,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             break;
 
           case 'capture-error':
+            if (!message.callId || !message.userId) {
+              console.error('Missing callId or userId in capture-error');
+              return;
+            }
             // Forward capture error from inspector to coordinator
             broadcastToCall(message.callId, {
               type: 'capture-error',
@@ -177,6 +219,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             break;
 
           case 'ice-restart-request':
+            if (!message.callId || !message.userId) {
+              console.error('Missing callId or userId in ice-restart-request');
+              return;
+            }
             // Forward ICE restart request from inspector to coordinator
             broadcastToCall(message.callId, {
               type: 'ice-restart-request',
@@ -185,13 +231,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
               data: message.data
             }, message.userId);
             break;
+
+          case 'ping':
+            // Respond to ping with pong for heartbeat mechanism
+            ws.isAlive = true;
+            ws.lastPing = Date.now();
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
+                type: 'pong',
+                timestamp: message.timestamp || Date.now()
+              }));
+            }
+            break;
+
+          case 'pong':
+            // Client responded to server ping
+            ws.isAlive = true;
+            ws.lastPing = Date.now();
+            break;
         }
       } catch (error) {
         console.error('WebSocket message error:', error);
       }
     });
 
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
+      console.log(`WebSocket closed (code: ${code}, reason: ${reason}, userId: ${ws.userId})`);
+      
       if (ws.userId) {
         clients.delete(ws.userId);
         if (ws.callId) {
@@ -203,15 +269,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
     });
+
+    // Handle connection errors
+    ws.on('error', (error) => {
+      console.error(`WebSocket error for user ${ws.userId}:`, error);
+    });
+
+    // Send initial ping for mobile connections
+    if (isMobile) {
+      setTimeout(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+        }
+      }, 5000);
+    }
   });
 
   function broadcastToCall(callId: string, message: any, excludeUserId?: string) {
     clients.forEach((client, userId) => {
       if (client.callId === callId && userId !== excludeUserId && client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify(message));
+        try {
+          client.send(JSON.stringify(message));
+        } catch (error) {
+          console.error(`Failed to send message to client ${userId}:`, error);
+          // Remove dead client
+          clients.delete(userId);
+        }
       }
     });
   }
+
+  // Periodic cleanup for mobile connections and message queues
+  setInterval(() => {
+    const now = Date.now();
+    const STALE_CONNECTION_TIMEOUT = 60000; // 1 minute
+    
+    // Clean up stale WebSocket connections
+    clients.forEach((client, userId) => {
+      if (client.readyState !== WebSocket.OPEN || 
+          (client.lastPing && now - client.lastPing > STALE_CONNECTION_TIMEOUT)) {
+        console.log(`Removing stale connection for user ${userId}`);
+        clients.delete(userId);
+        if (client.readyState === WebSocket.OPEN) {
+          client.close(1001, 'Connection stale');
+        }
+      }
+    });
+    
+    // Clean up old message queues
+    const cutoff = now - MESSAGE_QUEUE_TTL;
+    messageQueues.forEach((queue, callId) => {
+      const filtered = queue.filter(msg => msg.timestamp > cutoff);
+      if (filtered.length === 0) {
+        messageQueues.delete(callId);
+      } else {
+        messageQueues.set(callId, filtered);
+      }
+    });
+    
+    console.log(`Connection cleanup: ${clients.size} active connections, ${messageQueues.size} active message queues`);
+  }, 30000); // Run every 30 seconds
 
   // API Routes
 
@@ -309,6 +426,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ message: 'Failed to update location' });
+    }
+  });
+
+  // HTTP Fallback endpoints for WebSocket alternative
+  // Simple message queue for fallback mode (in production, use Redis or similar)
+  const messageQueues = new Map<string, any[]>();
+  const MESSAGE_QUEUE_TTL = 30000; // 30 seconds
+
+  function addToMessageQueue(callId: string, message: any) {
+    if (!messageQueues.has(callId)) {
+      messageQueues.set(callId, []);
+    }
+    
+    const queue = messageQueues.get(callId)!;
+    queue.push({ ...message, timestamp: Date.now() });
+    
+    // Clean old messages
+    const cutoff = Date.now() - MESSAGE_QUEUE_TTL;
+    messageQueues.set(callId, queue.filter(msg => msg.timestamp > cutoff));
+  }
+
+  // HTTP fallback: Send message via HTTP POST
+  app.post('/api/calls/:callId/messages', async (req, res) => {
+    try {
+      const { callId } = req.params;
+      const message = req.body;
+      
+      // Validate the message structure
+      if (!message.type || !message.userId) {
+        return res.status(400).json({ message: 'Invalid message format' });
+      }
+      
+      console.log(`HTTP fallback: Received message for call ${callId}:`, message.type);
+      
+      // Add to queue for polling clients
+      addToMessageQueue(callId, message);
+      
+      // Also try to broadcast via WebSocket to connected clients
+      broadcastToCall(callId, message, message.userId);
+      
+      res.json({ success: true, timestamp: Date.now() });
+    } catch (error) {
+      console.error('HTTP fallback send error:', error);
+      res.status(500).json({ message: 'Failed to send message' });
+    }
+  });
+
+  // HTTP fallback: Get messages via HTTP GET (polling)
+  app.get('/api/calls/:callId/messages', async (req, res) => {
+    try {
+      const { callId } = req.params;
+      const since = parseInt(req.query.since as string || '0');
+      
+      const queue = messageQueues.get(callId) || [];
+      const newMessages = queue.filter(msg => msg.timestamp > since);
+      
+      // Clean old messages while we're here
+      const cutoff = Date.now() - MESSAGE_QUEUE_TTL;
+      messageQueues.set(callId, queue.filter(msg => msg.timestamp > cutoff));
+      
+      res.json({
+        messages: newMessages,
+        timestamp: Date.now(),
+        count: newMessages.length
+      });
+    } catch (error) {
+      console.error('HTTP fallback poll error:', error);
+      res.status(500).json({ message: 'Failed to get messages' });
+    }
+  });
+
+  // WebSocket connection status endpoint for debugging
+  app.get('/api/calls/:callId/connection-status', async (req, res) => {
+    try {
+      const { callId } = req.params;
+      
+      const connectedClients = Array.from(clients.entries())
+        .filter(([userId, client]) => client.callId === callId)
+        .map(([userId, client]) => ({
+          userId,
+          readyState: client.readyState,
+          lastPing: client.lastPing,
+          isAlive: client.isAlive
+        }));
+      
+      res.json({
+        callId,
+        connectedClients,
+        totalConnections: connectedClients.length,
+        timestamp: Date.now()
+      });
+    } catch (error) {
+      res.status(500).json({ message: 'Failed to get connection status' });
     }
   });
 

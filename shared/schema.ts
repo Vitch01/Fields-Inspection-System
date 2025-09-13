@@ -89,11 +89,14 @@ export const signalingMessageSchema = z.object({
     "capture-request",
     "capture-complete",
     "capture-error",
-    "ice-restart-request"
+    "ice-restart-request",
+    "ping",
+    "pong"
   ]),
-  callId: z.string(),
-  userId: z.string(),
+  callId: z.string().optional(),
+  userId: z.string().optional(),
   data: z.any().optional(),
+  timestamp: z.number().optional(),
 });
 
 export type SignalingMessage = z.infer<typeof signalingMessageSchema>;
