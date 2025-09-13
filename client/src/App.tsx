@@ -12,6 +12,7 @@ import InspectorThankYou from "@/pages/inspector-thank-you";
 import ClientLogin from "@/pages/client-login";
 import ClientDashboard from "@/pages/client-dashboard";
 import SubmitRequest from "@/pages/submit-request";
+import ReportGenerator from "@/pages/report-generator";
 
 function Router() {
   return (
@@ -25,6 +26,9 @@ function Router() {
       <Route path="/client/login" component={ClientLogin} />
       <Route path="/client/dashboard" component={ClientDashboard} />
       <Route path="/client/submit-request" component={SubmitRequest} />
+      {/* Report Generation Routes */}
+      <Route path="/reports/generate/:inspectionRequestId/:callId?" component={ReportGenerator} />
+      <Route path="/reports/generate/:inspectionRequestId" component={ReportGenerator} />
       <Route component={NotFound} />
     </Switch>
   );

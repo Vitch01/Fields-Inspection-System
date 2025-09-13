@@ -28,7 +28,9 @@ import {
   Briefcase,
   TrendingUp,
   Users,
-  Map
+  Map,
+  Download,
+  ClipboardList
 } from "lucide-react";
 import { format } from "date-fns";
 import type { InspectionRequest } from "@shared/schema";
@@ -456,6 +458,10 @@ export default function CoordinatorDashboard() {
     }
   };
 
+  const handleGenerateReport = (requestId: string) => {
+    setLocation(`/reports/generate/${requestId}`);
+  };
+
   const handleInspectorSelection = async (inspector: any) => {
     if (!requestForCall) return;
 
@@ -780,6 +786,19 @@ export default function CoordinatorDashboard() {
                           >
                             {request.priority?.toUpperCase()}
                           </Badge>
+                          
+                          {/* Generate Report Button for Completed Inspections */}
+                          {request.status === 'completed' && (
+                            <Button 
+                              variant="default" 
+                              size="sm"
+                              onClick={() => handleGenerateReport(request.id)}
+                              data-testid={`button-generate-report-${request.id}`}
+                            >
+                              <ClipboardList className="w-4 h-4 mr-2" />
+                              Generate Report
+                            </Button>
+                          )}
                           
                           <Dialog>
                             <DialogTrigger asChild>

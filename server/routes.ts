@@ -3,13 +3,14 @@ import express from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertCallSchema, insertCapturedImageSchema, insertVideoRecordingSchema, signalingMessageSchema, videoRecordingSchema, allowedVideoMimeTypes, allowedVideoExtensions, clientLoginSchema, clientRegistrationSchema, inspectionRequestFormSchema, coordinatorInspectionRequestsQuerySchema, assignDepartmentSchema, assignCoordinatorSchema, updateInspectionRequestSchema, coordinatorParamsSchema, departmentParamsSchema, inspectionRequestParamsSchema, coordinatorLoginSchema, insertEmailLogSchema } from "@shared/schema";
-import { generateToken, generateUserToken, authenticateClient, authenticateCoordinator, authenticateUser, authorizeClientResource, authorizeCoordinatorResource, type AuthenticatedRequest } from "./auth";
+import { insertCallSchema, insertCapturedImageSchema, insertVideoRecordingSchema, signalingMessageSchema, videoRecordingSchema, allowedVideoMimeTypes, allowedVideoExtensions, clientLoginSchema, clientRegistrationSchema, inspectionRequestFormSchema, coordinatorInspectionRequestsQuerySchema, assignDepartmentSchema, assignCoordinatorSchema, updateInspectionRequestSchema, coordinatorParamsSchema, departmentParamsSchema, inspectionRequestParamsSchema, coordinatorLoginSchema, insertEmailLogSchema, insertAssetAssessmentSchema, insertWearTearAssessmentSchema, insertAppraisalReportSchema, insertInspectionReportSchema } from "@shared/schema";
+import { generateToken, generateUserToken, authenticateClient, authenticateCoordinator, authenticateUser, authorizeClientResource, authorizeCoordinatorResource, authorizeInspectionRequestAccess, authorizeCallAccess, authorizeReportAccess, type AuthenticatedRequest } from "./auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import twilio from "twilio";
 import { emailService } from "./lib/email";
+import { pdfGenerator } from "./lib/pdf-generator";
 
 // Multer configuration for image uploads (10MB limit)
 // Configure multer storage for images
@@ -1638,6 +1639,566 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('Email logs retrieval error:', error);
       res.status(500).json({ 
         message: 'Failed to retrieve email logs',
+        error: error.message 
+      });
+    }
+  });
+
+  // ============================================================================
+  // REPORT GENERATION API ENDPOINTS
+  // ============================================================================
+
+  // Asset Assessment endpoints
+  app.get('/api/assessments/asset/:callId', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { callId } = req.params;
+      const assessments = await storage.getAssetAssessmentsByCall(callId);
+      res.json(assessments);
+    } catch (error: any) {
+      console.error('Error fetching asset assessments:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch asset assessments',
+        error: error.message 
+      });
+    }
+  });
+
+  app.get('/api/assessments/asset/request/:requestId', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { requestId } = req.params;
+      const assessments = await storage.getAssetAssessmentsByInspectionRequest(requestId);
+      res.json(assessments);
+    } catch (error: any) {
+      console.error('Error fetching asset assessments by request:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch asset assessments',
+        error: error.message 
+      });
+    }
+  });
+
+  app.post('/api/assessments/asset', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const validatedData = insertAssetAssessmentSchema.parse(req.body);
+      const assessment = await storage.createAssetAssessment(validatedData);
+      res.status(201).json(assessment);
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          message: 'Invalid assessment data',
+          errors: error.errors 
+        });
+      }
+      console.error('Error creating asset assessment:', error);
+      res.status(500).json({ 
+        message: 'Failed to create asset assessment',
+        error: error.message 
+      });
+    }
+  });
+
+  app.put('/api/assessments/asset/:id', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const assessment = await storage.updateAssetAssessment(id, updates);
+      if (!assessment) {
+        return res.status(404).json({ message: 'Asset assessment not found' });
+      }
+      res.json(assessment);
+    } catch (error: any) {
+      console.error('Error updating asset assessment:', error);
+      res.status(500).json({ 
+        message: 'Failed to update asset assessment',
+        error: error.message 
+      });
+    }
+  });
+
+  app.delete('/api/assessments/asset/:id', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteAssetAssessment(id);
+      if (!deleted) {
+        return res.status(404).json({ message: 'Asset assessment not found' });
+      }
+      res.json({ message: 'Asset assessment deleted successfully' });
+    } catch (error: any) {
+      console.error('Error deleting asset assessment:', error);
+      res.status(500).json({ 
+        message: 'Failed to delete asset assessment',
+        error: error.message 
+      });
+    }
+  });
+
+  // Wear and Tear Assessment endpoints
+  app.get('/api/assessments/wear-tear/:callId', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { callId } = req.params;
+      const assessments = await storage.getWearTearAssessmentsByCall(callId);
+      res.json(assessments);
+    } catch (error: any) {
+      console.error('Error fetching wear tear assessments:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch wear tear assessments',
+        error: error.message 
+      });
+    }
+  });
+
+  app.get('/api/assessments/wear-tear/request/:requestId', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { requestId } = req.params;
+      const assessments = await storage.getWearTearAssessmentsByInspectionRequest(requestId);
+      res.json(assessments);
+    } catch (error: any) {
+      console.error('Error fetching wear tear assessments by request:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch wear tear assessments',
+        error: error.message 
+      });
+    }
+  });
+
+  app.post('/api/assessments/wear-tear', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const validatedData = insertWearTearAssessmentSchema.parse(req.body);
+      const assessment = await storage.createWearTearAssessment(validatedData);
+      res.status(201).json(assessment);
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          message: 'Invalid assessment data',
+          errors: error.errors 
+        });
+      }
+      console.error('Error creating wear tear assessment:', error);
+      res.status(500).json({ 
+        message: 'Failed to create wear tear assessment',
+        error: error.message 
+      });
+    }
+  });
+
+  app.put('/api/assessments/wear-tear/:id', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const assessment = await storage.updateWearTearAssessment(id, updates);
+      if (!assessment) {
+        return res.status(404).json({ message: 'Wear tear assessment not found' });
+      }
+      res.json(assessment);
+    } catch (error: any) {
+      console.error('Error updating wear tear assessment:', error);
+      res.status(500).json({ 
+        message: 'Failed to update wear tear assessment',
+        error: error.message 
+      });
+    }
+  });
+
+  app.delete('/api/assessments/wear-tear/:id', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteWearTearAssessment(id);
+      if (!deleted) {
+        return res.status(404).json({ message: 'Wear tear assessment not found' });
+      }
+      res.json({ message: 'Wear tear assessment deleted successfully' });
+    } catch (error: any) {
+      console.error('Error deleting wear tear assessment:', error);
+      res.status(500).json({ 
+        message: 'Failed to delete wear tear assessment',
+        error: error.message 
+      });
+    }
+  });
+
+  // Appraisal Report endpoints
+  app.get('/api/appraisals/:callId', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { callId } = req.params;
+      const reports = await storage.getAppraisalReportsByCall(callId);
+      res.json(reports);
+    } catch (error: any) {
+      console.error('Error fetching appraisal reports:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch appraisal reports',
+        error: error.message 
+      });
+    }
+  });
+
+  app.get('/api/appraisals/request/:requestId', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { requestId } = req.params;
+      const reports = await storage.getAppraisalReportsByInspectionRequest(requestId);
+      res.json(reports);
+    } catch (error: any) {
+      console.error('Error fetching appraisal reports by request:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch appraisal reports',
+        error: error.message 
+      });
+    }
+  });
+
+  app.post('/api/appraisals', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const validatedData = insertAppraisalReportSchema.parse(req.body);
+      const report = await storage.createAppraisalReport(validatedData);
+      res.status(201).json(report);
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          message: 'Invalid appraisal data',
+          errors: error.errors 
+        });
+      }
+      console.error('Error creating appraisal report:', error);
+      res.status(500).json({ 
+        message: 'Failed to create appraisal report',
+        error: error.message 
+      });
+    }
+  });
+
+  app.put('/api/appraisals/:id', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const report = await storage.updateAppraisalReport(id, updates);
+      if (!report) {
+        return res.status(404).json({ message: 'Appraisal report not found' });
+      }
+      res.json(report);
+    } catch (error: any) {
+      console.error('Error updating appraisal report:', error);
+      res.status(500).json({ 
+        message: 'Failed to update appraisal report',
+        error: error.message 
+      });
+    }
+  });
+
+  app.delete('/api/appraisals/:id', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteAppraisalReport(id);
+      if (!deleted) {
+        return res.status(404).json({ message: 'Appraisal report not found' });
+      }
+      res.json({ message: 'Appraisal report deleted successfully' });
+    } catch (error: any) {
+      console.error('Error deleting appraisal report:', error);
+      res.status(500).json({ 
+        message: 'Failed to delete appraisal report',
+        error: error.message 
+      });
+    }
+  });
+
+  // Inspection Report endpoints
+  app.get('/api/reports/client/:clientId', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { clientId } = req.params;
+      const reports = await storage.getInspectionReportsByClient(clientId);
+      res.json(reports);
+    } catch (error: any) {
+      console.error('Error fetching inspection reports by client:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch inspection reports',
+        error: error.message 
+      });
+    }
+  });
+
+  app.get('/api/reports/coordinator/:coordinatorId', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { coordinatorId } = req.params;
+      const reports = await storage.getInspectionReportsByCoordinator(coordinatorId);
+      res.json(reports);
+    } catch (error: any) {
+      console.error('Error fetching inspection reports by coordinator:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch inspection reports',
+        error: error.message 
+      });
+    }
+  });
+
+  app.get('/api/reports/request/:requestId', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { requestId } = req.params;
+      const reports = await storage.getInspectionReportsByInspectionRequest(requestId);
+      res.json(reports);
+    } catch (error: any) {
+      console.error('Error fetching inspection reports by request:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch inspection reports',
+        error: error.message 
+      });
+    }
+  });
+
+  app.get('/api/reports/:id', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const report = await storage.getInspectionReport(id);
+      if (!report) {
+        return res.status(404).json({ message: 'Inspection report not found' });
+      }
+      res.json(report);
+    } catch (error: any) {
+      console.error('Error fetching inspection report:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch inspection report',
+        error: error.message 
+      });
+    }
+  });
+
+  app.post('/api/reports', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const validatedData = insertInspectionReportSchema.parse(req.body);
+      const report = await storage.createInspectionReport(validatedData);
+      res.status(201).json(report);
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          message: 'Invalid report data',
+          errors: error.errors 
+        });
+      }
+      console.error('Error creating inspection report:', error);
+      res.status(500).json({ 
+        message: 'Failed to create inspection report',
+        error: error.message 
+      });
+    }
+  });
+
+  app.put('/api/reports/:id', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const report = await storage.updateInspectionReport(id, updates);
+      if (!report) {
+        return res.status(404).json({ message: 'Inspection report not found' });
+      }
+      res.json(report);
+    } catch (error: any) {
+      console.error('Error updating inspection report:', error);
+      res.status(500).json({ 
+        message: 'Failed to update inspection report',
+        error: error.message 
+      });
+    }
+  });
+
+  app.put('/api/reports/:id/status', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const { status, approvedBy } = req.body;
+      
+      if (!status) {
+        return res.status(400).json({ message: 'Status is required' });
+      }
+
+      const report = await storage.updateInspectionReportStatus(id, status, approvedBy);
+      if (!report) {
+        return res.status(404).json({ message: 'Inspection report not found' });
+      }
+      res.json(report);
+    } catch (error: any) {
+      console.error('Error updating inspection report status:', error);
+      res.status(500).json({ 
+        message: 'Failed to update inspection report status',
+        error: error.message 
+      });
+    }
+  });
+
+  app.delete('/api/reports/:id', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteInspectionReport(id);
+      if (!deleted) {
+        return res.status(404).json({ message: 'Inspection report not found' });
+      }
+      res.json({ message: 'Inspection report deleted successfully' });
+    } catch (error: any) {
+      console.error('Error deleting inspection report:', error);
+      res.status(500).json({ 
+        message: 'Failed to delete inspection report',
+        error: error.message 
+      });
+    }
+  });
+
+  // Report data aggregation endpoints
+  app.get('/api/reports/data/call/:callId', authenticateUser, authorizeCallAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { callId } = req.params;
+      const reportData = await storage.getReportDataForCall(callId);
+      res.json(reportData);
+    } catch (error: any) {
+      console.error('Error fetching report data for call:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch report data',
+        error: error.message 
+      });
+    }
+  });
+
+  app.get('/api/reports/data/request/:requestId', authenticateUser, authorizeInspectionRequestAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { requestId } = req.params;
+      const reportData = await storage.getReportDataForInspectionRequest(requestId);
+      res.json(reportData);
+    } catch (error: any) {
+      console.error('Error fetching report data for request:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch report data',
+        error: error.message 
+      });
+    }
+  });
+
+  // PDF generation endpoints
+  app.post('/api/reports/:id/generate-pdf', authenticateUser, authorizeReportAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Generate PDF
+      const result = await pdfGenerator.generateReportPdf(id);
+      
+      if (!result.success) {
+        return res.status(500).json({ 
+          message: 'Failed to generate PDF',
+          error: result.error 
+        });
+      }
+
+      // Update report with PDF URL
+      await storage.updateInspectionReport(id, {
+        reportUrl: result.filePath
+      });
+
+      res.json({
+        message: 'PDF generated successfully',
+        reportUrl: result.filePath,
+        reportId: id
+      });
+
+    } catch (error: any) {
+      console.error('Error generating PDF:', error);
+      res.status(500).json({ 
+        message: 'Failed to generate PDF',
+        error: error.message 
+      });
+    }
+  });
+
+  // PDF download/streaming endpoint
+  app.get('/api/reports/:reportId/pdf', authenticateUser, authorizeReportAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { reportId } = req.params;
+      
+      // Get report to access PDF path
+      const report = await storage.getInspectionReport(reportId);
+      if (!report) {
+        return res.status(404).json({ message: 'Report not found' });
+      }
+
+      // Check if PDF exists, generate if not
+      let pdfPath = report.reportUrl;
+      if (!pdfPath || !fs.existsSync(pdfPath)) {
+        const result = await pdfGenerator.generateReportPdf(reportId);
+        if (!result.success) {
+          return res.status(500).json({ 
+            message: 'Failed to generate PDF',
+            error: result.error 
+          });
+        }
+        pdfPath = result.filePath!;
+        
+        // Update report with new PDF path
+        await storage.updateInspectionReport(reportId, {
+          reportUrl: pdfPath
+        });
+      }
+
+      // Stream the PDF file
+      const fileName = `inspection_report_${reportId}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      
+      const fileStream = fs.createReadStream(pdfPath);
+      fileStream.pipe(res);
+      
+      fileStream.on('error', (error) => {
+        console.error('Error streaming PDF:', error);
+        if (!res.headersSent) {
+          res.status(500).json({ message: 'Error streaming PDF file' });
+        }
+      });
+
+    } catch (error: any) {
+      console.error('Error serving PDF:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          message: 'Failed to serve PDF',
+          error: error.message 
+        });
+      }
+    }
+  });
+
+  app.get('/api/reports/:id/preview', authenticateUser, authorizeReportAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      
+
+      // Generate HTML preview
+      const result = await pdfGenerator.generateReportPreview(id);
+      
+      if (!result.success) {
+        return res.status(500).json({ 
+          message: 'Failed to generate preview',
+          error: result.error 
+        });
+      }
+
+      // Send HTML content directly
+      res.setHeader('Content-Type', 'text/html');
+      res.send(result.html);
+
+    } catch (error: any) {
+      console.error('Error generating preview:', error);
+      res.status(500).json({ 
+        message: 'Failed to generate preview',
+        error: error.message 
+      });
+    }
+  });
+
+  app.get('/api/reports/templates', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const templates = pdfGenerator.getAvailableTemplates();
+      res.json({
+        templates: templates.map(template => ({
+          id: template,
+          name: template.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          description: `${template.replace('_', ' ')} report template`
+        }))
+      });
+    } catch (error: any) {
+      console.error('Error fetching templates:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch templates',
         error: error.message 
       });
     }

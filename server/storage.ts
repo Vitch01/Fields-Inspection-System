@@ -1,7 +1,7 @@
-import { type User, type InsertUser, type Call, type InsertCall, type CapturedImage, type InsertCapturedImage, type VideoRecording, type InsertVideoRecording, type Client, type InsertClient, type InspectionRequest, type InsertInspectionRequest, type EmailLog, type InsertEmailLog, type MediaCategory, type InsertMediaCategory } from "@shared/schema";
+import { type User, type InsertUser, type Call, type InsertCall, type CapturedImage, type InsertCapturedImage, type VideoRecording, type InsertVideoRecording, type Client, type InsertClient, type InspectionRequest, type InsertInspectionRequest, type EmailLog, type InsertEmailLog, type MediaCategory, type InsertMediaCategory, type AssetAssessment, type InsertAssetAssessment, type WearTearAssessment, type InsertWearTearAssessment, type AppraisalReport, type InsertAppraisalReport, type InspectionReport, type InsertInspectionReport } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { users, calls, capturedImages, videoRecordings, clients, inspectionRequests, emailLogs, mediaCategories } from "@shared/schema";
+import { users, calls, capturedImages, videoRecordings, clients, inspectionRequests, emailLogs, mediaCategories, assetAssessments, wearTearAssessments, appraisalReports, inspectionReports } from "@shared/schema";
 import { eq, and, sql, or, ilike, inArray } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
@@ -76,6 +76,60 @@ export interface IStorage {
   updateEmailLogStatus(id: string, status: string, sentAt?: Date, deliveredAt?: Date, failureReason?: string): Promise<EmailLog | undefined>;
   getEmailLogsForCall(callId: string): Promise<EmailLog[]>;
   getEmailLogsForInspectionRequest(inspectionRequestId: string): Promise<EmailLog[]>;
+
+  // Asset assessment methods
+  getAssetAssessment(id: string): Promise<AssetAssessment | undefined>;
+  getAssetAssessmentsByCall(callId: string): Promise<AssetAssessment[]>;
+  getAssetAssessmentsByInspectionRequest(inspectionRequestId: string): Promise<AssetAssessment[]>;
+  createAssetAssessment(assessment: InsertAssetAssessment): Promise<AssetAssessment>;
+  updateAssetAssessment(id: string, updates: Partial<AssetAssessment>): Promise<AssetAssessment | undefined>;
+  deleteAssetAssessment(id: string): Promise<boolean>;
+
+  // Wear and tear assessment methods
+  getWearTearAssessment(id: string): Promise<WearTearAssessment | undefined>;
+  getWearTearAssessmentsByCall(callId: string): Promise<WearTearAssessment[]>;
+  getWearTearAssessmentsByInspectionRequest(inspectionRequestId: string): Promise<WearTearAssessment[]>;
+  createWearTearAssessment(assessment: InsertWearTearAssessment): Promise<WearTearAssessment>;
+  updateWearTearAssessment(id: string, updates: Partial<WearTearAssessment>): Promise<WearTearAssessment | undefined>;
+  deleteWearTearAssessment(id: string): Promise<boolean>;
+
+  // Appraisal report methods
+  getAppraisalReport(id: string): Promise<AppraisalReport | undefined>;
+  getAppraisalReportsByCall(callId: string): Promise<AppraisalReport[]>;
+  getAppraisalReportsByInspectionRequest(inspectionRequestId: string): Promise<AppraisalReport[]>;
+  createAppraisalReport(report: InsertAppraisalReport): Promise<AppraisalReport>;
+  updateAppraisalReport(id: string, updates: Partial<AppraisalReport>): Promise<AppraisalReport | undefined>;
+  deleteAppraisalReport(id: string): Promise<boolean>;
+
+  // Inspection report methods
+  getInspectionReport(id: string): Promise<InspectionReport | undefined>;
+  getInspectionReportsByClient(clientId: string): Promise<InspectionReport[]>;
+  getInspectionReportsByCoordinator(coordinatorId: string): Promise<InspectionReport[]>;
+  getInspectionReportsByInspectionRequest(inspectionRequestId: string): Promise<InspectionReport[]>;
+  createInspectionReport(report: InsertInspectionReport): Promise<InspectionReport>;
+  updateInspectionReport(id: string, updates: Partial<InspectionReport>): Promise<InspectionReport | undefined>;
+  updateInspectionReportStatus(id: string, status: string, approvedBy?: string): Promise<InspectionReport | undefined>;
+  deleteInspectionReport(id: string): Promise<boolean>;
+
+  // Report data aggregation methods
+  getReportDataForCall(callId: string): Promise<{
+    call: Call | undefined;
+    inspectionRequest: InspectionRequest | undefined;
+    client: Client | undefined;
+    media: { images: CapturedImage[]; videos: VideoRecording[] };
+    assessments: AssetAssessment[];
+    wearTearAssessments: WearTearAssessment[];
+    appraisalReports: AppraisalReport[];
+  }>;
+  getReportDataForInspectionRequest(inspectionRequestId: string): Promise<{
+    inspectionRequest: InspectionRequest | undefined;
+    client: Client | undefined;
+    calls: Call[];
+    media: { images: CapturedImage[]; videos: VideoRecording[] };
+    assessments: AssetAssessment[];
+    wearTearAssessments: WearTearAssessment[];
+    appraisalReports: AppraisalReport[];
+  }>;
 }
 
 
@@ -747,6 +801,478 @@ export class DbStorage implements IStorage {
     } catch (error) {
       console.error('Error fetching email logs for inspection request:', error);
       return [];
+    }
+  }
+
+  // Asset assessment methods
+  async getAssetAssessment(id: string): Promise<AssetAssessment | undefined> {
+    try {
+      const result = await db.select()
+        .from(assetAssessments)
+        .where(eq(assetAssessments.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error) {
+      console.error('Error fetching asset assessment:', error);
+      return undefined;
+    }
+  }
+
+  async getAssetAssessmentsByCall(callId: string): Promise<AssetAssessment[]> {
+    try {
+      const result = await db.select()
+        .from(assetAssessments)
+        .where(eq(assetAssessments.callId, callId))
+        .orderBy(assetAssessments.assessedAt);
+      return result;
+    } catch (error) {
+      console.error('Error fetching asset assessments by call:', error);
+      return [];
+    }
+  }
+
+  async getAssetAssessmentsByInspectionRequest(inspectionRequestId: string): Promise<AssetAssessment[]> {
+    try {
+      const result = await db.select()
+        .from(assetAssessments)
+        .where(eq(assetAssessments.inspectionRequestId, inspectionRequestId))
+        .orderBy(assetAssessments.assessedAt);
+      return result;
+    } catch (error) {
+      console.error('Error fetching asset assessments by inspection request:', error);
+      return [];
+    }
+  }
+
+  async createAssetAssessment(assessment: InsertAssetAssessment): Promise<AssetAssessment> {
+    try {
+      const result = await db.insert(assetAssessments)
+        .values({ id: randomUUID(), ...assessment })
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error creating asset assessment:', error);
+      throw error;
+    }
+  }
+
+  async updateAssetAssessment(id: string, updates: Partial<AssetAssessment>): Promise<AssetAssessment | undefined> {
+    try {
+      const result = await db.update(assetAssessments)
+        .set(updates)
+        .where(eq(assetAssessments.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error updating asset assessment:', error);
+      return undefined;
+    }
+  }
+
+  async deleteAssetAssessment(id: string): Promise<boolean> {
+    try {
+      const result = await db.delete(assetAssessments)
+        .where(eq(assetAssessments.id, id))
+        .returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error('Error deleting asset assessment:', error);
+      return false;
+    }
+  }
+
+  // Wear and tear assessment methods
+  async getWearTearAssessment(id: string): Promise<WearTearAssessment | undefined> {
+    try {
+      const result = await db.select()
+        .from(wearTearAssessments)
+        .where(eq(wearTearAssessments.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error) {
+      console.error('Error fetching wear tear assessment:', error);
+      return undefined;
+    }
+  }
+
+  async getWearTearAssessmentsByCall(callId: string): Promise<WearTearAssessment[]> {
+    try {
+      const result = await db.select()
+        .from(wearTearAssessments)
+        .where(eq(wearTearAssessments.callId, callId))
+        .orderBy(wearTearAssessments.assessedAt);
+      return result;
+    } catch (error) {
+      console.error('Error fetching wear tear assessments by call:', error);
+      return [];
+    }
+  }
+
+  async getWearTearAssessmentsByInspectionRequest(inspectionRequestId: string): Promise<WearTearAssessment[]> {
+    try {
+      const result = await db.select()
+        .from(wearTearAssessments)
+        .where(eq(wearTearAssessments.inspectionRequestId, inspectionRequestId))
+        .orderBy(wearTearAssessments.assessedAt);
+      return result;
+    } catch (error) {
+      console.error('Error fetching wear tear assessments by inspection request:', error);
+      return [];
+    }
+  }
+
+  async createWearTearAssessment(assessment: InsertWearTearAssessment): Promise<WearTearAssessment> {
+    try {
+      const result = await db.insert(wearTearAssessments)
+        .values({ id: randomUUID(), ...assessment })
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error creating wear tear assessment:', error);
+      throw error;
+    }
+  }
+
+  async updateWearTearAssessment(id: string, updates: Partial<WearTearAssessment>): Promise<WearTearAssessment | undefined> {
+    try {
+      const result = await db.update(wearTearAssessments)
+        .set(updates)
+        .where(eq(wearTearAssessments.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error updating wear tear assessment:', error);
+      return undefined;
+    }
+  }
+
+  async deleteWearTearAssessment(id: string): Promise<boolean> {
+    try {
+      const result = await db.delete(wearTearAssessments)
+        .where(eq(wearTearAssessments.id, id))
+        .returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error('Error deleting wear tear assessment:', error);
+      return false;
+    }
+  }
+
+  // Appraisal report methods
+  async getAppraisalReport(id: string): Promise<AppraisalReport | undefined> {
+    try {
+      const result = await db.select()
+        .from(appraisalReports)
+        .where(eq(appraisalReports.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error) {
+      console.error('Error fetching appraisal report:', error);
+      return undefined;
+    }
+  }
+
+  async getAppraisalReportsByCall(callId: string): Promise<AppraisalReport[]> {
+    try {
+      const result = await db.select()
+        .from(appraisalReports)
+        .where(eq(appraisalReports.callId, callId))
+        .orderBy(appraisalReports.appraisedAt);
+      return result;
+    } catch (error) {
+      console.error('Error fetching appraisal reports by call:', error);
+      return [];
+    }
+  }
+
+  async getAppraisalReportsByInspectionRequest(inspectionRequestId: string): Promise<AppraisalReport[]> {
+    try {
+      const result = await db.select()
+        .from(appraisalReports)
+        .where(eq(appraisalReports.inspectionRequestId, inspectionRequestId))
+        .orderBy(appraisalReports.appraisedAt);
+      return result;
+    } catch (error) {
+      console.error('Error fetching appraisal reports by inspection request:', error);
+      return [];
+    }
+  }
+
+  async createAppraisalReport(report: InsertAppraisalReport): Promise<AppraisalReport> {
+    try {
+      const result = await db.insert(appraisalReports)
+        .values({ id: randomUUID(), ...report })
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error creating appraisal report:', error);
+      throw error;
+    }
+  }
+
+  async updateAppraisalReport(id: string, updates: Partial<AppraisalReport>): Promise<AppraisalReport | undefined> {
+    try {
+      const result = await db.update(appraisalReports)
+        .set(updates)
+        .where(eq(appraisalReports.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error updating appraisal report:', error);
+      return undefined;
+    }
+  }
+
+  async deleteAppraisalReport(id: string): Promise<boolean> {
+    try {
+      const result = await db.delete(appraisalReports)
+        .where(eq(appraisalReports.id, id))
+        .returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error('Error deleting appraisal report:', error);
+      return false;
+    }
+  }
+
+  // Inspection report methods
+  async getInspectionReport(id: string): Promise<InspectionReport | undefined> {
+    try {
+      const result = await db.select()
+        .from(inspectionReports)
+        .where(eq(inspectionReports.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error) {
+      console.error('Error fetching inspection report:', error);
+      return undefined;
+    }
+  }
+
+  async getInspectionReportsByClient(clientId: string): Promise<InspectionReport[]> {
+    try {
+      const result = await db.select()
+        .from(inspectionReports)
+        .where(eq(inspectionReports.clientId, clientId))
+        .orderBy(inspectionReports.generatedAt);
+      return result;
+    } catch (error) {
+      console.error('Error fetching inspection reports by client:', error);
+      return [];
+    }
+  }
+
+  async getInspectionReportsByCoordinator(coordinatorId: string): Promise<InspectionReport[]> {
+    try {
+      const result = await db.select()
+        .from(inspectionReports)
+        .where(eq(inspectionReports.coordinatorId, coordinatorId))
+        .orderBy(inspectionReports.generatedAt);
+      return result;
+    } catch (error) {
+      console.error('Error fetching inspection reports by coordinator:', error);
+      return [];
+    }
+  }
+
+  async getInspectionReportsByInspectionRequest(inspectionRequestId: string): Promise<InspectionReport[]> {
+    try {
+      const result = await db.select()
+        .from(inspectionReports)
+        .where(eq(inspectionReports.inspectionRequestId, inspectionRequestId))
+        .orderBy(inspectionReports.generatedAt);
+      return result;
+    } catch (error) {
+      console.error('Error fetching inspection reports by inspection request:', error);
+      return [];
+    }
+  }
+
+  async createInspectionReport(report: InsertInspectionReport): Promise<InspectionReport> {
+    try {
+      const result = await db.insert(inspectionReports)
+        .values({ id: randomUUID(), ...report })
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error creating inspection report:', error);
+      throw error;
+    }
+  }
+
+  async updateInspectionReport(id: string, updates: Partial<InspectionReport>): Promise<InspectionReport | undefined> {
+    try {
+      const result = await db.update(inspectionReports)
+        .set(updates)
+        .where(eq(inspectionReports.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error updating inspection report:', error);
+      return undefined;
+    }
+  }
+
+  async updateInspectionReportStatus(id: string, status: string, approvedBy?: string): Promise<InspectionReport | undefined> {
+    try {
+      const updates: any = { status };
+      if (status === 'approved' && approvedBy) {
+        updates.approvedBy = approvedBy;
+        updates.approvedAt = new Date();
+      }
+      if (status === 'delivered') {
+        updates.deliveredAt = new Date();
+      }
+
+      const result = await db.update(inspectionReports)
+        .set(updates)
+        .where(eq(inspectionReports.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error updating inspection report status:', error);
+      return undefined;
+    }
+  }
+
+  async deleteInspectionReport(id: string): Promise<boolean> {
+    try {
+      const result = await db.delete(inspectionReports)
+        .where(eq(inspectionReports.id, id))
+        .returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error('Error deleting inspection report:', error);
+      return false;
+    }
+  }
+
+  // Report data aggregation methods
+  async getReportDataForCall(callId: string): Promise<{
+    call: Call | undefined;
+    inspectionRequest: InspectionRequest | undefined;
+    client: Client | undefined;
+    media: { images: CapturedImage[]; videos: VideoRecording[] };
+    assessments: AssetAssessment[];
+    wearTearAssessments: WearTearAssessment[];
+    appraisalReports: AppraisalReport[];
+  }> {
+    try {
+      const call = await this.getCall(callId);
+      if (!call) {
+        return {
+          call: undefined,
+          inspectionRequest: undefined,
+          client: undefined,
+          media: { images: [], videos: [] },
+          assessments: [],
+          wearTearAssessments: [],
+          appraisalReports: []
+        };
+      }
+
+      const [inspectionRequest, media, assessments, wearTearAssessments, appraisalReports] = await Promise.all([
+        call.inspectionRequestId ? this.getInspectionRequest(call.inspectionRequestId) : Promise.resolve(undefined),
+        this.getAllMediaForCall(callId),
+        this.getAssetAssessmentsByCall(callId),
+        this.getWearTearAssessmentsByCall(callId),
+        this.getAppraisalReportsByCall(callId)
+      ]);
+
+      const client = inspectionRequest?.clientId ? await this.getClient(inspectionRequest.clientId) : undefined;
+
+      return {
+        call,
+        inspectionRequest,
+        client,
+        media,
+        assessments,
+        wearTearAssessments,
+        appraisalReports
+      };
+    } catch (error) {
+      console.error('Error fetching report data for call:', error);
+      return {
+        call: undefined,
+        inspectionRequest: undefined,
+        client: undefined,
+        media: { images: [], videos: [] },
+        assessments: [],
+        wearTearAssessments: [],
+        appraisalReports: []
+      };
+    }
+  }
+
+  async getReportDataForInspectionRequest(inspectionRequestId: string): Promise<{
+    inspectionRequest: InspectionRequest | undefined;
+    client: Client | undefined;
+    calls: Call[];
+    media: { images: CapturedImage[]; videos: VideoRecording[] };
+    assessments: AssetAssessment[];
+    wearTearAssessments: WearTearAssessment[];
+    appraisalReports: AppraisalReport[];
+  }> {
+    try {
+      const inspectionRequest = await this.getInspectionRequest(inspectionRequestId);
+      if (!inspectionRequest) {
+        return {
+          inspectionRequest: undefined,
+          client: undefined,
+          calls: [],
+          media: { images: [], videos: [] },
+          assessments: [],
+          wearTearAssessments: [],
+          appraisalReports: []
+        };
+      }
+
+      // Get all calls related to this inspection request
+      const calls = await db.select()
+        .from(calls)
+        .where(eq(calls.inspectionRequestId, inspectionRequestId))
+        .orderBy(calls.startedAt);
+
+      // Aggregate media from all calls
+      const allMedia = await Promise.all(
+        calls.map(call => this.getAllMediaForCall(call.id))
+      );
+      
+      const aggregatedMedia = allMedia.reduce(
+        (acc, media) => ({
+          images: [...acc.images, ...media.images],
+          videos: [...acc.videos, ...media.videos]
+        }),
+        { images: [] as CapturedImage[], videos: [] as VideoRecording[] }
+      );
+
+      const [client, assessments, wearTearAssessments, appraisalReports] = await Promise.all([
+        this.getClient(inspectionRequest.clientId),
+        this.getAssetAssessmentsByInspectionRequest(inspectionRequestId),
+        this.getWearTearAssessmentsByInspectionRequest(inspectionRequestId),
+        this.getAppraisalReportsByInspectionRequest(inspectionRequestId)
+      ]);
+
+      return {
+        inspectionRequest,
+        client,
+        calls,
+        media: aggregatedMedia,
+        assessments,
+        wearTearAssessments,
+        appraisalReports
+      };
+    } catch (error) {
+      console.error('Error fetching report data for inspection request:', error);
+      return {
+        inspectionRequest: undefined,
+        client: undefined,
+        calls: [],
+        media: { images: [], videos: [] },
+        assessments: [],
+        wearTearAssessments: [],
+        appraisalReports: []
+      };
     }
   }
 }

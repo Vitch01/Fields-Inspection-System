@@ -245,3 +245,167 @@ export function authorizeCoordinatorResource(req: AuthenticatedRequest, res: Res
   
   next();
 }
+
+// Middleware to verify access to inspection request resources
+export async function authorizeInspectionRequestAccess(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({ message: 'Authentication required' });
+  }
+
+  try {
+    const { storage } = await import('./storage');
+    
+    // Get inspection request ID from params or body
+    const inspectionRequestId = req.params.inspectionRequestId || req.params.requestId || req.body.inspectionRequestId;
+    
+    if (!inspectionRequestId) {
+      return res.status(400).json({ message: 'Inspection request ID required' });
+    }
+
+    // Fetch the inspection request
+    const inspectionRequest = await storage.getInspectionRequest(inspectionRequestId);
+    if (!inspectionRequest) {
+      return res.status(404).json({ message: 'Inspection request not found' });
+    }
+
+    // Authorization based on user role
+    switch (req.user.role) {
+      case 'client':
+        if (inspectionRequest.clientId !== req.user.id) {
+          return res.status(403).json({ message: 'Access denied: Cannot access other clients\' inspection requests' });
+        }
+        break;
+
+      case 'coordinator':
+        if (inspectionRequest.assignedCoordinatorId !== req.user.id) {
+          return res.status(403).json({ message: 'Access denied: Cannot access inspection requests not assigned to you' });
+        }
+        break;
+
+      case 'inspector':
+        // Inspectors can access if they have a call associated with the inspection request
+        const calls = await storage.getCallsByInspectionRequest(inspectionRequestId);
+        const hasAccess = calls.some(call => call.inspectorId === req.user?.id);
+        if (!hasAccess) {
+          return res.status(403).json({ message: 'Access denied: Cannot access inspection requests not assigned to you' });
+        }
+        break;
+
+      default:
+        return res.status(403).json({ message: 'Invalid user role for inspection request access' });
+    }
+
+    next();
+  } catch (error: any) {
+    console.error('Authorization check failed:', error);
+    return res.status(500).json({ message: 'Authorization check failed' });
+  }
+}
+
+// Middleware to verify access to call resources
+export async function authorizeCallAccess(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({ message: 'Authentication required' });
+  }
+
+  try {
+    const { storage } = await import('./storage');
+    
+    // Get call ID from params
+    const callId = req.params.callId;
+    
+    if (!callId) {
+      return res.status(400).json({ message: 'Call ID required' });
+    }
+
+    // Fetch the call
+    const call = await storage.getCall(callId);
+    if (!call) {
+      return res.status(404).json({ message: 'Call not found' });
+    }
+
+    // Authorization based on user role
+    switch (req.user.role) {
+      case 'inspector':
+        if (call.inspectorId !== req.user.id) {
+          return res.status(403).json({ message: 'Access denied: Cannot access other inspectors\' calls' });
+        }
+        break;
+
+      case 'coordinator':
+        if (call.coordinatorId !== req.user.id) {
+          return res.status(403).json({ message: 'Access denied: Cannot access calls not assigned to you' });
+        }
+        break;
+
+      case 'client':
+        // Get the inspection request to check if client has access
+        const inspectionRequest = await storage.getInspectionRequest(call.inspectionRequestId);
+        if (!inspectionRequest || inspectionRequest.clientId !== req.user.id) {
+          return res.status(403).json({ message: 'Access denied: Cannot access calls not related to your inspection requests' });
+        }
+        break;
+
+      default:
+        return res.status(403).json({ message: 'Invalid user role for call access' });
+    }
+
+    next();
+  } catch (error: any) {
+    console.error('Call authorization check failed:', error);
+    return res.status(500).json({ message: 'Call authorization check failed' });
+  }
+}
+
+// Middleware to verify access to report resources
+export async function authorizeReportAccess(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({ message: 'Authentication required' });
+  }
+
+  try {
+    const { storage } = await import('./storage');
+    
+    // Get report ID from params
+    const reportId = req.params.reportId || req.params.id;
+    
+    if (!reportId) {
+      return res.status(400).json({ message: 'Report ID required' });
+    }
+
+    // Fetch the report
+    const report = await storage.getInspectionReport(reportId);
+    if (!report) {
+      return res.status(404).json({ message: 'Report not found' });
+    }
+
+    // Authorization based on user role
+    switch (req.user.role) {
+      case 'client':
+        if (report.clientId !== req.user.id) {
+          return res.status(403).json({ message: 'Access denied: Cannot access other clients\' reports' });
+        }
+        break;
+
+      case 'coordinator':
+        if (report.coordinatorId !== req.user.id) {
+          return res.status(403).json({ message: 'Access denied: Cannot access reports not assigned to you' });
+        }
+        break;
+
+      case 'inspector':
+        if (report.inspectorId !== req.user.id) {
+          return res.status(403).json({ message: 'Access denied: Cannot access reports not created by you' });
+        }
+        break;
+
+      default:
+        return res.status(403).json({ message: 'Invalid user role for report access' });
+    }
+
+    next();
+  } catch (error: any) {
+    console.error('Report authorization check failed:', error);
+    return res.status(500).json({ message: 'Report authorization check failed' });
+  }
+}
