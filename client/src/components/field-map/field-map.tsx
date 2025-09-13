@@ -273,20 +273,68 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
       console.log('Primary URL with layer ID:', kmlUrls[0]);
       console.log('Fallback URL without layer ID:', kmlUrls[1]);
       
-      // Test actual KML content
+      // Test actual KML content and parse as fallback
       fetch(kmlUrls[0])
         .then(response => response.text().then(kmlText => ({response, kmlText})))
         .then(({response, kmlText}) => {
           console.log('KML Response status:', response.status);
-          console.log('KML Response headers:', Object.fromEntries(response.headers.entries()));
           console.log('KML Content preview (first 500 chars):', kmlText.substring(0, 500));
           
           if (kmlText.includes('<Placemark>')) {
-            console.log('✓ KML contains Placemark elements - your layer data is accessible!');
+            console.log('✓ KML contains Placemark elements - your field rep data is accessible!');
+            
+            // Parse KML as fallback if Google Maps layer fails
+            (window as any).parsedKmlData = kmlText;
+            
+            // Extract field rep data from KML
+            try {
+              const parser = new DOMParser();
+              const kmlDoc = parser.parseFromString(kmlText, 'text/xml');
+              const placemarks = kmlDoc.querySelectorAll('Placemark');
+              
+              console.log(`Found ${placemarks.length} field representatives in your layer`);
+              
+              const fieldReps: any[] = [];
+              placemarks.forEach((placemark, index) => {
+                const name = placemark.querySelector('name')?.textContent || `Field Rep ${index + 1}`;
+                const description = placemark.querySelector('description')?.textContent || '';
+                const coordinates = placemark.querySelector('coordinates')?.textContent?.trim();
+                
+                if (coordinates) {
+                  const [lng, lat] = coordinates.split(',').map(coord => parseFloat(coord.trim()));
+                  if (!isNaN(lat) && !isNaN(lng)) {
+                    // Extract contact info from description using your KML format
+                    const phoneMatch = description.match(/Phone:\s*([^\n]*)/);
+                    const emailMatch = description.match(/Email:\s*([^\n]*)/);
+                    const priceMatch = description.match(/Price:\s*([^\n]*)/);
+                    const noteMatch = description.match(/Note:\s*([^\n]*)/);
+                    
+                    fieldReps.push({
+                      id: `kml_rep_${index + 1}`,
+                      name: name,
+                      position: { lat, lng },
+                      status: noteMatch?.[1]?.toLowerCase().includes('available') ? 'available' : 'offline',
+                      phone: phoneMatch?.[1]?.trim() || '',
+                      email: emailMatch?.[1]?.trim() || '',
+                      price: priceMatch?.[1]?.trim() || ''
+                    });
+                    
+                    console.log(`Parsed field rep: ${name} at (${lat}, ${lng})`);
+                  }
+                }
+              });
+              
+              (window as any).parsedFieldReps = fieldReps;
+              console.log('Parsed field representatives:', fieldReps);
+              
+            } catch (parseError) {
+              console.log('KML parsing error:', parseError);
+            }
+            
           } else if (kmlText.includes('<!DOCTYPE html>')) {
             console.log('✗ KML URL returned HTML - map may not be public');
           } else {
-            console.log('? KML format unclear - checking for NetworkLinks...');
+            console.log('? KML format unclear');
           }
         })
         .catch(error => {
@@ -430,12 +478,90 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
       setTimeout(() => {
         if (!isMapLoaded && !mapError) {
           console.log('Still waiting for your Google My Maps layer to load...');
-          // Don't use fallback immediately - let your real data load
+          // Try fallback with parsed KML data
           setTimeout(() => {
             if (!isMapLoaded && !mapError) {
-              console.log('Final timeout - your Google My Maps may need different sharing settings');
-              setIsMapLoaded(true);
-              setMapError('Unable to load your Google My Maps layer. Please ensure your map is shared as "Anyone with the link - Viewer" and try refreshing.');
+              const parsedFieldReps = (window as any).parsedFieldReps;
+              if (parsedFieldReps && parsedFieldReps.length > 0) {
+                console.log(`Using parsed field rep data from your Google My Maps (${parsedFieldReps.length} reps)`);
+                
+                // Clear any existing markers
+                markersRef.current.forEach((marker: any) => marker.setMap(null));
+                markersRef.current = [];
+
+                // Add parsed field reps as markers
+                parsedFieldReps.forEach((rep: any) => {
+                  const marker = new window.google.maps.Marker({
+                    position: rep.position,
+                    map: map,
+                    title: rep.name,
+                    icon: {
+                      url: 'data:image/svg+xml;base64,' + btoa(`
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="${rep.status === 'available' ? '#10B981' : '#6B7280'}"/>
+                        </svg>
+                      `),
+                      scaledSize: new window.google.maps.Size(24, 24),
+                    }
+                  });
+
+                  // Add info window with your field rep data
+                  const infoWindow = new window.google.maps.InfoWindow({
+                    content: `
+                      <div style="padding: 8px; max-width: 300px;">
+                        <h3 style="margin: 0 0 8px 0; color: #1f2937;">${rep.name}</h3>
+                        <div style="margin-bottom: 8px;">
+                          <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: ${rep.status === 'available' ? '#10B981' : '#6B7280'}; margin-right: 8px;"></span>
+                          <span style="color: ${rep.status === 'available' ? '#059669' : '#6B7280'}; font-weight: 500;">
+                            ${rep.status === 'available' ? 'Available' : 'Check Availability'}
+                          </span>
+                        </div>
+                        ${rep.phone ? `<p style="margin: 4px 0;"><strong>Phone:</strong> ${rep.phone}</p>` : ''}
+                        ${rep.email ? `<p style="margin: 4px 0;"><strong>Email:</strong> ${rep.email}</p>` : ''}
+                        ${rep.price ? `<p style="margin: 4px 0;"><strong>Price:</strong> ${rep.price}</p>` : ''}
+                        <button 
+                          onclick="selectInspector('${rep.id}', '${rep.name}')"
+                          style="margin-top: 12px; padding: 8px 16px; background-color: #3B82F6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;"
+                          data-testid="button-select-inspector-${rep.id}"
+                        >
+                          Select Inspector
+                        </button>
+                      </div>
+                    `
+                  });
+
+                  marker.addListener('click', () => {
+                    infoWindow.open(map, marker);
+                  });
+
+                  markersRef.current.push(marker);
+                });
+
+                // Zoom to show all field reps
+                if (parsedFieldReps.length > 0) {
+                  const bounds = new window.google.maps.LatLngBounds();
+                  parsedFieldReps.forEach((rep: any) => {
+                    bounds.extend(rep.position);
+                  });
+                  map.fitBounds(bounds);
+                  
+                  // Don't zoom too close if there's only one marker
+                  if (parsedFieldReps.length === 1) {
+                    setTimeout(() => {
+                      if (map.getZoom() && map.getZoom()! > 16) {
+                        map.setZoom(16);
+                      }
+                    }, 1000);
+                  }
+                }
+                
+                setIsMapLoaded(true);
+                setMapError(null);
+              } else {
+                console.log('No parsed field rep data available');
+                setIsMapLoaded(true);
+                setMapError('Unable to load your Google My Maps layer. Please ensure your map is shared as "Anyone with the link - Viewer" and try refreshing.');
+              }
             }
           }, 10000);
         }
