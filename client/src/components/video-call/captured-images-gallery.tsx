@@ -198,33 +198,6 @@ export default function CapturedImagesGallery({ images, onImageClick }: Captured
               </Button>
             </>
           )}
-          {!isSelectionMode && (
-            <>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-auto p-0 text-xs hover:text-primary"
-                onClick={async () => {
-                  setSelectedImages(new Set(images.map((img, idx) => img.id || idx.toString())));
-                  await downloadSelectedImages();
-                  setSelectedImages(new Set());
-                }}
-                data-testid="button-download-all"
-              >
-                <Download className="w-3 h-3 mr-1" />
-                Download All
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-auto p-0 text-xs hover:text-primary"
-                data-testid="button-share-images"
-              >
-                <Share className="w-3 h-3 mr-1" />
-                Share
-              </Button>
-            </>
-          )}
         </div>
       </div>
     </div>

@@ -173,6 +173,7 @@ export default function CallControls({
           <Button
             size="icon"
             variant="destructive"
+            className="bg-red-600 hover:bg-red-700 border-red-600"
             onClick={onEndCall}
             data-testid="button-end-call"
           >
