@@ -6,10 +6,37 @@ import ChatPanel from "@/components/video-call/chat-panel";
 import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import { useWebRTC } from "@/hooks/use-webrtc";
+import { useWebSocket } from "@/hooks/use-websocket";
 import { useState, useEffect } from "react";
 import { Clock, Signal, Video, UserCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+
+// Helper functions for network quality display
+function getSignalColor(quality: string): string {
+  switch (quality) {
+    case 'excellent': return 'text-green-500';
+    case 'good': return 'text-yellow-500';
+    case 'poor': return 'text-orange-500';
+    case 'disconnected': return 'text-red-500';
+    default: return 'text-gray-500';
+  }
+}
+
+function capitalizeFirst(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+// Inspector call requires white text on black background
+function getSignalColorInspector(quality: string): string {
+  switch (quality) {
+    case 'excellent': return 'text-green-400';
+    case 'good': return 'text-yellow-400';
+    case 'poor': return 'text-orange-400';
+    case 'disconnected': return 'text-red-400';
+    default: return 'text-gray-400';
+  }
+}
 
 export default function InspectorCall() {
   const { callId } = useParams();
@@ -40,6 +67,9 @@ export default function InspectorCall() {
     unreadCount,
     clearUnreadCount,
   } = useWebRTC(callId!, "inspector");
+
+  // WebSocket hook for connection quality
+  const { connectionQuality } = useWebSocket(callId!, "inspector");
 
   // Inspector doesn't need to fetch captured images
   const capturedImages: any[] = [];
@@ -190,8 +220,8 @@ export default function InspectorCall() {
             Coordinator: <span className="text-white" data-testid="text-coordinator-name">Sarah Johnson</span>
           </div>
           <div className="flex items-center space-x-1">
-            <Signal className="w-4 h-4 text-white" />
-            <span className="text-xs text-white">Excellent</span>
+            <Signal className={`w-4 h-4 ${getSignalColorInspector(connectionQuality)}`} />
+            <span className="text-xs text-white" data-testid="text-connection-quality">{capitalizeFirst(connectionQuality)}</span>
           </div>
         </div>
       </header>
