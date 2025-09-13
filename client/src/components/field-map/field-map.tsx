@@ -201,7 +201,7 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
       const kmlLayer = new window.google.maps.KmlLayer({
         url: kmlUrl,
         suppressInfoWindows: true, // We'll handle our own info windows
-        preserveViewport: false, // Auto-zoom to KML bounds
+        preserveViewport: true, // Keep the map centered on specified coordinates
         map: map
       });
 
