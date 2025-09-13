@@ -218,13 +218,18 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
     }
     
     try {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      // Use robust URL construction to ensure proper '/ws' endpoint targeting
+      const url = new URL('/ws', window.location.href);
+      url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = url.toString();
       
       // Enhanced mobile connection diagnostics
       const connectionInfo = {
-        protocol,
-        url: wsUrl,
+        constructedUrl: wsUrl,
+        originalProtocol: window.location.protocol,
+        finalProtocol: url.protocol,
+        host: window.location.host,
+        path: url.pathname,
         userAgent: navigator.userAgent,
         network: (navigator as any).connection ? {
           type: (navigator as any).connection.type,
@@ -235,7 +240,8 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
         timestamp: new Date().toISOString()
       };
       
-      console.log("🚀 [WebSocket] Attempting connection with mobile diagnostics:", connectionInfo);
+      console.log("🚀 [WebSocket] Attempting connection with robust URL construction:", connectionInfo);
+      console.log("🎯 [WebSocket] Final WebSocket URL:", wsUrl);
       
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
