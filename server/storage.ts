@@ -157,17 +157,22 @@ export class DbStorage implements IStorage {
       // Seed default media categories
       await this.seedDefaultMediaCategories();
       
-      // Check if we already have users
-      const existingUsers = await db.select().from(users).limit(1);
-      if (existingUsers.length === 0) {
-        // Add some test users if none exist
+      // Ensure default coordinator exists
+      const coordinatorUser = await this.getUserByUsername("coordinator");
+      if (!coordinatorUser) {
         await this.createUser({
-          username: "coordinator1",
+          username: "coordinator",
           // No password - coordinators use default authentication
           role: "coordinator",
           name: "Sarah Johnson"
         });
+        console.log("✓ Created default coordinator user");
+      }
 
+      // Check if we already have users (for other test data)
+      const existingUsers = await db.select().from(users).limit(1);
+      if (existingUsers.length === 1) { // Only coordinator exists
+        // Add inspector test user
         await this.createUser({
           username: "inspector1",
           password: "password", 
