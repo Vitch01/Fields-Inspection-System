@@ -236,6 +236,17 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
           setIsMapLoaded(true);
           setMapError(null);
           extractInspectorsFromKML(kmlLayer);
+          
+          // Check if data is actually visible by examining the default viewport
+          try {
+            const viewport = kmlLayer.getDefaultViewport();
+            if (!viewport || (!viewport.getNorthEast() && !viewport.getSouthWest())) {
+              console.warn('KML loaded but no visible features found. Check map sharing and layer visibility.');
+              setMapError("Map loaded but no inspector locations visible. Please ensure your Google My Maps is shared as 'Anyone with the link' and contains visible markers.");
+            }
+          } catch (e) {
+            console.warn('Could not check KML viewport:', e);
+          }
         } else if (status === 'DOCUMENT_NOT_FOUND') {
           setMapError("Google My Maps data not found. Please check if the map is publicly accessible.");
           setIsMapLoaded(false);
@@ -244,6 +255,15 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
           setIsMapLoaded(false);
         } else if (status === 'INVALID_DOCUMENT') {
           setMapError("Invalid map data format. Please check your Google My Maps setup.");
+          setIsMapLoaded(false);
+        } else if (status === 'ACCESS_DENIED') {
+          setMapError("Access denied to Google My Maps data. Please make sure your map is shared as 'Anyone with the link - Viewer'.");
+          setIsMapLoaded(false);
+        } else if (status === 'DOCUMENT_TOO_LARGE') {
+          setMapError("Google My Maps data is too large to load. Please reduce the number of markers or split into multiple maps.");
+          setIsMapLoaded(false);
+        } else if (status === 'LIMITS_EXCEEDED') {
+          setMapError("Google Maps usage limits exceeded. Please try again later.");
           setIsMapLoaded(false);
         }
       });
