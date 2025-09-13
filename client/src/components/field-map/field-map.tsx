@@ -80,6 +80,12 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
       return;
     }
 
+    // Set up auth failure handler
+    (window as any).gm_authFailure = () => {
+      setMapError("Invalid or unauthorized Google Maps API key. Please check your API key and billing settings.");
+      setIsMapLoaded(false);
+    };
+
     // Load Google Maps Script
     if (!window.google) {
       const script = document.createElement('script');
@@ -99,6 +105,25 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
     // Cleanup function
     return () => {
+      // Close any open info windows
+      if (googleMapRef.current) {
+        // Clear markers and their listeners
+        markersRef.current.forEach(marker => {
+          if (marker) {
+            marker.setMap(null);
+          }
+        });
+        markersRef.current = [];
+      }
+
+      // Clear references
+      googleMapRef.current = null;
+
+      // Remove auth failure handler
+      if ((window as any).gm_authFailure) {
+        (window as any).gm_authFailure = undefined;
+      }
+
       // Reset state on unmount
       setMapError(null);
       setIsMapLoaded(false);
@@ -148,8 +173,20 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
       // Add inspector markers
       addInspectorMarkers(map);
-      setIsMapLoaded(true);
-      setMapError(null);
+      
+      // Wait for map to fully load before setting as loaded
+      map.addListener('tilesloaded', () => {
+        setIsMapLoaded(true);
+        setMapError(null);
+      });
+
+      // Fallback timeout in case tilesloaded doesn't fire
+      setTimeout(() => {
+        if (!isMapLoaded && !mapError) {
+          setIsMapLoaded(true);
+          setMapError(null);
+        }
+      }, 3000);
     } catch (error) {
       console.error('Error initializing Google Maps:', error);
       setMapError("Failed to initialize map. This may be due to an invalid API key or quota exceeded.");
@@ -237,15 +274,13 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
       return;
     }
 
-    // Remove any existing Google Maps script
-    const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
-    if (existingScript) {
-      existingScript.remove();
-    }
+    // Remove any existing Google Maps scripts
+    const existingScripts = document.querySelectorAll('script[src*="maps.googleapis.com/maps/api/js"]');
+    existingScripts.forEach(script => script.remove());
 
     // Reset google object to force reload
     if (window.google) {
-      delete (window as any).google;
+      (window as any).google = undefined;
     }
 
     // Load fresh Google Maps script
@@ -254,6 +289,11 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
     script.async = true;
     script.onload = () => {
       setIsRetrying(false);
+      // Set up auth failure handler for retry
+      (window as any).gm_authFailure = () => {
+        setMapError("Invalid or unauthorized Google Maps API key. Please check your API key and billing settings.");
+        setIsMapLoaded(false);
+      };
       initializeMap();
     };
     script.onerror = () => {
