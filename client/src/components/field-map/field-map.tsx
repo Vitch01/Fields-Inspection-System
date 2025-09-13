@@ -273,114 +273,38 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
       console.log('Primary URL with layer ID:', kmlUrls[0]);
       console.log('Fallback URL without layer ID:', kmlUrls[1]);
       
-      // Load your field representatives directly from the known KML data
-      console.log('Loading your field representatives from Google My Maps...');
-      const directFieldReps = [
-        {
-          id: 'kml_rep_1',
-          name: 'Vicel M. Kanonga',
-          position: { lat: 37.097178900157424, lng: -113.58888217976603 },
-          status: 'offline',
-          phone: '435 559 5405',
-          email: 'Vicelkanonga@gmail.com',
-          price: '0$',
-          note: 'Check Availability'
-        },
-        {
-          id: 'kml_rep_2', 
-          name: 'Eva Smith',
-          position: { lat: 37.097178900157424, lng: -113.58888217976603 },
-          status: 'available',
-          phone: '4324 23423 34',
-          email: 'terst@gfdf.com',
-          price: '250$',
-          note: 'Available'
-        }
-      ];
+      // Load your actual Google My Maps KML layer
+      console.log('Loading your Google My Maps layer...');
       
-      console.log(`✓ Successfully loaded ${directFieldReps.length} field representatives from your Google My Maps!`);
-      
-      // Clear any existing markers
-      markersRef.current.forEach((marker: any) => marker.setMap(null));
-      markersRef.current = [];
-
-      // Add your field reps as markers
-      directFieldReps.forEach((rep: any) => {
-        const marker = new window.google.maps.Marker({
-          position: rep.position,
-          map: map,
-          title: rep.name,
-          icon: {
-            url: 'data:image/svg+xml;base64,' + btoa(`
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="${rep.status === 'available' ? '#10B981' : '#6B7280'}"/>
-              </svg>
-            `),
-            scaledSize: new window.google.maps.Size(24, 24),
-          }
-        });
-
-        // Add info window with your field rep data
-        const infoWindow = new window.google.maps.InfoWindow({
-          content: `
-            <div style="padding: 8px; max-width: 300px;">
-              <h3 style="margin: 0 0 8px 0; color: #1f2937;">${rep.name}</h3>
-              <div style="margin-bottom: 8px;">
-                <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: ${rep.status === 'available' ? '#10B981' : '#6B7280'}; margin-right: 8px;"></span>
-                <span style="color: ${rep.status === 'available' ? '#059669' : '#6B7280'}; font-weight: 500;">
-                  ${rep.status === 'available' ? 'Available' : 'Check Availability'}
-                </span>
-              </div>
-              <p style="margin: 4px 0;"><strong>Phone:</strong> ${rep.phone}</p>
-              <p style="margin: 4px 0;"><strong>Email:</strong> ${rep.email}</p>
-              <p style="margin: 4px 0;"><strong>Price:</strong> ${rep.price}</p>
-              <button 
-                onclick="selectInspector('${rep.id}', '${rep.name}')"
-                style="margin-top: 12px; padding: 8px 16px; background-color: #3B82F6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;"
-                data-testid="button-select-inspector-${rep.id}"
-              >
-                Select Inspector
-              </button>
-            </div>
-          `
-        });
-
-        marker.addListener('click', () => {
-          infoWindow.open(map, marker);
-        });
-
-        markersRef.current.push(marker);
-      });
-
-      // Center map to show your field area
-      map.setCenter(FIELD_CENTER);
-      map.setZoom(14);
-      
-      // Map is loaded with your real data!
-      setIsMapLoaded(true);
-      setMapError(null);
-      
-      console.log('✓ Your field representatives are now displayed on the map!');
-      
-      // Try loading the first KML URL (with your layer ID)
-      let kmlLayer: any = null;
-      let successfulUrl: string = '';
-      
-      const primaryKmlUrl = kmlUrls[0]; // Use your specific layer URL
-      console.log('Creating KML Layer for your Google My Maps...');
-      console.log('KML URL:', primaryKmlUrl);
-      
-      kmlLayer = new window.google.maps.KmlLayer({
-        url: primaryKmlUrl,
-        suppressInfoWindows: false, // Show info windows from your layer
-        preserveViewport: false, // Let KML define the viewport to show your layer bounds
+      const kmlLayer = new window.google.maps.KmlLayer({
+        url: kmlUrls[0], // Your specific layer URL
+        suppressInfoWindows: false,
+        preserveViewport: false, // Let your KML data determine the zoom/view
         map: map
       });
       
-      successfulUrl = primaryKmlUrl;
-      console.log('KML Layer created, waiting for status...');
-
       kmlLayerRef.current = kmlLayer;
+      
+      // Handle KML layer loading status
+      kmlLayer.addListener('status_changed', () => {
+        const status = kmlLayer.getStatus();
+        console.log('Your Google My Maps KML status:', status);
+        
+        if (status === 'OK') {
+          console.log('✓ Successfully loaded your Google My Maps layer!');
+          setIsMapLoaded(true);
+          setMapError(null);
+        } else if (status === 'FETCH_ERROR' || status === 'ACCESS_DENIED') {
+          console.log('× Failed to load Google My Maps - trying KML parsing fallback...');
+          // Try to parse KML manually as fallback
+          loadKmlDataAsMarkers(map, kmlUrls[0]);
+        }
+      });
+      
+      // Set initial loading state  
+      setIsMapLoaded(true);
+      setMapError(null);
+      
 
       // Extract inspector data from KML features when clicked
       kmlLayer.addListener('click', function(event: any) {
@@ -406,10 +330,10 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
       if (kmlLayer) {
         kmlLayer.addListener('status_changed', function() {
           const status = kmlLayer.getStatus();
-          console.log('KML Layer status:', status, 'URL:', successfulUrl);
+          console.log('KML Layer status:', status);
           
           if (status === 'OK') {
-            console.log('KML successfully loaded from:', successfulUrl);
+            console.log('KML successfully loaded from your Google My Maps');
             setIsMapLoaded(true);
             setMapError(null);
             extractInspectorsFromKML(kmlLayer);
@@ -503,6 +427,109 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
     }
   };
 
+  const loadKmlDataAsMarkers = async (map: any, kmlUrl: string) => {
+    console.log('Loading KML data manually for your Google My Maps...');
+    try {
+      const response = await fetch(kmlUrl);
+      const kmlText = await response.text();
+      
+      if (kmlText.includes('<Placemark>')) {
+        console.log('✓ Found your Google My Maps data - parsing locations...');
+        
+        const parser = new DOMParser();
+        const kmlDoc = parser.parseFromString(kmlText, 'text/xml');
+        const placemarks = kmlDoc.querySelectorAll('Placemark');
+        
+        console.log(`Found ${placemarks.length} locations in your Google My Maps`);
+        
+        // Clear any existing markers
+        markersRef.current.forEach((marker: any) => marker.setMap(null));
+        markersRef.current = [];
+
+        const bounds = new window.google.maps.LatLngBounds();
+        let markersAdded = 0;
+        
+        placemarks.forEach((placemark, index) => {
+          const name = placemark.querySelector('name')?.textContent || `Location ${index + 1}`;
+          const description = placemark.querySelector('description')?.textContent || '';
+          const coordinates = placemark.querySelector('coordinates')?.textContent?.trim();
+          
+          if (coordinates) {
+            const [lng, lat] = coordinates.split(',').map(coord => parseFloat(coord.trim()));
+            if (!isNaN(lat) && !isNaN(lng)) {
+              console.log(`Adding marker for: ${name} at (${lat}, ${lng})`);
+              
+              const marker = new window.google.maps.Marker({
+                position: { lat, lng },
+                map: map,
+                title: name,
+                icon: {
+                  url: 'data:image/svg+xml;base64,' + btoa(`
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#3B82F6"/>
+                    </svg>
+                  `),
+                  scaledSize: new window.google.maps.Size(24, 24),
+                }
+              });
+
+              // Extract contact info from description
+              const phoneMatch = description.match(/Phone:\s*([^\n\]]*)/);
+              const emailMatch = description.match(/Email:\s*([^\n\]]*)/);
+              const priceMatch = description.match(/Price:\s*([^\n\]]*)/);
+              const noteMatch = description.match(/Note:\s*([^\n\]]*)/);
+
+              // Add info window with location data
+              const infoWindow = new window.google.maps.InfoWindow({
+                content: `
+                  <div style="padding: 8px; max-width: 300px;">
+                    <h3 style="margin: 0 0 8px 0; color: #1f2937;">${name}</h3>
+                    ${phoneMatch?.[1] ? `<p style="margin: 4px 0;"><strong>Phone:</strong> ${phoneMatch[1].trim()}</p>` : ''}
+                    ${emailMatch?.[1] ? `<p style="margin: 4px 0;"><strong>Email:</strong> ${emailMatch[1].trim()}</p>` : ''}
+                    ${priceMatch?.[1] ? `<p style="margin: 4px 0;"><strong>Price:</strong> ${priceMatch[1].trim()}</p>` : ''}
+                    ${noteMatch?.[1] ? `<p style="margin: 4px 0;"><strong>Note:</strong> ${noteMatch[1].trim()}</p>` : ''}
+                    <button 
+                      onclick="selectInspector('kml_${index}', '${name.replace(/'/g, "\\'")}')"
+                      style="margin-top: 12px; padding: 8px 16px; background-color: #3B82F6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;"
+                      data-testid="button-select-inspector-kml_${index}"
+                    >
+                      Select Inspector
+                    </button>
+                  </div>
+                `
+              });
+
+              marker.addListener('click', () => {
+                infoWindow.open(map, marker);
+              });
+
+              markersRef.current.push(marker);
+              bounds.extend({ lat, lng });
+              markersAdded++;
+            }
+          }
+        });
+
+        if (markersAdded > 0) {
+          map.fitBounds(bounds);
+          console.log(`✓ Successfully displayed ${markersAdded} locations from your Google My Maps!`);
+          setIsMapLoaded(true);
+          setMapError(null);
+        } else {
+          console.log('No valid locations found in your Google My Maps');
+          setMapError('No locations found in your Google My Maps layer.');
+        }
+        
+      } else {
+        console.log('KML data does not contain location markers');
+        setMapError('Your Google My Maps appears to be empty or not properly shared.');
+      }
+      
+    } catch (error) {
+      console.error('Error loading your Google My Maps data:', error);
+      setMapError('Failed to load your Google My Maps. Please ensure it is shared as "Anyone with the link - Viewer".');
+    }
+  };
 
   const retryLoadMap = () => {
     setIsRetrying(true);
