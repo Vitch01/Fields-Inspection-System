@@ -19,6 +19,21 @@ interface InspectorEmailData {
   coordinator: User;
 }
 
+interface PackageDeliveryEmailData {
+  client: Client;
+  inspectionRequest: InspectionRequest;
+  inspectionPackage: {
+    id: string;
+    title: string;
+    description: string;
+    accessUrl: string;
+    expiresAt: Date;
+    packageContents: any;
+    zipFileSize: string;
+  };
+  coordinator: User;
+}
+
 export class EmailService {
   private transporter: nodemailer.Transporter;
   private fromEmail: string;
@@ -464,6 +479,289 @@ For assistance, contact your coordinator using the information provided above.
 </body>
 </html>
     `.trim();
+
+    return {
+      subject,
+      bodyText,
+      bodyHtml
+    };
+  }
+
+  /**
+   * Send package delivery notification email to client
+   */
+  async sendPackageDeliveryEmail(data: PackageDeliveryEmailData): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    try {
+      const template = this.generatePackageDeliveryTemplate(data);
+      
+      // Prepare email options
+      const mailOptions = {
+        from: `${this.fromName} <${this.fromEmail}>`,
+        to: data.client.email,
+        subject: template.subject,
+        text: template.bodyText,
+        html: template.bodyHtml,
+      };
+
+      // Send email using nodemailer
+      const result = await this.transporter.sendMail(mailOptions);
+      
+      // For development/testing, log the email content
+      if (!process.env.SMTP_HOST) {
+        console.log('📧 PACKAGE DELIVERY EMAIL SENT (Development Mode):');
+        console.log('To:', data.client.email);
+        console.log('Subject:', template.subject);
+        console.log('--- EMAIL CONTENT ---');
+        console.log(template.bodyText);
+        console.log('--- END EMAIL ---');
+      }
+
+      console.log(`✓ Package delivery email sent successfully to ${data.client.email}, Message ID: ${result.messageId}`);
+      
+      return {
+        success: true,
+        messageId: result.messageId || `dev-${Date.now()}`
+      };
+    } catch (error: any) {
+      console.error("Failed to send package delivery email:", error);
+      return {
+        success: false,
+        error: error.message || "Failed to send email"
+      };
+    }
+  }
+
+  /**
+   * Generate professional email template for client package delivery
+   */
+  private generatePackageDeliveryTemplate(data: PackageDeliveryEmailData): EmailTemplate {
+    const {
+      client,
+      inspectionRequest,
+      inspectionPackage,
+      coordinator
+    } = data;
+
+    // Format dates
+    const deliveryDate = new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    const expirationDate = inspectionPackage.expiresAt.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    const location = inspectionRequest.location as any;
+    const address = location?.address 
+      ? `${location.address}, ${location.city}, ${location.state} ${location.zipCode}`
+      : 'Address on file';
+
+    const assetTypeText = inspectionRequest.assetType.replace('_', ' ').toUpperCase();
+    const inspectionTypeText = inspectionRequest.inspectionType.replace('_', ' ').toUpperCase();
+    const priorityText = inspectionRequest.priority.toUpperCase();
+
+    // Format file size
+    const fileSizeMB = (parseInt(inspectionPackage.zipFileSize) / (1024 * 1024)).toFixed(1);
+
+    // Count package contents
+    const contents = inspectionPackage.packageContents || {};
+    const reportCount = contents.reports?.length || 0;
+    const imageCount = contents.media?.images?.length || 0;
+    const videoCount = contents.media?.videos?.length || 0;
+    const assessmentCount = contents.assessments?.length || 0;
+
+    const subject = `Your Inspection Package is Ready - ${inspectionRequest.title}`;
+
+    const bodyText = `
+Dear ${client.contactPerson || client.name},
+
+Your inspection package for "${inspectionRequest.title}" is now ready for download.
+
+INSPECTION SUMMARY:
+==================
+Property/Asset: ${inspectionRequest.title}
+Location: ${address}
+Inspection Type: ${inspectionTypeText}
+Asset Type: ${assetTypeText}
+Priority: ${priorityText}
+Completed Date: ${deliveryDate}
+
+PACKAGE CONTENTS:
+================
+Reports: ${reportCount} file(s)
+Images: ${imageCount} file(s)
+Videos: ${videoCount} file(s)
+Assessments: ${assessmentCount} file(s)
+Package Size: ${fileSizeMB} MB
+
+ACCESS INSTRUCTIONS:
+===================
+1. Click the secure access link below to view your package
+2. Log into your client dashboard using your credentials
+3. Navigate to the "Packages" section to access all files
+4. Download individual files or the complete package as needed
+
+Secure Access Link:
+${inspectionPackage.accessUrl}
+
+IMPORTANT NOTES:
+===============
+- Your package will be available until: ${expirationDate}
+- All files are organized by category for easy navigation
+- PDF reports include comprehensive findings and recommendations
+- Contact us if you need assistance accessing your files
+
+For any questions about your inspection results or accessing your package, please contact:
+
+${coordinator.name}
+${coordinator.email || 'Contact through your client portal'}
+
+Thank you for choosing Professional Field Inspection Services.
+
+Best regards,
+${this.fromName}
+
+---
+This is an automated message. Please do not reply directly to this email.
+For support, log into your client portal or contact your coordinator.
+    `.trim();
+
+    const bodyHtml = `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Your Inspection Package is Ready</title>
+      </head>
+      <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 700px; margin: 0 auto; padding: 20px;">
+        
+        <!-- Header -->
+        <div style="text-align: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px 20px; border-radius: 8px 8px 0 0; margin-bottom: 0;">
+          <h1 style="margin: 0; font-size: 28px; font-weight: 300;">📋 Inspection Package Ready</h1>
+          <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">Your comprehensive inspection results are now available</p>
+        </div>
+
+        <!-- Main Content -->
+        <div style="background: #fff; border: 1px solid #ddd; border-top: none; padding: 30px; border-radius: 0 0 8px 8px;">
+          
+          <p style="font-size: 16px; margin-bottom: 25px;">
+            Dear <strong>${client.contactPerson || client.name}</strong>,
+          </p>
+
+          <p style="font-size: 16px; margin-bottom: 25px;">
+            Your inspection package for "<strong>${inspectionRequest.title}</strong>" has been completed and is now ready for download. All inspection materials have been organized for easy access.
+          </p>
+
+          <!-- Inspection Summary -->
+          <div style="background: #f8f9fa; border-left: 4px solid #667eea; padding: 20px; margin: 25px 0;">
+            <h3 style="margin: 0 0 15px 0; color: #333; font-size: 18px;">📍 Inspection Summary</h3>
+            <div style="display: grid; gap: 8px;">
+              <div><strong>Property/Asset:</strong> ${inspectionRequest.title}</div>
+              <div><strong>Location:</strong> ${address}</div>
+              <div><strong>Inspection Type:</strong> ${inspectionTypeText}</div>
+              <div><strong>Asset Type:</strong> ${assetTypeText}</div>
+              <div><strong>Priority:</strong> <span style="color: #e74c3c; font-weight: bold;">${priorityText}</span></div>
+              <div><strong>Completed:</strong> ${deliveryDate}</div>
+            </div>
+          </div>
+
+          <!-- Package Contents -->
+          <div style="background: #fff; border: 1px solid #e9ecef; border-radius: 6px; padding: 20px; margin: 25px 0;">
+            <h3 style="margin: 0 0 15px 0; color: #333; font-size: 18px;">📦 Package Contents (${fileSizeMB} MB)</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+              <div style="text-align: center; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                <div style="font-size: 24px; color: #dc3545;">📄</div>
+                <div style="font-weight: bold; margin: 5px 0;">${reportCount}</div>
+                <div style="font-size: 12px; color: #666;">Reports</div>
+              </div>
+              <div style="text-align: center; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                <div style="font-size: 24px; color: #28a745;">📸</div>
+                <div style="font-weight: bold; margin: 5px 0;">${imageCount}</div>
+                <div style="font-size: 12px; color: #666;">Images</div>
+              </div>
+              <div style="text-align: center; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                <div style="font-size: 24px; color: #007bff;">🎥</div>
+                <div style="font-weight: bold; margin: 5px 0;">${videoCount}</div>
+                <div style="font-size: 12px; color: #666;">Videos</div>
+              </div>
+              <div style="text-align: center; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                <div style="font-size: 24px; color: #ffc107;">📊</div>
+                <div style="font-weight: bold; margin: 5px 0;">${assessmentCount}</div>
+                <div style="font-size: 12px; color: #666;">Assessments</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Access Instructions -->
+          <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 25px; border-radius: 6px; margin: 25px 0; text-align: center;">
+            <h3 style="margin: 0 0 15px 0; font-size: 20px;">🔐 Access Your Package</h3>
+            <p style="margin: 0 0 20px 0; font-size: 16px;">Click the secure link below to access your inspection package</p>
+            <a href="${inspectionPackage.accessUrl}" 
+               style="display: inline-block; background: white; color: #28a745; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px; border: 2px solid white; transition: all 0.3s;">
+              🔗 Access Package Now
+            </a>
+          </div>
+
+          <!-- Instructions -->
+          <div style="border-left: 4px solid #17a2b8; background: #e7f7ff; padding: 20px; margin: 25px 0;">
+            <h4 style="margin: 0 0 10px 0; color: #17a2b8;">💡 How to Access Your Files:</h4>
+            <ol style="margin: 0; padding-left: 20px;">
+              <li style="margin-bottom: 8px;">Click the secure access link above</li>
+              <li style="margin-bottom: 8px;">Log into your client dashboard with your credentials</li>
+              <li style="margin-bottom: 8px;">Navigate to the "Packages" section</li>
+              <li style="margin-bottom: 8px;">Download individual files or the complete package</li>
+            </ol>
+          </div>
+
+          <!-- Important Notes -->
+          <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; padding: 15px; margin: 25px 0;">
+            <h4 style="margin: 0 0 10px 0; color: #856404;">⚠️ Important Information:</h4>
+            <ul style="margin: 0; padding-left: 20px; color: #856404;">
+              <li>Package expires: <strong>${expirationDate}</strong></li>
+              <li>Files are organized by category for easy navigation</li>
+              <li>PDF reports include comprehensive findings and recommendations</li>
+              <li>Contact us if you need assistance accessing your files</li>
+            </ul>
+          </div>
+
+          <!-- Contact Information -->
+          <div style="background: #f8f9fa; border-radius: 4px; padding: 20px; margin: 25px 0;">
+            <h4 style="margin: 0 0 10px 0; color: #333;">👤 Your Coordinator:</h4>
+            <p style="margin: 0; font-size: 16px;">
+              <strong>${coordinator.name}</strong><br>
+              ${coordinator.email || 'Contact through your client portal'}
+            </p>
+          </div>
+
+          <p style="font-size: 16px; margin: 25px 0;">
+            Thank you for choosing <strong>Professional Field Inspection Services</strong>. We're committed to providing you with comprehensive, accurate inspection results.
+          </p>
+
+          <div style="text-align: center; margin: 30px 0; padding-top: 20px; border-top: 1px solid #eee;">
+            <p style="margin: 0; color: #666; font-size: 14px;">
+              This is an automated message. Please do not reply directly to this email.<br>
+              For support, log into your client portal or contact your coordinator.
+            </p>
+          </div>
+
+        </div>
+
+        <!-- Footer -->
+        <div style="text-align: center; margin: 20px 0; color: #666; font-size: 12px;">
+          <p style="margin: 0;">Professional Field Inspection Services</p>
+          <p style="margin: 5px 0 0 0;">Generated on ${new Date().toLocaleString()}</p>
+        </div>
+
+      </body>
+      </html>
+    `;
 
     return {
       subject,

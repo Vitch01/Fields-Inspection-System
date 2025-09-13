@@ -1,7 +1,7 @@
-import { type User, type InsertUser, type Call, type InsertCall, type CapturedImage, type InsertCapturedImage, type VideoRecording, type InsertVideoRecording, type Client, type InsertClient, type InspectionRequest, type InsertInspectionRequest, type EmailLog, type InsertEmailLog, type MediaCategory, type InsertMediaCategory, type AssetAssessment, type InsertAssetAssessment, type WearTearAssessment, type InsertWearTearAssessment, type AppraisalReport, type InsertAppraisalReport, type InspectionReport, type InsertInspectionReport } from "@shared/schema";
+import { type User, type InsertUser, type Call, type InsertCall, type CapturedImage, type InsertCapturedImage, type VideoRecording, type InsertVideoRecording, type Client, type InsertClient, type InspectionRequest, type InsertInspectionRequest, type EmailLog, type InsertEmailLog, type MediaCategory, type InsertMediaCategory, type AssetAssessment, type InsertAssetAssessment, type WearTearAssessment, type InsertWearTearAssessment, type AppraisalReport, type InsertAppraisalReport, type InspectionReport, type InsertInspectionReport, type InspectionPackage, type InsertInspectionPackage } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { users, calls, capturedImages, videoRecordings, clients, inspectionRequests, emailLogs, mediaCategories, assetAssessments, wearTearAssessments, appraisalReports, inspectionReports } from "@shared/schema";
+import { users, calls, capturedImages, videoRecordings, clients, inspectionRequests, emailLogs, mediaCategories, assetAssessments, wearTearAssessments, appraisalReports, inspectionReports, inspectionPackages } from "@shared/schema";
 import { eq, and, sql, or, ilike, inArray } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
@@ -130,6 +130,19 @@ export interface IStorage {
     wearTearAssessments: WearTearAssessment[];
     appraisalReports: AppraisalReport[];
   }>;
+
+  // Inspection package methods
+  getInspectionPackage(id: string): Promise<InspectionPackage | undefined>;
+  getInspectionPackagesByClient(clientId: string): Promise<InspectionPackage[]>;
+  getInspectionPackagesByCoordinator(coordinatorId: string): Promise<InspectionPackage[]>;
+  getInspectionPackagesByInspectionRequest(inspectionRequestId: string): Promise<InspectionPackage[]>;
+  createInspectionPackage(inspectionPackage: InsertInspectionPackage): Promise<InspectionPackage>;
+  updateInspectionPackage(id: string, updates: Partial<InspectionPackage>): Promise<InspectionPackage | undefined>;
+  updateInspectionPackageStatus(id: string, status: string): Promise<InspectionPackage | undefined>;
+  updateInspectionPackageAccess(id: string, accessData: { firstAccessedAt?: Date; lastAccessedAt?: Date; downloadCount?: number; }): Promise<InspectionPackage | undefined>;
+  deleteInspectionPackage(id: string): Promise<boolean>;
+  getInspectionPackageByAccessToken(accessToken: string): Promise<InspectionPackage | undefined>;
+  validateInspectionPackageAccess(id: string, clientId: string, accessToken?: string): Promise<boolean>;
 }
 
 
@@ -1273,6 +1286,187 @@ export class DbStorage implements IStorage {
         wearTearAssessments: [],
         appraisalReports: []
       };
+    }
+  }
+
+  // Inspection Package Methods Implementation
+
+  async getInspectionPackage(id: string): Promise<InspectionPackage | undefined> {
+    try {
+      const result = await db.select()
+        .from(inspectionPackages)
+        .where(eq(inspectionPackages.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error) {
+      console.error('Error getting inspection package:', error);
+      return undefined;
+    }
+  }
+
+  async getInspectionPackagesByClient(clientId: string): Promise<InspectionPackage[]> {
+    try {
+      return await db.select()
+        .from(inspectionPackages)
+        .where(eq(inspectionPackages.clientId, clientId))
+        .orderBy(sql`${inspectionPackages.createdAt} DESC`);
+    } catch (error) {
+      console.error('Error getting inspection packages by client:', error);
+      return [];
+    }
+  }
+
+  async getInspectionPackagesByCoordinator(coordinatorId: string): Promise<InspectionPackage[]> {
+    try {
+      return await db.select()
+        .from(inspectionPackages)
+        .where(eq(inspectionPackages.coordinatorId, coordinatorId))
+        .orderBy(sql`${inspectionPackages.createdAt} DESC`);
+    } catch (error) {
+      console.error('Error getting inspection packages by coordinator:', error);
+      return [];
+    }
+  }
+
+  async getInspectionPackagesByInspectionRequest(inspectionRequestId: string): Promise<InspectionPackage[]> {
+    try {
+      return await db.select()
+        .from(inspectionPackages)
+        .where(eq(inspectionPackages.inspectionRequestId, inspectionRequestId))
+        .orderBy(sql`${inspectionPackages.createdAt} DESC`);
+    } catch (error) {
+      console.error('Error getting inspection packages by inspection request:', error);
+      return [];
+    }
+  }
+
+  async createInspectionPackage(inspectionPackage: InsertInspectionPackage): Promise<InspectionPackage> {
+    try {
+      const result = await db.insert(inspectionPackages)
+        .values({
+          ...inspectionPackage,
+          id: randomUUID(),
+        })
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error creating inspection package:', error);
+      throw new Error('Failed to create inspection package');
+    }
+  }
+
+  async updateInspectionPackage(id: string, updates: Partial<InspectionPackage>): Promise<InspectionPackage | undefined> {
+    try {
+      const result = await db.update(inspectionPackages)
+        .set({
+          ...updates,
+          updatedAt: new Date(),
+        })
+        .where(eq(inspectionPackages.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error updating inspection package:', error);
+      return undefined;
+    }
+  }
+
+  async updateInspectionPackageStatus(id: string, status: string): Promise<InspectionPackage | undefined> {
+    try {
+      const updates: Partial<InspectionPackage> = { 
+        status,
+        updatedAt: new Date()
+      };
+
+      // Set delivery timestamp when status changes to delivered
+      if (status === 'delivered') {
+        updates.deliveredAt = new Date();
+      }
+
+      const result = await db.update(inspectionPackages)
+        .set(updates)
+        .where(eq(inspectionPackages.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error updating inspection package status:', error);
+      return undefined;
+    }
+  }
+
+  async updateInspectionPackageAccess(id: string, accessData: { 
+    firstAccessedAt?: Date; 
+    lastAccessedAt?: Date; 
+    downloadCount?: number; 
+  }): Promise<InspectionPackage | undefined> {
+    try {
+      const updates: Partial<InspectionPackage> = {
+        ...accessData,
+        updatedAt: new Date()
+      };
+
+      const result = await db.update(inspectionPackages)
+        .set(updates)
+        .where(eq(inspectionPackages.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error updating inspection package access:', error);
+      return undefined;
+    }
+  }
+
+  async deleteInspectionPackage(id: string): Promise<boolean> {
+    try {
+      const result = await db.delete(inspectionPackages)
+        .where(eq(inspectionPackages.id, id))
+        .returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error('Error deleting inspection package:', error);
+      return false;
+    }
+  }
+
+  async getInspectionPackageByAccessToken(accessToken: string): Promise<InspectionPackage | undefined> {
+    try {
+      const result = await db.select()
+        .from(inspectionPackages)
+        .where(eq(inspectionPackages.accessToken, accessToken))
+        .limit(1);
+      return result[0];
+    } catch (error) {
+      console.error('Error getting inspection package by access token:', error);
+      return undefined;
+    }
+  }
+
+  async validateInspectionPackageAccess(id: string, clientId: string, accessToken?: string): Promise<boolean> {
+    try {
+      const inspectionPackage = await this.getInspectionPackage(id);
+      if (!inspectionPackage) {
+        return false;
+      }
+
+      // Verify client ownership
+      if (inspectionPackage.clientId !== clientId) {
+        return false;
+      }
+
+      // Check if package has expired
+      if (inspectionPackage.expiresAt && new Date() > new Date(inspectionPackage.expiresAt)) {
+        return false;
+      }
+
+      // If access token is required, verify it
+      if (inspectionPackage.accessToken && accessToken !== inspectionPackage.accessToken) {
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error validating inspection package access:', error);
+      return false;
     }
   }
 }

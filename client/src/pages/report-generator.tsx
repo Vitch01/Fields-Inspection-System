@@ -185,13 +185,10 @@ export default function ReportGenerator() {
 
   // Mutations for creating assessments
   const createAssetAssessment = useMutation({
-    mutationFn: (data: any) => apiRequest('/api/assessments/asset', {
-      method: 'POST',
-      body: JSON.stringify({
-        ...data,
-        callId: callId,
-        inspectionRequestId: inspectionRequestId
-      })
+    mutationFn: (data: any) => apiRequest('POST', '/api/assessments/asset', {
+      ...data,
+      callId: callId,
+      inspectionRequestId: inspectionRequestId
     }),
     onSuccess: () => {
       toast({ title: "Asset assessment saved successfully" });
@@ -202,13 +199,10 @@ export default function ReportGenerator() {
   });
 
   const createWearTearAssessment = useMutation({
-    mutationFn: (data: any) => apiRequest('/api/assessments/wear-tear', {
-      method: 'POST',
-      body: JSON.stringify({
-        ...data,
-        callId: callId,
-        inspectionRequestId: inspectionRequestId
-      })
+    mutationFn: (data: any) => apiRequest('POST', '/api/assessments/wear-tear', {
+      ...data,
+      callId: callId,
+      inspectionRequestId: inspectionRequestId
     }),
     onSuccess: () => {
       toast({ title: "Wear & tear assessment saved successfully" });
@@ -219,13 +213,10 @@ export default function ReportGenerator() {
   });
 
   const createAppraisalReport = useMutation({
-    mutationFn: (data: any) => apiRequest('/api/appraisals', {
-      method: 'POST',
-      body: JSON.stringify({
-        ...data,
-        callId: callId,
-        inspectionRequestId: inspectionRequestId
-      })
+    mutationFn: (data: any) => apiRequest('POST', '/api/appraisals', {
+      ...data,
+      callId: callId,
+      inspectionRequestId: inspectionRequestId
     }),
     onSuccess: () => {
       toast({ title: "Appraisal report saved successfully" });
@@ -236,15 +227,12 @@ export default function ReportGenerator() {
   });
 
   const createInspectionReport = useMutation({
-    mutationFn: (data: any) => apiRequest('/api/reports', {
-      method: 'POST',
-      body: JSON.stringify({
-        ...data,
-        inspectionRequestId: inspectionRequestId,
-        clientId: inspectionRequest?.clientId,
-        coordinatorId: inspectionRequest?.assignedCoordinatorId,
-        inspectorId: callData?.inspectorId || 'unknown'
-      })
+    mutationFn: (data: any) => apiRequest('POST', '/api/reports', {
+      ...data,
+      inspectionRequestId: inspectionRequestId,
+      clientId: inspectionRequest?.clientId,
+      coordinatorId: inspectionRequest?.assignedCoordinatorId,
+      inspectorId: callData?.inspectorId || 'unknown'
     }),
     onSuccess: (result) => {
       toast({ title: "Inspection report created successfully" });

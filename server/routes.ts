@@ -3,7 +3,7 @@ import express from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertCallSchema, insertCapturedImageSchema, insertVideoRecordingSchema, signalingMessageSchema, videoRecordingSchema, allowedVideoMimeTypes, allowedVideoExtensions, clientLoginSchema, clientRegistrationSchema, inspectionRequestFormSchema, coordinatorInspectionRequestsQuerySchema, assignDepartmentSchema, assignCoordinatorSchema, updateInspectionRequestSchema, coordinatorParamsSchema, departmentParamsSchema, inspectionRequestParamsSchema, coordinatorLoginSchema, insertEmailLogSchema, insertAssetAssessmentSchema, insertWearTearAssessmentSchema, insertAppraisalReportSchema, insertInspectionReportSchema } from "@shared/schema";
+import { insertCallSchema, insertCapturedImageSchema, insertVideoRecordingSchema, signalingMessageSchema, videoRecordingSchema, allowedVideoMimeTypes, allowedVideoExtensions, clientLoginSchema, clientRegistrationSchema, inspectionRequestFormSchema, coordinatorInspectionRequestsQuerySchema, assignDepartmentSchema, assignCoordinatorSchema, updateInspectionRequestSchema, coordinatorParamsSchema, departmentParamsSchema, inspectionRequestParamsSchema, coordinatorLoginSchema, insertEmailLogSchema, insertAssetAssessmentSchema, insertWearTearAssessmentSchema, insertAppraisalReportSchema, insertInspectionReportSchema, generatePackageSchema, packageParamsSchema, updatePackageStatusSchema, packageAccessSchema } from "@shared/schema";
 import { generateToken, generateUserToken, authenticateClient, authenticateCoordinator, authenticateUser, authorizeClientResource, authorizeCoordinatorResource, authorizeInspectionRequestAccess, authorizeCallAccess, authorizeReportAccess, type AuthenticatedRequest } from "./auth";
 import multer from "multer";
 import path from "path";
@@ -2201,6 +2201,524 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: 'Failed to fetch templates',
         error: error.message 
       });
+    }
+  });
+
+  // ============================================
+  // PACKAGE DELIVERY ENDPOINTS
+  // ============================================
+
+  // Get inspection packages for authenticated client
+  app.get('/api/inspection-packages/me', authenticateClient, async (req: AuthenticatedRequest, res) => {
+    try {
+      const packages = await storage.getInspectionPackagesByClient(req.user!.id);
+      res.json(packages);
+    } catch (error: any) {
+      console.error('Failed to fetch client packages:', error.message);
+      res.status(500).json({ message: 'Failed to fetch inspection packages' });
+    }
+  });
+
+  // Get inspection data for package preparation (coordinator)
+  app.get('/api/inspection-requests/:id/package-data', authenticateCoordinator, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Get inspection request and related data
+      const inspectionRequest = await storage.getInspectionRequest(id);
+      if (!inspectionRequest) {
+        return res.status(404).json({ message: 'Inspection request not found' });
+      }
+
+      // Get client information
+      const client = await storage.getClient(inspectionRequest.clientId);
+      if (!client) {
+        return res.status(404).json({ message: 'Client not found' });
+      }
+
+      // Get reports
+      const reports = await storage.getInspectionReportsByInspectionRequest(id);
+
+      // Get all data using the comprehensive method
+      const reportData = await storage.getReportDataForInspectionRequest(id);
+      const capturedImages = reportData.media.images;
+      const videoRecordings = reportData.media.videos;
+
+      // Get assessments
+      const assetAssessments = await storage.getAssetAssessmentsByInspectionRequest(id);
+      const wearTearAssessments = await storage.getWearTearAssessmentsByInspectionRequest(id);
+      const appraisalReports = await storage.getAppraisalReportsByInspectionRequest(id);
+
+      res.json({
+        inspectionRequest,
+        client,
+        reports,
+        media: {
+          images: capturedImages,
+          videos: videoRecordings
+        },
+        assessments: {
+          assetAssessments,
+          wearTearAssessments,
+          appraisalReports
+        }
+      });
+    } catch (error: any) {
+      console.error('Failed to fetch package data:', error.message);
+      res.status(500).json({ message: 'Failed to fetch package data' });
+    }
+  });
+
+  // Generate inspection package (coordinator)
+  app.post('/api/inspection-requests/:id/generate-package', authenticateCoordinator, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Validate request parameters
+      const paramsValidation = inspectionRequestParamsSchema.safeParse({ id });
+      if (!paramsValidation.success) {
+        return res.status(400).json({ 
+          message: 'Invalid request parameters',
+          errors: paramsValidation.error.errors 
+        });
+      }
+      
+      // Validate request body
+      const bodyValidation = generatePackageSchema.safeParse(req.body);
+      if (!bodyValidation.success) {
+        return res.status(400).json({ 
+          message: 'Invalid request body',
+          errors: bodyValidation.error.errors 
+        });
+      }
+      const {
+        packageType,
+        customTitle,
+        notes,
+        includeReports,
+        includeMedia,
+        includeAssessments,
+        selectedReports = [],
+        selectedImages = [],
+        selectedVideos = []
+      } = req.body;
+
+      // Validate inspection request exists
+      const inspectionRequest = await storage.getInspectionRequest(id);
+      if (!inspectionRequest) {
+        return res.status(404).json({ message: 'Inspection request not found' });
+      }
+
+      // Get client information
+      const client = await storage.getClient(inspectionRequest.clientId);
+      if (!client) {
+        return res.status(404).json({ message: 'Client not found' });
+      }
+
+      // Import package generator
+      const { packageGenerator } = await import('./lib/package-generator');
+
+      // Generate package
+      const packageResult = await packageGenerator.generatePackage({
+        inspectionRequestId: id,
+        coordinatorId: req.user!.id,
+        packageType: packageType || 'complete',
+        includeReports: includeReports !== false,
+        includeMedia: includeMedia !== false,
+        includeAssessments: includeAssessments !== false,
+        customTitle,
+        notes
+      });
+
+      // Check if package generation was successful
+      if (!packageResult.success) {
+        return res.status(500).json({
+          message: 'Failed to generate package',
+          error: packageResult.error
+        });
+      }
+
+      // Get the created package from the database (package generator creates it internally)
+      const inspectionPackage = await storage.getInspectionPackage(packageResult.packageId!);
+
+      if (!inspectionPackage) {
+        return res.status(500).json({ message: 'Failed to retrieve created package' });
+      }
+
+      // Send email notification to client
+      const { emailService } = await import('./lib/email');
+      const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
+      const accessUrl = `${baseUrl}/client/packages/${inspectionPackage.id}?token=${inspectionPackage.accessToken}`;
+
+      const emailResult = await emailService.sendPackageDeliveryEmail({
+        client,
+        inspectionRequest,
+        inspectionPackage: {
+          ...inspectionPackage,
+          accessUrl
+        },
+        coordinator: {
+          id: req.user!.id,
+          name: req.user!.name || 'Coordinator',
+          email: req.user!.email || null
+        }
+      });
+
+      // Update delivery status
+      if (emailResult.success) {
+        await storage.updateInspectionPackageStatus(inspectionPackage.id, 'delivered');
+      }
+
+      res.json({
+        message: 'Package generated and delivered successfully',
+        packageId: inspectionPackage.id,
+        emailSent: emailResult.success,
+        packageResult
+      });
+    } catch (error: any) {
+      console.error('Failed to generate package:', error.message);
+      res.status(500).json({ 
+        message: 'Failed to generate package',
+        error: error.message 
+      });
+    }
+  });
+
+  // Download complete inspection package
+  app.get('/api/inspection-packages/:id/download', authenticateClient, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const { token } = req.query;
+
+      // Get package
+      const inspectionPackage = await storage.getInspectionPackage(id);
+      if (!inspectionPackage) {
+        return res.status(404).json({ message: 'Package not found' });
+      }
+
+      // Get inspection request to verify client access
+      const inspectionRequest = await storage.getInspectionRequest(inspectionPackage.inspectionRequestId);
+      if (!inspectionRequest) {
+        return res.status(404).json({ message: 'Inspection request not found' });
+      }
+
+      // Verify client access
+      if (inspectionRequest.clientId !== req.user!.id) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      // Verify access token if provided
+      if (token && inspectionPackage.accessToken !== token) {
+        return res.status(401).json({ message: 'Invalid access token' });
+      }
+
+      // Check expiration
+      if (inspectionPackage.expiresAt && new Date() > new Date(inspectionPackage.expiresAt)) {
+        return res.status(410).json({ message: 'Package access has expired' });
+      }
+
+      // Verify file exists
+      if (!fs.existsSync(inspectionPackage.zipFilePath)) {
+        return res.status(404).json({ message: 'Package file not found' });
+      }
+
+      // Update access tracking
+      await storage.updateInspectionPackage(id, {
+        lastAccessedAt: new Date(),
+        downloadCount: (inspectionPackage.downloadCount || 0) + 1,
+        status: 'accessed'
+      });
+
+      // Create download response with JSON containing download URL
+      const filename = `inspection-package-${inspectionRequest.title.replace(/[^a-zA-Z0-9]/g, '-')}.zip`;
+      
+      // Return JSON response with download URL that client expects
+      res.json({
+        downloadUrl: `/api/inspection-packages/${id}/download-file?token=${token || ''}`,
+        filename: filename,
+        size: inspectionPackage.zipFileSize,
+        packageId: id
+      });
+
+    } catch (error: any) {
+      console.error('Failed to download package:', error.message);
+      res.status(500).json({ message: 'Failed to download package' });
+    }
+  });
+
+  // Download package file (actual file streaming)
+  app.get('/api/inspection-packages/:id/download-file', authenticateClient, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const { token } = req.query;
+
+      // Get package
+      const inspectionPackage = await storage.getInspectionPackage(id);
+      if (!inspectionPackage) {
+        return res.status(404).json({ message: 'Package not found' });
+      }
+
+      // Get inspection request to verify client access
+      const inspectionRequest = await storage.getInspectionRequest(inspectionPackage.inspectionRequestId);
+      if (!inspectionRequest) {
+        return res.status(404).json({ message: 'Inspection request not found' });
+      }
+
+      // Verify client access
+      if (inspectionRequest.clientId !== req.user!.id) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      // Verify access token if provided
+      if (token && inspectionPackage.accessToken !== token) {
+        return res.status(401).json({ message: 'Invalid access token' });
+      }
+
+      // Check expiration
+      if (inspectionPackage.expiresAt && new Date() > new Date(inspectionPackage.expiresAt)) {
+        return res.status(410).json({ message: 'Package access has expired' });
+      }
+
+      // Verify file exists
+      if (!fs.existsSync(inspectionPackage.zipFilePath)) {
+        return res.status(404).json({ message: 'Package file not found' });
+      }
+
+      // Create download response
+      const filename = `inspection-package-${inspectionRequest.title.replace(/[^a-zA-Z0-9]/g, '-')}.zip`;
+      
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', inspectionPackage.zipFileSize);
+
+      // Stream the file
+      const fileStream = fs.createReadStream(inspectionPackage.zipFilePath);
+      fileStream.pipe(res);
+
+    } catch (error: any) {
+      console.error('Failed to download package file:', error.message);
+      res.status(500).json({ message: 'Failed to download package file' });
+    }
+  });
+
+  // View individual file from package
+  app.get('/api/inspection-packages/:id/files/:filename', authenticateClient, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id, filename } = req.params;
+      const { token } = req.query;
+
+      // Get package
+      const inspectionPackage = await storage.getInspectionPackage(id);
+      if (!inspectionPackage) {
+        return res.status(404).json({ message: 'Package not found' });
+      }
+
+      // Get inspection request to verify client access
+      const inspectionRequest = await storage.getInspectionRequest(inspectionPackage.inspectionRequestId);
+      if (!inspectionRequest) {
+        return res.status(404).json({ message: 'Inspection request not found' });
+      }
+
+      // Verify client access
+      if (inspectionRequest.clientId !== req.user!.id) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      // Verify access token if provided
+      if (token && inspectionPackage.accessToken !== token) {
+        return res.status(401).json({ message: 'Invalid access token' });
+      }
+
+      // Check expiration
+      if (inspectionPackage.expiresAt && new Date() > new Date(inspectionPackage.expiresAt)) {
+        return res.status(410).json({ message: 'Package access has expired' });
+      }
+
+      // Find file in package contents
+      const packageContents = inspectionPackage.packageContents as any;
+      let fileInfo = null;
+      let filePath = null;
+
+      // Search through package contents for the file
+      if (packageContents.reports) {
+        const report = packageContents.reports.find((r: any) => r.fileName === filename);
+        if (report) {
+          fileInfo = report;
+          filePath = report.filePath;
+        }
+      }
+
+      if (!fileInfo && packageContents.media?.images) {
+        const image = packageContents.media.images.find((i: any) => i.fileName === filename);
+        if (image) {
+          fileInfo = image;
+          filePath = image.filePath;
+        }
+      }
+
+      if (!fileInfo && packageContents.media?.videos) {
+        const video = packageContents.media.videos.find((v: any) => v.fileName === filename);
+        if (video) {
+          fileInfo = video;
+          filePath = video.filePath;
+        }
+      }
+
+      if (!fileInfo) {
+        return res.status(404).json({ message: 'File not found in package' });
+      }
+
+      // Verify file exists on disk
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: 'File not found on disk' });
+      }
+
+      // Update access tracking
+      await storage.updateInspectionPackage(id, {
+        lastAccessedAt: new Date()
+      });
+
+      // Return JSON response with file URL that client expects
+      res.json({
+        fileUrl: `/api/inspection-packages/${id}/files/${filename}/view?token=${token || ''}`,
+        filename: filename,
+        fileType: fileInfo.fileType || path.extname(filename).toLowerCase(),
+        size: fileInfo.size
+      });
+
+    } catch (error: any) {
+      console.error('Failed to serve file:', error.message);
+      res.status(500).json({ message: 'Failed to serve file' });
+    }
+  });
+
+  // View individual file (actual file streaming)
+  app.get('/api/inspection-packages/:id/files/:filename/view', authenticateClient, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id, filename } = req.params;
+      const { token } = req.query;
+
+      // Get package
+      const inspectionPackage = await storage.getInspectionPackage(id);
+      if (!inspectionPackage) {
+        return res.status(404).json({ message: 'Package not found' });
+      }
+
+      // Get inspection request to verify client access
+      const inspectionRequest = await storage.getInspectionRequest(inspectionPackage.inspectionRequestId);
+      if (!inspectionRequest) {
+        return res.status(404).json({ message: 'Inspection request not found' });
+      }
+
+      // Verify client access
+      if (inspectionRequest.clientId !== req.user!.id) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      // Verify access token if provided
+      if (token && inspectionPackage.accessToken !== token) {
+        return res.status(401).json({ message: 'Invalid access token' });
+      }
+
+      // Check expiration
+      if (inspectionPackage.expiresAt && new Date() > new Date(inspectionPackage.expiresAt)) {
+        return res.status(410).json({ message: 'Package access has expired' });
+      }
+
+      // Find file in package contents
+      const packageContents = inspectionPackage.packageContents as any;
+      let fileInfo = null;
+      let filePath = null;
+
+      // Search through package contents for the file
+      if (packageContents.reports) {
+        const report = packageContents.reports.find((r: any) => r.fileName === filename);
+        if (report) {
+          fileInfo = report;
+          filePath = report.filePath;
+        }
+      }
+
+      if (!fileInfo && packageContents.media?.images) {
+        const image = packageContents.media.images.find((i: any) => i.fileName === filename);
+        if (image) {
+          fileInfo = image;
+          filePath = image.filePath;
+        }
+      }
+
+      if (!fileInfo && packageContents.media?.videos) {
+        const video = packageContents.media.videos.find((v: any) => v.fileName === filename);
+        if (video) {
+          fileInfo = video;
+          filePath = video.filePath;
+        }
+      }
+
+      if (!fileInfo) {
+        return res.status(404).json({ message: 'File not found in package' });
+      }
+
+      // Verify file exists on disk
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: 'File not found on disk' });
+      }
+
+      // Determine content type based on file extension
+      const ext = path.extname(filename).toLowerCase();
+      let contentType = 'application/octet-stream';
+      
+      if (ext === '.pdf') contentType = 'application/pdf';
+      else if (['.jpg', '.jpeg'].includes(ext)) contentType = 'image/jpeg';
+      else if (ext === '.png') contentType = 'image/png';
+      else if (ext === '.webp') contentType = 'image/webp';
+      else if (ext === '.mp4') contentType = 'video/mp4';
+      else if (ext === '.webm') contentType = 'video/webm';
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+
+      // Stream the file
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
+
+    } catch (error: any) {
+      console.error('Failed to serve file:', error.message);
+      res.status(500).json({ message: 'Failed to serve file' });
+    }
+  });
+
+  // Get all inspection packages (coordinator view)
+  app.get('/api/coordinator/inspection-packages', authenticateCoordinator, async (req: AuthenticatedRequest, res) => {
+    try {
+      const packages = await storage.getInspectionPackagesByCoordinator(req.user!.id);
+      res.json(packages);
+    } catch (error: any) {
+      console.error('Failed to fetch packages:', error.message);
+      res.status(500).json({ message: 'Failed to fetch inspection packages' });
+    }
+  });
+
+  // Update package status (coordinator)
+  app.patch('/api/coordinator/inspection-packages/:id/status', authenticateCoordinator, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const { status, notes } = req.body;
+
+      const updatedPackage = await storage.updateInspectionPackage(id, {
+        status,
+        notes,
+        updatedAt: new Date()
+      });
+
+      if (!updatedPackage) {
+        return res.status(404).json({ message: 'Package not found' });
+      }
+
+      res.json(updatedPackage);
+    } catch (error: any) {
+      console.error('Failed to update package status:', error.message);
+      res.status(500).json({ message: 'Failed to update package status' });
     }
   });
 

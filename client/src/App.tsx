@@ -7,6 +7,8 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import CoordinatorCall from "@/pages/coordinator-call";
 import CoordinatorDashboard from "@/pages/coordinator-dashboard";
+import PackageDelivery from "@/pages/package-delivery";
+import CoordinatorPackageDetails from "@/pages/coordinator-package-details";
 import InspectorCall from "@/pages/inspector-call";
 import InspectorThankYou from "@/pages/inspector-thank-you";
 import ClientLogin from "@/pages/client-login";
@@ -20,6 +22,8 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/coordinator/dashboard" component={CoordinatorDashboard} />
       <Route path="/coordinator/:callId" component={CoordinatorCall} />
+      <Route path="/coordinator/packages/prepare/:id" component={PackageDelivery} />
+      <Route path="/coordinator/packages/:id" component={CoordinatorPackageDetails} />
       <Route path="/inspector/:callId" component={InspectorCall} />
       <Route path="/join/:callId" component={InspectorCall} />
       <Route path="/inspector-thank-you" component={InspectorThankYou} />

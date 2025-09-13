@@ -246,6 +246,36 @@ export const emailLogs = pgTable("email_logs", {
   createdAt: timestamp("created_at").default(sql`now()`),
 });
 
+// New table: inspection packages for client delivery
+export const inspectionPackages = pgTable("inspection_packages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  inspectionRequestId: varchar("inspection_request_id").notNull().references(() => inspectionRequests.id),
+  clientId: varchar("client_id").notNull().references(() => clients.id),
+  coordinatorId: varchar("coordinator_id").notNull().references(() => users.id),
+  reportId: varchar("report_id").references(() => inspectionReports.id),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("draft"), // "draft", "ready", "delivered", "accessed", "archived"
+  packageType: text("package_type").notNull().default("complete"), // "complete", "reports_only", "media_only", "custom"
+  zipFilePath: text("zip_file_path"), // Path to generated zip file
+  zipFileSize: text("zip_file_size"), // File size in bytes
+  packageContents: json("package_contents"), // Array of included files and components
+  accessUrl: text("access_url"), // Secure client access URL
+  accessToken: text("access_token"), // Secure access token for client downloads
+  expiresAt: timestamp("expires_at"), // Package access expiration
+  deliveredAt: timestamp("delivered_at"), // When package was delivered to client
+  firstAccessedAt: timestamp("first_accessed_at"), // When client first accessed package
+  lastAccessedAt: timestamp("last_accessed_at"), // When client last accessed package
+  downloadCount: integer("download_count").default(0), // Number of downloads by client
+  notificationsSent: integer("notifications_sent").default(0), // Number of email notifications sent
+  isPasswordProtected: boolean("is_password_protected").default(false),
+  passwordHash: text("password_hash"), // Hashed password for additional security
+  notes: text("notes"), // Internal coordinator notes
+  metadata: json("metadata"),
+  createdAt: timestamp("created_at").default(sql`now()`),
+  updatedAt: timestamp("updated_at").default(sql`now()`),
+});
+
 // Insert schemas for all tables
 export const insertDepartmentSchema = createInsertSchema(departments).omit({
   id: true,
@@ -317,6 +347,12 @@ export const insertMediaCategorySchema = createInsertSchema(mediaCategories).omi
   createdAt: true,
 });
 
+export const insertInspectionPackageSchema = createInsertSchema(inspectionPackages).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // TypeScript types for all tables
 export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
 export type Department = typeof departments.$inferSelect;
@@ -356,6 +392,9 @@ export type EmailLog = typeof emailLogs.$inferSelect;
 
 export type InsertMediaCategory = z.infer<typeof insertMediaCategorySchema>;
 export type MediaCategory = typeof mediaCategories.$inferSelect;
+
+export type InsertInspectionPackage = z.infer<typeof insertInspectionPackageSchema>;
+export type InspectionPackage = typeof inspectionPackages.$inferSelect;
 
 // WebRTC signaling message types
 export const signalingMessageSchema = z.object({
@@ -500,3 +539,38 @@ export type CoordinatorParams = z.infer<typeof coordinatorParamsSchema>;
 export type DepartmentParams = z.infer<typeof departmentParamsSchema>;
 export type InspectionRequestParams = z.infer<typeof inspectionRequestParamsSchema>;
 export type CoordinatorLogin = z.infer<typeof coordinatorLoginSchema>;
+
+// Package generation validation schema
+export const generatePackageSchema = z.object({
+  packageType: z.enum(['complete', 'reports_only', 'media_only', 'custom']).default('complete'),
+  customTitle: z.string().optional(),
+  notes: z.string().optional(),
+  includeReports: z.boolean().default(true),
+  includeMedia: z.boolean().default(true),
+  includeAssessments: z.boolean().default(true),
+  selectedReports: z.array(z.string()).optional(),
+  selectedImages: z.array(z.string()).optional(),
+  selectedVideos: z.array(z.string()).optional(),
+});
+
+// Package params validation schema
+export const packageParamsSchema = z.object({
+  id: z.string().uuid("Invalid package ID format"),
+});
+
+// Package status update schema
+export const updatePackageStatusSchema = z.object({
+  status: z.enum(['draft', 'ready', 'delivered', 'accessed', 'archived']),
+  notes: z.string().optional(),
+});
+
+// Package access validation schema  
+export const packageAccessSchema = z.object({
+  token: z.string().optional(),
+});
+
+// Types for package endpoints
+export type GeneratePackage = z.infer<typeof generatePackageSchema>;
+export type PackageParams = z.infer<typeof packageParamsSchema>;
+export type UpdatePackageStatus = z.infer<typeof updatePackageStatusSchema>;
+export type PackageAccess = z.infer<typeof packageAccessSchema>;
