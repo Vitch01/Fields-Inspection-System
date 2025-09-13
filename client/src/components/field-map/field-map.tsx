@@ -196,14 +196,33 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
       googleMapRef.current = map;
 
       // Load KML data from Google My Maps
-      const kmlUrl = `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1`;
+      // Try multiple URL formats to ensure we get the layer data
+      const kmlUrls = [
+        `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1`,
+        `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1&lid=0`, // Try layer 0
+        `https://www.google.com/maps/d/u/0/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1`, // Try with user path
+      ];
       
-      const kmlLayer = new window.google.maps.KmlLayer({
-        url: kmlUrl,
-        suppressInfoWindows: true, // We'll handle our own info windows
-        preserveViewport: true, // Keep the map centered on specified coordinates
-        map: map
-      });
+      // Try loading each URL until we find one that works
+      let kmlLayer: any = null;
+      let successfulUrl: string = '';
+      
+      for (const kmlUrl of kmlUrls) {
+        try {
+          console.log('Attempting to load KML from:', kmlUrl);
+          kmlLayer = new window.google.maps.KmlLayer({
+            url: kmlUrl,
+            suppressInfoWindows: false, // Allow info windows temporarily to see if features load
+            preserveViewport: true, // Keep the map centered on specified coordinates
+            map: map
+          });
+          successfulUrl = kmlUrl;
+          break; // Use the first URL (will check status in the status_changed listener)
+        } catch (error) {
+          console.warn('Failed to load KML from:', kmlUrl, error);
+          continue;
+        }
+      }
 
       kmlLayerRef.current = kmlLayer;
 
@@ -228,26 +247,33 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
       });
 
       // Monitor KML loading status
-      kmlLayer.addListener('status_changed', function() {
-        const status = kmlLayer.getStatus();
-        console.log('KML Layer status:', status);
-        
-        if (status === 'OK') {
-          setIsMapLoaded(true);
-          setMapError(null);
-          extractInspectorsFromKML(kmlLayer);
+      if (kmlLayer) {
+        kmlLayer.addListener('status_changed', function() {
+          const status = kmlLayer.getStatus();
+          console.log('KML Layer status:', status, 'URL:', successfulUrl);
           
-          // Check if data is actually visible by examining the default viewport
-          try {
-            const viewport = kmlLayer.getDefaultViewport();
-            if (!viewport || (!viewport.getNorthEast() && !viewport.getSouthWest())) {
-              console.warn('KML loaded but no visible features found. Check map sharing and layer visibility.');
-              setMapError("Map loaded but no inspector locations visible. Please ensure your Google My Maps is shared as 'Anyone with the link' and contains visible markers.");
-            }
-          } catch (e) {
-            console.warn('Could not check KML viewport:', e);
-          }
-        } else if (status === 'DOCUMENT_NOT_FOUND') {
+          if (status === 'OK') {
+            console.log('KML successfully loaded from:', successfulUrl);
+            setIsMapLoaded(true);
+            setMapError(null);
+            extractInspectorsFromKML(kmlLayer);
+            
+            // Check if data is actually visible by examining the default viewport
+            setTimeout(() => {
+              try {
+                const viewport = kmlLayer.getDefaultViewport();
+                console.log('KML viewport:', viewport);
+                if (!viewport || (!viewport.getNorthEast() && !viewport.getSouthWest())) {
+                  console.warn('KML loaded but no visible features found. The map may need layer-specific access.');
+                  setMapError(`Map loaded successfully, but no inspector locations are visible. This usually means we need the specific layer ID for your "Infini Rep. Field" layer.`);
+                } else {
+                  console.log('KML features found! Viewport bounds:', viewport.toJSON());
+                }
+              } catch (e) {
+                console.warn('Could not check KML viewport:', e);
+              }
+            }, 1000); // Wait a second for KML to fully render
+          } else if (status === 'DOCUMENT_NOT_FOUND') {
           setMapError("Google My Maps data not found. Please check if the map is publicly accessible.");
           setIsMapLoaded(false);
         } else if (status === 'FETCH_ERROR') {
