@@ -27,9 +27,9 @@ interface FieldMapProps {
   currentCallInspectorId?: string;
 }
 
-// Google My Maps configuration
+// Google My Maps configuration  
 const GOOGLE_MY_MAPS_ID = '18BQR9080Tx73UGM6yWqKjZ2bHWk6UZcp';
-const FIELD_CENTER = { lat: 37.104181274405406, lng: -113.58566425 };
+const FIELD_CENTER = { lat: 37.097178900157424, lng: -113.58888217976603 };
 
 // Inspector data loaded from Google My Maps KML
 let FIELD_INSPECTORS: Inspector[] = [];
@@ -182,7 +182,7 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
       // Initialize map centered on the field location
       const map = new window.google.maps.Map(mapRef.current, {
         center: FIELD_CENTER,
-        zoom: 15,
+        zoom: 14,
         mapTypeId: window.google.maps.MapTypeId.SATELLITE,
         styles: [
           {
