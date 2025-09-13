@@ -7,26 +7,10 @@ import InspectorLocation from "@/components/video-call/inspector-location";
 import SettingsModal from "@/components/video-call/settings-modal";
 import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import { useWebRTC } from "@/hooks/use-webrtc";
-import { useWebSocket } from "@/hooks/use-websocket";
 import { useState, useEffect } from "react";
 import { Clock, Signal, Users, Copy, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-
-// Helper functions for network quality display
-function getSignalColor(quality: string): string {
-  switch (quality) {
-    case 'excellent': return 'text-green-500';
-    case 'good': return 'text-yellow-500';
-    case 'poor': return 'text-orange-500';
-    case 'disconnected': return 'text-red-500';
-    default: return 'text-gray-500';
-  }
-}
-
-function capitalizeFirst(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
-}
 
 export default function CoordinatorCall() {
   const { callId } = useParams();
@@ -70,9 +54,6 @@ export default function CoordinatorCall() {
     startRecording,
     stopRecording,
   } = useWebRTC(callId!, "coordinator");
-
-  // WebSocket hook for connection quality
-  const { connectionQuality } = useWebSocket(callId!, "coordinator");
 
   const { data: capturedImages = [], refetch: refetchImages } = useQuery<any[]>({
     queryKey: ["/api/calls", callId, "images"],
@@ -197,8 +178,8 @@ export default function CoordinatorCall() {
             </Button>
           </div>
           <div className="flex items-center space-x-1">
-            <Signal className={`w-4 h-4 ${getSignalColor(connectionQuality)}`} />
-            <span className="text-xs text-muted-foreground" data-testid="text-connection-quality">{capitalizeFirst(connectionQuality)}</span>
+            <Signal className="w-4 h-4 text-green-500" />
+            <span className="text-xs text-muted-foreground">Excellent</span>
           </div>
         </div>
       </header>
