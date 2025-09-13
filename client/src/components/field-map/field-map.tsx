@@ -18,6 +18,10 @@ interface Inspector {
   longitude: number;
   status: 'available' | 'busy' | 'offline';
   specialization?: string;
+  phone?: string;
+  email?: string;
+  price?: string;
+  note?: string;
 }
 
 interface FieldMapProps {
@@ -31,35 +35,7 @@ interface FieldMapProps {
 const GOOGLE_MY_MAPS_ID = '18BQR9080Tx73UGM6yWqKjZ2bHWk6UZcp';
 const FIELD_CENTER = { lat: 37.097178900157424, lng: -113.58888217976603 };
 
-// Fallback inspector data extracted from your KMZ file
-const FALLBACK_INSPECTORS: Inspector[] = [
-  {
-    id: 'inspector-1',
-    name: 'Field Inspector 1',
-    latitude: 37.097178900157424,
-    longitude: -113.58888217976603,
-    status: 'available',
-    specialization: 'Field Representative - Infini Rep. Field'
-  },
-  {
-    id: 'inspector-2', 
-    name: 'Field Inspector 2',
-    latitude: 37.098,
-    longitude: -113.589,
-    status: 'available',
-    specialization: 'Field Representative - Infini Rep. Field'
-  },
-  {
-    id: 'inspector-3',
-    name: 'Field Inspector 3', 
-    latitude: 37.096,
-    longitude: -113.587,
-    status: 'busy',
-    specialization: 'Field Representative - Infini Rep. Field'
-  }
-];
-
-// Inspector data loaded from Google My Maps KML
+// Store loaded inspectors from Google My Maps
 let FIELD_INSPECTORS: Inspector[] = [];
 
 export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspectorId }: FieldMapProps) {
@@ -132,48 +108,10 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
     };
   }, [isOpen]);
 
-  const extractInspectorsFromKML = async (kmlLayer: any) => {
-    // This function would ideally parse KML data to extract inspector information
-    // For now, we'll use the click events to populate inspector data dynamically
-    console.log('KML layer loaded successfully');
-  };
-
-  const addFallbackMarkers = (map: any) => {
-    console.log('Adding fallback markers from your Infini Rep. Field data...');
-    
-    // Clear existing markers
+  // Function to clear existing markers
+  const clearMarkers = () => {
     markersRef.current.forEach(marker => marker.setMap(null));
     markersRef.current = [];
-    
-    // Add markers for each fallback inspector
-    FALLBACK_INSPECTORS.forEach(inspector => {
-      const isCurrentCall = inspector.id === currentCallInspectorId;
-      const markerColor = getMarkerColor(inspector.status, isCurrentCall);
-      
-      const marker = new window.google.maps.Marker({
-        position: { lat: inspector.latitude, lng: inspector.longitude },
-        map: map,
-        title: inspector.name,
-        icon: {
-          path: window.google.maps.SymbolPath.CIRCLE,
-          scale: 8,
-          fillColor: markerColor,
-          fillOpacity: 0.8,
-          strokeColor: '#ffffff',
-          strokeWeight: 2,
-        }
-      });
-      
-      marker.addListener('click', () => {
-        showInspectorInfo(inspector, marker.getPosition());
-      });
-      
-      markersRef.current.push(marker);
-    });
-    
-    // Update inspectors list
-    setInspectors(FALLBACK_INSPECTORS);
-    console.log(`Added ${FALLBACK_INSPECTORS.length} inspector markers from your field data`);
   };
 
   const getMarkerColor = (status: string, isCurrentCall: boolean) => {
@@ -192,26 +130,70 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
     // Create info window content using DOM to avoid XSS
     const infoWindowContent = document.createElement('div');
-    infoWindowContent.style.cssText = 'padding: 8px; min-width: 200px;';
+    infoWindowContent.style.cssText = 'padding: 12px; min-width: 250px; max-width: 350px;';
     
+    // Name
     const nameEl = document.createElement('h3');
-    nameEl.style.cssText = 'margin: 0 0 8px 0; color: #1f2937;';
+    nameEl.style.cssText = 'margin: 0 0 8px 0; color: #1f2937; font-size: 16px; font-weight: 600;';
     nameEl.textContent = inspector.name;
     infoWindowContent.appendChild(nameEl);
 
+    // Specialization
     const specializationEl = document.createElement('p');
-    specializationEl.style.cssText = 'margin: 0 0 4px 0; color: #6b7280; font-size: 14px;';
+    specializationEl.style.cssText = 'margin: 0 0 8px 0; color: #6b7280; font-size: 14px;';
     specializationEl.textContent = inspector.specialization || 'Field Representative';
     infoWindowContent.appendChild(specializationEl);
 
+    // Status
     const statusEl = document.createElement('p');
-    statusEl.style.cssText = `margin: 0 0 8px 0; color: ${markerColor}; font-weight: 500; font-size: 14px; text-transform: capitalize;`;
+    statusEl.style.cssText = `margin: 0 0 12px 0; color: ${markerColor}; font-weight: 500; font-size: 14px; text-transform: capitalize;`;
     statusEl.textContent = isCurrentCall ? 'On Current Call' : inspector.status;
     infoWindowContent.appendChild(statusEl);
 
+    // Contact Information Section
+    if (inspector.phone || inspector.email || inspector.price || inspector.note) {
+      const contactSectionEl = document.createElement('div');
+      contactSectionEl.style.cssText = 'border-top: 1px solid #e5e7eb; padding-top: 8px; margin-top: 8px;';
+      
+      // Phone
+      if (inspector.phone) {
+        const phoneEl = document.createElement('p');
+        phoneEl.style.cssText = 'margin: 4px 0; font-size: 14px; color: #374151;';
+        phoneEl.innerHTML = `<strong>Phone:</strong> ${inspector.phone}`;
+        contactSectionEl.appendChild(phoneEl);
+      }
+
+      // Email
+      if (inspector.email) {
+        const emailEl = document.createElement('p');
+        emailEl.style.cssText = 'margin: 4px 0; font-size: 14px; color: #374151;';
+        emailEl.innerHTML = `<strong>Email:</strong> ${inspector.email}`;
+        contactSectionEl.appendChild(emailEl);
+      }
+
+      // Price
+      if (inspector.price) {
+        const priceEl = document.createElement('p');
+        priceEl.style.cssText = 'margin: 4px 0; font-size: 14px; color: #374151;';
+        priceEl.innerHTML = `<strong>Price:</strong> ${inspector.price}`;
+        contactSectionEl.appendChild(priceEl);
+      }
+
+      // Note
+      if (inspector.note) {
+        const noteEl = document.createElement('p');
+        noteEl.style.cssText = 'margin: 4px 0; font-size: 14px; color: #374151;';
+        noteEl.innerHTML = `<strong>Note:</strong> ${inspector.note}`;
+        contactSectionEl.appendChild(noteEl);
+      }
+
+      infoWindowContent.appendChild(contactSectionEl);
+    }
+
+    // Action button
     if (!isCurrentCall && inspector.status === 'available') {
       const buttonEl = document.createElement('button');
-      buttonEl.style.cssText = 'background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px;';
+      buttonEl.style.cssText = 'margin-top: 12px; padding: 8px 16px; background-color: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; width: 100%;';
       buttonEl.textContent = 'Start Call';
       buttonEl.addEventListener('click', () => {
         onSelectInspector(inspector);
@@ -227,25 +209,18 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
     infoWindow.open(googleMapRef.current);
     setSelectedInspector(inspector);
-
-    // Add inspector to our list if not already present
-    setInspectors(prev => {
-      const exists = prev.find(i => i.id === inspector.id);
-      if (!exists) {
-        return [...prev, inspector];
-      }
-      return prev;
-    });
   };
 
-  const initializeMap = () => {
+  const initializeMap = async () => {
     if (!mapRef.current || !window.google) {
       setMapError("Google Maps API failed to load");
       return;
     }
 
     try {
-      // Initialize map centered on the field location
+      console.log('🗺️ Initializing Google Maps for field representatives...');
+      
+      // Initialize map centered on the field location in Utah
       const map = new window.google.maps.Map(mapRef.current, {
         center: FIELD_CENTER,
         zoom: 14,
@@ -261,273 +236,187 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
       googleMapRef.current = map;
 
-      // Load KML data from Google My Maps with your specific layer ID
-      const kmlUrls = [
-        `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1&lid=mkit35Kg0lY`, // Your "Infini Rep. Field" layer
-        `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1`, // Fallback without layer ID
-        `https://www.google.com/maps/d/u/0/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1&lid=mkit35Kg0lY`, // Try with user path
-      ];
+      // Primary KML URL with specific layer ID for Infini Rep. Field layer
+      const primaryKmlUrl = `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1&lid=mkit35Kg0lY`;
+      const fallbackKmlUrl = `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1`;
       
-      // Test KML URLs directly first
-      console.log('Testing KML URLs for your Google My Maps layer...');
-      console.log('Primary URL with layer ID:', kmlUrls[0]);
-      console.log('Fallback URL without layer ID:', kmlUrls[1]);
+      console.log('📍 Loading field representatives from Google My Maps...');
+      console.log('🎯 Primary URL:', primaryKmlUrl);
       
-      // Load your actual Google My Maps KML layer
-      console.log('Loading your Google My Maps layer...');
-      
-      const kmlLayer = new window.google.maps.KmlLayer({
-        url: kmlUrls[0], // Your specific layer URL
-        suppressInfoWindows: false,
-        preserveViewport: false, // Let your KML data determine the zoom/view
-        map: map
-      });
-      
-      kmlLayerRef.current = kmlLayer;
-      
-      // Handle KML layer loading status
-      kmlLayer.addListener('status_changed', () => {
-        const status = kmlLayer.getStatus();
-        console.log('Your Google My Maps KML status:', status);
-        
-        if (status === 'OK') {
-          console.log('✓ Successfully loaded your Google My Maps layer!');
-          setIsMapLoaded(true);
-          setMapError(null);
-        } else if (status === 'FETCH_ERROR' || status === 'ACCESS_DENIED') {
-          console.log('× Failed to load Google My Maps - trying KML parsing fallback...');
-          // Try to parse KML manually as fallback
-          loadKmlDataAsMarkers(map, kmlUrls[0]);
+      // Try loading from primary URL first (with layer ID)
+      try {
+        await loadKmlDataAsMarkers(map, primaryKmlUrl);
+        console.log('✅ Successfully loaded field representatives from primary URL');
+      } catch (error) {
+        console.warn('⚠️ Primary URL failed, trying fallback...', error);
+        try {
+          await loadKmlDataAsMarkers(map, fallbackKmlUrl);
+          console.log('✅ Successfully loaded field representatives from fallback URL');
+        } catch (fallbackError) {
+          console.error('❌ All KML loading methods failed:', fallbackError);
+          setMapError('Unable to load field representative data from Google My Maps. Please ensure your map is shared as "Anyone with the link - Viewer".');
+          setIsMapLoaded(false);
+          return;
         }
-      });
-      
-      // Set initial loading state  
-      setIsMapLoaded(true);
-      setMapError(null);
-      
-
-      // Extract inspector data from KML features when clicked
-      kmlLayer.addListener('click', function(event: any) {
-        if (event.featureData) {
-          const featureData = event.featureData;
-          
-          // Extract inspector information from KML data
-          const inspector: Inspector = {
-            id: featureData.name || `inspector-${Date.now()}`,
-            name: featureData.name || 'Unknown Inspector',
-            latitude: event.latLng.lat(),
-            longitude: event.latLng.lng(),
-            status: 'available' as const, // Default status - could be enhanced
-            specialization: featureData.description || 'Field Representative'
-          };
-
-          // Show custom info window
-          showInspectorInfo(inspector, event.latLng);
-        }
-      });
-
-      // Monitor KML loading status
-      if (kmlLayer) {
-        kmlLayer.addListener('status_changed', function() {
-          const status = kmlLayer.getStatus();
-          console.log('KML Layer status:', status);
-          
-          if (status === 'OK') {
-            console.log('KML successfully loaded from your Google My Maps');
-            setIsMapLoaded(true);
-            setMapError(null);
-            extractInspectorsFromKML(kmlLayer);
-            
-            // Check if data is actually visible by examining the default viewport
-            setTimeout(() => {
-              try {
-                const viewport = kmlLayer.getDefaultViewport();
-                console.log('KML viewport:', viewport);
-                
-                // Get detailed KML layer information
-                console.log('KML Layer details:', {
-                  url: kmlLayer.getUrl(),
-                  status: kmlLayer.getStatus(),
-                  map: kmlLayer.getMap(),
-                  metadata: kmlLayer.getMetadata()
-                });
-                
-                if (!viewport || (!viewport.getNorthEast() && !viewport.getSouthWest())) {
-                  console.warn('KML loaded but no visible features found.');
-                  
-                  // Try alternative URLs as fallback
-                  console.log('Trying fallback KML URLs...');
-                  kmlLayer.setMap(null); // Remove current layer
-                  
-                  // Try the second URL (without layer ID)
-                  const fallbackUrl = kmlUrls[1];
-                  console.log('Attempting fallback URL:', fallbackUrl);
-                  
-                  const fallbackLayer = new window.google.maps.KmlLayer({
-                    url: fallbackUrl,
-                    suppressInfoWindows: false,
-                    preserveViewport: true,
-                    map: map
-                  });
-                  
-                  kmlLayerRef.current = fallbackLayer;
-                  
-                  // Check fallback layer after delay
-                  setTimeout(() => {
-                    const fallbackViewport = fallbackLayer.getDefaultViewport();
-                    console.log('Fallback viewport:', fallbackViewport);
-                    if (!fallbackViewport || (!fallbackViewport.getNorthEast() && !fallbackViewport.getSouthWest())) {
-                      console.log('Google My Maps failed to load. Using local fallback data from your Infini Rep. Field...');
-                      // Remove failed KML layer and use fallback markers
-                      fallbackLayer.setMap(null);
-                      addFallbackMarkers(map);
-                      setMapError(null);
-                      setIsMapLoaded(true);
-                    } else {
-                      console.log('Fallback KML features found!', fallbackViewport.toJSON());
-                      setMapError(null);
-                    }
-                  }, 2000);
-                } else {
-                  console.log('KML features found! Viewport bounds:', viewport.toJSON());
-                  setMapError(null);
-                }
-              } catch (e) {
-                console.error('Error checking KML viewport:', e);
-                setMapError(`Error loading map data: ${e instanceof Error ? e.message : 'Unknown error'}`);
-              }
-            }, 2000); // Wait longer for KML to fully render
-          } else if (status === 'DOCUMENT_NOT_FOUND') {
-            setMapError("Google My Maps data not found. Please check if the map is publicly accessible.");
-            setIsMapLoaded(false);
-          } else if (status === 'FETCH_ERROR') {
-            setMapError("Failed to load field data. Please check your internet connection.");
-            setIsMapLoaded(false);
-          } else if (status === 'INVALID_DOCUMENT') {
-            setMapError("Invalid map data format. Please check your Google My Maps setup.");
-            setIsMapLoaded(false);
-          } else if (status === 'ACCESS_DENIED') {
-            setMapError("Access denied to Google My Maps data. Please make sure your map is shared as 'Anyone with the link - Viewer'.");
-            setIsMapLoaded(false);
-          } else if (status === 'DOCUMENT_TOO_LARGE') {
-            setMapError("Google My Maps data is too large to load. Please reduce the number of markers or split into multiple maps.");
-            setIsMapLoaded(false);
-          } else if (status === 'LIMITS_EXCEEDED') {
-            setMapError("Google Maps usage limits exceeded. Please try again later.");
-            setIsMapLoaded(false);
-          }
-        });
       }
+      
+      setIsMapLoaded(true);
+      console.log('🎉 Field map initialization complete!');
 
-      // No timeout needed - field representatives are loaded immediately above!
     } catch (error) {
-      console.error('Error initializing Google Maps:', error);
-      setMapError("Failed to initialize map. This may be due to an invalid API key or quota exceeded.");
+      console.error('💥 Error initializing Google Maps:', error);
+      setMapError("Failed to initialize map. This may be due to an invalid API key or network issues.");
       setIsMapLoaded(false);
     }
   };
 
   const loadKmlDataAsMarkers = async (map: any, kmlUrl: string) => {
-    console.log('Loading KML data manually for your Google My Maps...');
+    console.log('📍 Parsing KML data from Google My Maps...');
     try {
       const response = await fetch(kmlUrl);
       const kmlText = await response.text();
       
       if (kmlText.includes('<Placemark>')) {
-        console.log('✓ Found your Google My Maps data - parsing locations...');
+        console.log('✅ Found Google My Maps data - parsing field representatives...');
         
         const parser = new DOMParser();
         const kmlDoc = parser.parseFromString(kmlText, 'text/xml');
         const placemarks = kmlDoc.querySelectorAll('Placemark');
         
-        console.log(`Found ${placemarks.length} locations in your Google My Maps`);
+        console.log(`📋 Found ${placemarks.length} field representatives in Google My Maps`);
         
-        // Clear any existing markers
-        markersRef.current.forEach((marker: any) => marker.setMap(null));
-        markersRef.current = [];
-
+        // Clear existing markers and inspectors
+        clearMarkers();
+        const loadedInspectors: Inspector[] = [];
+        
         const bounds = new window.google.maps.LatLngBounds();
         let markersAdded = 0;
         
         placemarks.forEach((placemark, index) => {
-          const name = placemark.querySelector('name')?.textContent || `Location ${index + 1}`;
+          const name = placemark.querySelector('name')?.textContent || `Field Rep ${index + 1}`;
           const description = placemark.querySelector('description')?.textContent || '';
+          const address = placemark.querySelector('address')?.textContent || '';
           const coordinates = placemark.querySelector('coordinates')?.textContent?.trim();
           
+          console.log(`🔍 Processing placemark: ${name}`);
+          console.log(`📍 Coordinates found: ${coordinates ? 'Yes' : 'No'}`);
+          console.log(`📝 Description: ${description.substring(0, 100)}...`);
+          console.log(`🏠 Address: ${address.substring(0, 100)}...`);
+          
+          let lat, lng;
+          
           if (coordinates) {
-            const [lng, lat] = coordinates.split(',').map(coord => parseFloat(coord.trim()));
-            if (!isNaN(lat) && !isNaN(lng)) {
-              console.log(`Adding marker for: ${name} at (${lat}, ${lng})`);
-              
-              const marker = new window.google.maps.Marker({
-                position: { lat, lng },
-                map: map,
-                title: name,
-                icon: {
-                  url: 'data:image/svg+xml;base64,' + btoa(`
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#3B82F6"/>
-                    </svg>
-                  `),
-                  scaledSize: new window.google.maps.Size(24, 24),
-                }
-              });
-
-              // Extract contact info from description
-              const phoneMatch = description.match(/Phone:\s*([^\n\]]*)/);
-              const emailMatch = description.match(/Email:\s*([^\n\]]*)/);
-              const priceMatch = description.match(/Price:\s*([^\n\]]*)/);
-              const noteMatch = description.match(/Note:\s*([^\n\]]*)/);
-
-              // Add info window with location data
-              const infoWindow = new window.google.maps.InfoWindow({
-                content: `
-                  <div style="padding: 8px; max-width: 300px;">
-                    <h3 style="margin: 0 0 8px 0; color: #1f2937;">${name}</h3>
-                    ${phoneMatch?.[1] ? `<p style="margin: 4px 0;"><strong>Phone:</strong> ${phoneMatch[1].trim()}</p>` : ''}
-                    ${emailMatch?.[1] ? `<p style="margin: 4px 0;"><strong>Email:</strong> ${emailMatch[1].trim()}</p>` : ''}
-                    ${priceMatch?.[1] ? `<p style="margin: 4px 0;"><strong>Price:</strong> ${priceMatch[1].trim()}</p>` : ''}
-                    ${noteMatch?.[1] ? `<p style="margin: 4px 0;"><strong>Note:</strong> ${noteMatch[1].trim()}</p>` : ''}
-                    <button 
-                      onclick="selectInspector('kml_${index}', '${name.replace(/'/g, "\\'")}')"
-                      style="margin-top: 12px; padding: 8px 16px; background-color: #3B82F6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;"
-                      data-testid="button-select-inspector-kml_${index}"
-                    >
-                      Select Inspector
-                    </button>
-                  </div>
-                `
-              });
-
-              marker.addListener('click', () => {
-                infoWindow.open(map, marker);
-              });
-
-              markersRef.current.push(marker);
-              bounds.extend({ lat, lng });
-              markersAdded++;
+            // Use actual coordinates if available
+            const [lngStr, latStr] = coordinates.split(',').map(coord => coord.trim());
+            lat = parseFloat(latStr);
+            lng = parseFloat(lngStr);
+            console.log(`📍 Using coordinates: (${lat}, ${lng})`);
+          } else {
+            // No coordinates - place at Utah center with small offset to avoid overlap
+            lat = FIELD_CENTER.lat + (index * 0.005); // Small offset for each rep
+            lng = FIELD_CENTER.lng + (index * 0.005);
+            console.log(`⚠️ No coordinates found, using default Utah location with offset: (${lat}, ${lng})`);
+          }
+          
+          if (!isNaN(lat) && !isNaN(lng)) {
+            console.log(`✅ Adding field representative: ${name} at (${lat}, ${lng})`);
+            
+            // Extract contact info from ExtendedData first (more reliable)
+            let phone = '', email = '', price = '', note = '';
+            
+            const extendedData = placemark.querySelector('ExtendedData');
+            if (extendedData) {
+              phone = extendedData.querySelector('Data[name="Phone"] value')?.textContent?.trim() || '';
+              email = extendedData.querySelector('Data[name="Email"] value')?.textContent?.trim() || '';
+              price = extendedData.querySelector('Data[name="Price"] value')?.textContent?.trim() || '';
+              note = extendedData.querySelector('Data[name="Note"] value')?.textContent?.trim() || '';
+              console.log(`📞 ExtendedData - Phone: ${phone}, Email: ${email}, Price: ${price}, Note: ${note}`);
             }
+            
+            // Fallback to parsing description if ExtendedData not available
+            if (!phone || !email) {
+              const phoneMatch = description.match(/Phone:\s*([^<\n]*)/);
+              const emailMatch = description.match(/Email:\s*([^<\n]*)/);
+              const priceMatch = description.match(/Price:\s*([^<\n]*)/);
+              const noteMatch = description.match(/Note:\s*([^<\n]*)/);
+              
+              phone = phone || (phoneMatch?.[1]?.trim() ?? '');
+              email = email || (emailMatch?.[1]?.trim() ?? '');
+              price = price || (priceMatch?.[1]?.trim() ?? '');
+              note = note || (noteMatch?.[1]?.trim() ?? '');
+              console.log(`📝 Description fallback - Phone: ${phone}, Email: ${email}, Price: ${price}, Note: ${note}`);
+            }
+
+            // Create Inspector object
+            const inspector: Inspector = {
+              id: `inspector_${index}`,
+              name: name.trim(),
+              latitude: lat,
+              longitude: lng,
+              status: 'available', // Default status
+              specialization: 'Field Representative',
+              phone: phone || undefined,
+              email: email || undefined,
+              price: price || undefined,
+              note: note || undefined,
+            };
+
+            loadedInspectors.push(inspector);
+
+            // Create marker
+            const isCurrentCall = inspector.id === currentCallInspectorId;
+            const markerColor = getMarkerColor(inspector.status, isCurrentCall);
+            
+            const marker = new window.google.maps.Marker({
+              position: { lat, lng },
+              map: map,
+              title: name,
+              icon: {
+                path: window.google.maps.SymbolPath.CIRCLE,
+                scale: 10,
+                fillColor: markerColor,
+                fillOpacity: 0.9,
+                strokeColor: '#ffffff',
+                strokeWeight: 2,
+              }
+            });
+
+            // Add click listener to show inspector info
+            marker.addListener('click', () => {
+              showInspectorInfo(inspector, marker.getPosition());
+            });
+
+            markersRef.current.push(marker);
+            bounds.extend({ lat, lng });
+            markersAdded++;
           }
         });
 
         if (markersAdded > 0) {
+          // Update component state with loaded inspectors
+          setInspectors(loadedInspectors);
+          FIELD_INSPECTORS = loadedInspectors;
+          
+          // Fit map bounds to show all markers
           map.fitBounds(bounds);
-          console.log(`✓ Successfully displayed ${markersAdded} locations from your Google My Maps!`);
+          
+          console.log(`🎉 Successfully loaded ${markersAdded} field representatives from Google My Maps!`);
           setIsMapLoaded(true);
           setMapError(null);
         } else {
-          console.log('No valid locations found in your Google My Maps');
-          setMapError('No locations found in your Google My Maps layer.');
+          console.log('⚠️ No valid field representatives found in Google My Maps');
+          setMapError('No field representatives found in your Google My Maps layer.');
         }
         
       } else {
-        console.log('KML data does not contain location markers');
+        console.log('❌ KML data does not contain location markers');
         setMapError('Your Google My Maps appears to be empty or not properly shared.');
       }
       
     } catch (error) {
-      console.error('Error loading your Google My Maps data:', error);
+      console.error('💥 Error loading Google My Maps data:', error);
       setMapError('Failed to load your Google My Maps. Please ensure it is shared as "Anyone with the link - Viewer".');
+      throw error;
     }
   };
 
