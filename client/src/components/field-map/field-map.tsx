@@ -195,12 +195,11 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
       googleMapRef.current = map;
 
-      // Load KML data from Google My Maps
-      // Try multiple URL formats to ensure we get the layer data
+      // Load KML data from Google My Maps with your specific layer ID
       const kmlUrls = [
-        `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1`,
-        `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1&lid=0`, // Try layer 0
-        `https://www.google.com/maps/d/u/0/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1`, // Try with user path
+        `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1&lid=mkit35Kg0lY`, // Your "Infini Rep. Field" layer
+        `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1`, // Fallback without layer ID
+        `https://www.google.com/maps/d/u/0/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1&lid=mkit35Kg0lY`, // Try with user path
       ];
       
       // Try loading each URL until we find one that works
@@ -274,25 +273,26 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
               }
             }, 1000); // Wait a second for KML to fully render
           } else if (status === 'DOCUMENT_NOT_FOUND') {
-          setMapError("Google My Maps data not found. Please check if the map is publicly accessible.");
-          setIsMapLoaded(false);
-        } else if (status === 'FETCH_ERROR') {
-          setMapError("Failed to load field data. Please check your internet connection.");
-          setIsMapLoaded(false);
-        } else if (status === 'INVALID_DOCUMENT') {
-          setMapError("Invalid map data format. Please check your Google My Maps setup.");
-          setIsMapLoaded(false);
-        } else if (status === 'ACCESS_DENIED') {
-          setMapError("Access denied to Google My Maps data. Please make sure your map is shared as 'Anyone with the link - Viewer'.");
-          setIsMapLoaded(false);
-        } else if (status === 'DOCUMENT_TOO_LARGE') {
-          setMapError("Google My Maps data is too large to load. Please reduce the number of markers or split into multiple maps.");
-          setIsMapLoaded(false);
-        } else if (status === 'LIMITS_EXCEEDED') {
-          setMapError("Google Maps usage limits exceeded. Please try again later.");
-          setIsMapLoaded(false);
-        }
-      });
+            setMapError("Google My Maps data not found. Please check if the map is publicly accessible.");
+            setIsMapLoaded(false);
+          } else if (status === 'FETCH_ERROR') {
+            setMapError("Failed to load field data. Please check your internet connection.");
+            setIsMapLoaded(false);
+          } else if (status === 'INVALID_DOCUMENT') {
+            setMapError("Invalid map data format. Please check your Google My Maps setup.");
+            setIsMapLoaded(false);
+          } else if (status === 'ACCESS_DENIED') {
+            setMapError("Access denied to Google My Maps data. Please make sure your map is shared as 'Anyone with the link - Viewer'.");
+            setIsMapLoaded(false);
+          } else if (status === 'DOCUMENT_TOO_LARGE') {
+            setMapError("Google My Maps data is too large to load. Please reduce the number of markers or split into multiple maps.");
+            setIsMapLoaded(false);
+          } else if (status === 'LIMITS_EXCEEDED') {
+            setMapError("Google Maps usage limits exceeded. Please try again later.");
+            setIsMapLoaded(false);
+          }
+        });
+      }
 
       // Fallback timeout in case status doesn't change
       setTimeout(() => {
