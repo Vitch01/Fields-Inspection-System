@@ -1,256 +1,39 @@
-// ============================================================
-// ENHANCED MOBILE CARRIER DETECTION AND TRANSPORT SELECTION
-// ============================================================
-
-export interface NetworkInfo {
-  type: 'wifi' | 'cellular' | 'unknown';
-  effectiveType: string;
-  downlink?: number;
-  rtt?: number;
-  saveData?: boolean;
-  isMobileDevice: boolean;
-  carrierLikelihood: 'high' | 'medium' | 'low';
-  recommendedTransport: 'websocket' | 'http-polling' | 'auto';
-}
-
-export interface CarrierDetectionResult {
-  isProblematicCarrier: boolean;
-  reason: string;
-  confidence: 'high' | 'medium' | 'low';
-  recommendHttpPolling: boolean;
-}
-
-// Enhanced mobile carrier detection with WebSocket blocking indicators
-export function detectMobileCarrierBlocking(): CarrierDetectionResult {
-  const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
-  const userAgent = navigator.userAgent.toLowerCase();
-  
-  let isProblematic = false;
-  let reason = '';
-  let confidence: 'high' | 'medium' | 'low' = 'low';
-  
-  // Check for mobile device first
-  const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
-  
-  if (!isMobileDevice) {
-    return {
-      isProblematicCarrier: false,
-      reason: 'Not a mobile device',
-      confidence: 'high',
-      recommendHttpPolling: false
-    };
-  }
-  
-  // Analyze connection characteristics for carrier blocking indicators
-  if (connection) {
-    const cellularTypes = ['cellular', '2g', '3g', '4g', '5g'];
-    const isOnCellular = cellularTypes.includes(connection.effectiveType?.toLowerCase()) || 
-                        cellularTypes.includes(connection.type?.toLowerCase());
-    
-    if (isOnCellular) {
-      // High RTT combined with cellular connection indicates potential proxy/filtering
-      const highRTT = connection.rtt && connection.rtt > 500;
-      const lowBandwidth = connection.downlink && connection.downlink < 1.0;
-      const dataRestrictions = connection.saveData;
-      
-      if (highRTT || dataRestrictions) {
-        isProblematic = true;
-        reason = `Cellular network with${highRTT ? ' high latency' : ''}${dataRestrictions ? ' data restrictions' : ''}`;
-        confidence = 'high';
-      } else if (lowBandwidth) {
-        isProblematic = true;
-        reason = 'Cellular network with limited bandwidth - may block WebSocket';
-        confidence = 'medium';
-      } else {
-        // General cellular connection - moderate risk
-        isProblematic = true;
-        reason = 'Cellular connection detected - some carriers block WebSocket';
-        confidence = 'medium';
-      }
-    }
-  } else if (isMobileDevice) {
-    // Mobile device without connection API - assume risk
-    isProblematic = true;
-    reason = 'Mobile device without network info - assuming carrier risk';
-    confidence = 'medium';
-  }
-  
-  // Additional mobile-specific indicators
-  const operaMini = userAgent.includes('opera mini');
-  const chromeDataSaver = userAgent.includes('chrome') && userAgent.includes('mobile') && connection?.saveData;
-  
-  if (operaMini || chromeDataSaver) {
-    isProblematic = true;
-    reason = 'Data compression/proxy detected - likely blocks WebSocket';
-    confidence = 'high';
-  }
-  
-  return {
-    isProblematicCarrier: isProblematic,
-    reason,
-    confidence,
-    recommendHttpPolling: isProblematic && confidence !== 'low'
-  };
-}
-
-// Enhanced network analysis for transport selection
-export function analyzeNetworkConnection(): NetworkInfo {
-  const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
-  const userAgent = navigator.userAgent.toLowerCase();
-  const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
-  
-  const networkInfo: NetworkInfo = {
-    type: 'unknown',
-    effectiveType: 'unknown',
-    isMobileDevice,
-    carrierLikelihood: 'low',
-    recommendedTransport: 'websocket'
-  };
-  
-  if (connection) {
-    networkInfo.downlink = connection.downlink;
-    networkInfo.rtt = connection.rtt;
-    networkInfo.saveData = connection.saveData;
-    networkInfo.effectiveType = connection.effectiveType || connection.type || 'unknown';
-    
-    // Determine network type
-    const cellularTypes = ['cellular', '2g', '3g', '4g', '5g'];
-    if (cellularTypes.includes(connection.effectiveType?.toLowerCase()) || 
-        cellularTypes.includes(connection.type?.toLowerCase())) {
-      networkInfo.type = 'cellular';
-    } else if (connection.type === 'wifi') {
-      networkInfo.type = 'wifi';
-    }
-  }
-  
-  // Assess carrier blocking likelihood
-  const carrierDetection = detectMobileCarrierBlocking();
-  
-  if (carrierDetection.isProblematicCarrier) {
-    if (carrierDetection.confidence === 'high') {
-      networkInfo.carrierLikelihood = 'high';
-      networkInfo.recommendedTransport = 'http-polling';
-    } else if (carrierDetection.confidence === 'medium') {
-      networkInfo.carrierLikelihood = 'medium';
-      networkInfo.recommendedTransport = 'auto'; // Try WebSocket first, fallback to HTTP
-    }
-  }
-  
-  // Override for known good connections
-  if (networkInfo.type === 'wifi' && !isMobileDevice) {
-    networkInfo.carrierLikelihood = 'low';
-    networkInfo.recommendedTransport = 'websocket';
-  }
-  
-  return networkInfo;
-}
-
-// Legacy functions maintained for compatibility
-export function isMobileConnection(): boolean {
-  const networkInfo = analyzeNetworkConnection();
-  return networkInfo.isMobileDevice || networkInfo.type === 'cellular';
-}
-
-export function getNetworkType(): 'wifi' | 'cellular' | 'unknown' {
-  const networkInfo = analyzeNetworkConnection();
-  return networkInfo.type;
-}
-
-// Transport selection utility
-export function selectOptimalTransport(): 'websocket' | 'http-polling' {
-  const networkInfo = analyzeNetworkConnection();
-  
-  console.log('🔍 [Transport Selection] Network analysis:', {
-    type: networkInfo.type,
-    effectiveType: networkInfo.effectiveType,
-    isMobile: networkInfo.isMobileDevice,
-    carrierRisk: networkInfo.carrierLikelihood,
-    recommended: networkInfo.recommendedTransport,
-    rtt: networkInfo.rtt,
-    downlink: networkInfo.downlink
-  });
-  
-  // Force HTTP polling for high-risk mobile connections
-  if (networkInfo.recommendedTransport === 'http-polling') {
-    console.log('📱 [Transport Selection] Selecting HTTP polling due to high carrier blocking risk');
-    return 'http-polling';
-  }
-  
-  // Default to WebSocket for most connections
-  return 'websocket';
-}
-
-// WebSocket blocking detection utilities
-export function isWebSocketLikelyBlocked(errorCode?: number): boolean {
-  // WebSocket error codes that indicate mobile carrier blocking
-  const blockingCodes = [1005, 1006, 1015]; // No status code, abnormal closure, TLS handshake failure
-  
-  if (errorCode && blockingCodes.includes(errorCode)) {
-    return true;
-  }
-  
-  // Additional heuristics based on network analysis
-  const networkInfo = analyzeNetworkConnection();
-  return networkInfo.carrierLikelihood === 'high';
-}
-
-// Connectivity testing utilities
-export async function testWebSocketConnectivity(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-    
-    const testWs = new WebSocket(wsUrl);
-    const timeout = setTimeout(() => {
-      testWs.close();
-      resolve(false);
-    }, 5000); // 5 second timeout
-    
-    testWs.onopen = () => {
-      clearTimeout(timeout);
-      testWs.close();
-      resolve(true);
-    };
-    
-    testWs.onerror = () => {
-      clearTimeout(timeout);
-      resolve(false);
-    };
-    
-    testWs.onclose = (event) => {
-      clearTimeout(timeout);
-      // Successful close after open means connectivity is working
-      resolve(event.wasClean);
-    };
-  });
-}
-
-export function createPeerConnection(forceMobileOptimization: boolean = false): RTCPeerConnection {
-  const isMobile = isMobileConnection() || forceMobileOptimization;
-  const networkType = getNetworkType();
-  
-  console.log(`Creating peer connection - Mobile: ${isMobile}, Network: ${networkType}`);
-  
+export function createPeerConnection(): RTCPeerConnection {
   const configuration: RTCConfiguration = {
     iceServers: [
-      // STUN servers for NAT traversal - More reliable Google STUN servers
+      // STUN servers for NAT traversal
+      // Using multiple Google STUN servers for redundancy
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
       { urls: 'stun:stun3.l.google.com:19302' },
       { urls: 'stun:stun4.l.google.com:19302' },
       
-      // Additional STUN servers for better mobile connectivity
-      { urls: 'stun:stun.stunprotocol.org:3478' },
-      { urls: 'stun:stun.ekiga.net' },
-      
       // ============================================================
-      // ENHANCED TURN SERVERS FOR MOBILE CONNECTIVITY
+      // TEMPORARY PUBLIC TURN SERVERS FOR MOBILE CONNECTIVITY
       // ============================================================
-      // Multiple TURN server providers for maximum reliability
-      // These provide better mobile carrier compatibility
-      
-      // Cloudflare TURN servers (primary)
+      // WARNING: These are public demo TURN servers with public credentials
+      // They enable connectivity for mobile devices on restrictive carrier-grade NAT networks
+      // DO NOT use these in production - they are a temporary stopgap solution
+      // 
+      // PRODUCTION IMPLEMENTATION:
+      // 1. Set up a backend endpoint to generate time-limited credentials (24-hour expiry)
+      // 2. Use per-user authentication tokens for credential generation
+      // 3. Implement secure credential rotation mechanism
+      // 4. Consider using services like:
+      //    - Twilio Network Traversal Service
+      //    - Xirsys TURN servers
+      //    - Self-hosted CoTURN server
+      //    - Cloudflare Calls TURN service
+      //
+      // LIMITATIONS OF THESE PUBLIC SERVERS:
+      // - May have usage limits or bandwidth restrictions
+      // - Could be shut down at any time without notice
+      // - No guarantee of availability or performance
+      // - Shared with other users (potential congestion)
+      //
+      // These Cloudflare public TURN servers use "public" credentials intentionally
+      // for demo/development purposes only
       { 
         urls: 'turn:turn.cloudflare.com:3478',
         username: 'public',
@@ -260,74 +43,19 @@ export function createPeerConnection(forceMobileOptimization: boolean = false): 
         urls: 'turn:turn.cloudflare.com:443?transport=tcp',
         username: 'public',
         credential: 'public'
-      },
-      
-      // Additional public TURN servers for fallback
-      {
-        urls: 'turn:openrelay.metered.ca:80',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-      },
-      {
-        urls: 'turn:openrelay.metered.ca:443',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-      },
-      {
-        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-      },
-      
-      // Backup TURN servers on different ports for mobile carriers
-      {
-        urls: 'turn:relay.backups.cz',
-        username: 'webrtc',
-        credential: 'webrtc'
-      },
-      {
-        urls: 'turn:relay.backups.cz?transport=tcp',
-        username: 'webrtc',
-        credential: 'webrtc'
       }
       // ============================================================
     ],
-    
-    // Mobile-optimized ICE configuration
-    iceCandidatePoolSize: isMobile ? 20 : 10, // More candidates for mobile
-    
-    // For mobile networks, allow both STUN and TURN but prioritize TURN
-    iceTransportPolicy: 'all',
-    
-    // Mobile-specific connection policies
+    // Improve ICE gathering on mobile networks
+    iceCandidatePoolSize: 10,
+    // Force all traffic through TURN for mobile connections if needed
+    iceTransportPolicy: 'all', // Use 'all' to allow both STUN and TURN
+    // Better handling of network changes
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require'
   };
-  
-  // Force relay (TURN only) for known problematic mobile networks if needed
-  if (isMobile && networkType === 'cellular') {
-    console.log('Detected cellular connection - using enhanced mobile configuration');
-    configuration.iceCandidatePoolSize = 25; // Even more candidates for cellular
-  }
 
-  const pc = new RTCPeerConnection(configuration);
-  
-  // Add mobile-specific event logging
-  if (isMobile) {
-    pc.addEventListener('connectionstatechange', () => {
-      console.log(`🔄 [Mobile] Connection state: ${pc.connectionState}`);
-    });
-    
-    pc.addEventListener('icegatheringstatechange', () => {
-      console.log(`🧊 [Mobile] ICE gathering: ${pc.iceGatheringState}`);
-    });
-    
-    pc.addEventListener('iceconnectionstatechange', () => {
-      console.log(`❄️ [Mobile] ICE connection: ${pc.iceConnectionState}`);
-    });
-  }
-  
-  return pc;
+  return new RTCPeerConnection(configuration);
 }
 
 export async function captureImageFromStream(stream: MediaStream): Promise<Blob> {

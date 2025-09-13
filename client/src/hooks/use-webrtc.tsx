@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useWebSocket } from "./use-websocket";
-import { createPeerConnection, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream, isMobileConnection, getNetworkType } from "@/lib/webrtc-utils";
+import { createPeerConnection, captureImageFromStream, capturePhotoFromCamera, createRotatedRecordingStream } from "@/lib/webrtc-utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -11,13 +11,7 @@ interface ChatMessage {
   timestamp: Date;
 }
 
-interface UseWebRTCOptions {
-  enabled?: boolean;
-  displayName?: string;
-}
-
-export function useWebRTC(callId: string, userRole: "coordinator" | "inspector", options: UseWebRTCOptions = {}) {
-  const { enabled = true, displayName } = options;
+export function useWebRTC(callId: string, userRole: "coordinator" | "inspector") {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -30,13 +24,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector",
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingSupported, setIsRecordingSupported] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
-  const [connectionDiagnostics, setConnectionDiagnostics] = useState<{
-    networkType: string;
-    isMobile: boolean;
-    iceGatheringState: string;
-    connectionState: string;
-    candidateTypes: string[];
-  } | null>(null);
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -128,39 +115,24 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector",
     }
   }, []);
 
-  const { sendMessage, join: joinCall, isConnected: wsConnected } = useWebSocket(callId, userRole, {
+  const { sendMessage, isConnected: wsConnected } = useWebSocket(callId, userRole, {
     onMessage: handleSignalingMessage,
-    enabled,
-    displayName,
   });
 
-  // Initialize local media stream only when enabled
+  // Initialize local media stream
   useEffect(() => {
-    if (enabled) {
-      initializeLocalStream();
-    }
+    initializeLocalStream();
     return () => {
       cleanup();
     };
-  }, [enabled]);
+  }, []);
 
-  // Initialize peer connection when WebSocket is connected and enabled, then join the call
+  // Initialize peer connection when WebSocket is connected
   useEffect(() => {
-    if (enabled && wsConnected && localStream) {
+    if (wsConnected && localStream) {
       initializePeerConnection();
-      // Join call AFTER peer connection is initialized to prevent race condition
-      console.log('🔗 [WebRTC] Peer connection ready - sending join-call to prevent race condition');
-      joinCall().then((success) => {
-        if (success) {
-          console.log('✅ [WebRTC] Successfully joined call after peer connection setup');
-        } else {
-          console.warn('⚠️ [WebRTC] Failed to join call after peer connection setup');
-        }
-      }).catch((error) => {
-        console.error('❌ [WebRTC] Error joining call:', error);
-      });
     }
-  }, [enabled, wsConnected, localStream, joinCall]);
+  }, [wsConnected, localStream]);
 
   async function initializeLocalStream() {
     try {
@@ -211,9 +183,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector",
   }
 
   function initializePeerConnection() {
-    // Force mobile optimization for inspectors who are more likely to be on mobile
-    const forceMobileOptimization = userRole === "inspector";
-    const pc = createPeerConnection(forceMobileOptimization);
+    const pc = createPeerConnection();
     peerConnectionRef.current = pc;
 
     // Add local stream tracks
@@ -223,96 +193,34 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector",
       });
     }
 
-    // Handle remote stream with comprehensive logging
+    // Handle remote stream
     pc.ontrack = (event) => {
-      console.log('🎥 WebRTC: ontrack event received', {
-        streamsCount: event.streams.length,
-        trackKind: event.track.kind,
-        trackId: event.track.id,
-        trackEnabled: event.track.enabled,
-        trackReadyState: event.track.readyState,
-        trackMuted: event.track.muted,
-        userRole
-      });
-      
-      if (event.streams.length > 0) {
-        const stream = event.streams[0];
-        console.log('🎥 WebRTC: Setting remote stream', {
-          streamId: stream.id,
-          streamActive: stream.active,
-          tracks: stream.getTracks().map(track => ({
-            kind: track.kind,
-            id: track.id,
-            enabled: track.enabled,
-            readyState: track.readyState,
-            muted: track.muted
-          }))
-        });
-        
-        setRemoteStream(stream);
-        
-        // Log stream status after a brief delay
-        setTimeout(() => {
-          console.log('🎥 WebRTC: Stream status check', {
-            streamActive: stream.active,
-            videoTracks: stream.getVideoTracks().length,
-            audioTracks: stream.getAudioTracks().length,
-            allTracksEnabled: stream.getTracks().every(t => t.enabled)
-          });
-        }, 1000);
-      } else {
-        console.warn('🎥 WebRTC: ontrack event with no streams');
-      }
+      setRemoteStream(event.streams[0]);
     };
 
-    // Enhanced connection state handling with mobile diagnostics
+    // Handle connection state changes with better diagnostics
     pc.onconnectionstatechange = () => {
       console.log(`Connection state changed to: ${pc.connectionState}`);
       const connected = pc.connectionState === "connected";
       setIsConnected(connected);
-      
-      // Update diagnostics
-      updateConnectionDiagnostics(pc);
-      
       if (connected) {
         setIsConnectionEstablished(true);
         console.log("WebRTC connection established successfully");
-        
-        // Show success message for mobile users
-        if (isMobileConnection()) {
-          toast({
-            title: "Connected",
-            description: "Successfully connected via mobile network",
-            variant: "default",
-          });
-        }
       } else if (pc.connectionState === "failed") {
-        console.error("WebRTC connection failed - analyzing cause...");
-        handleConnectionFailure(pc);
+        console.error("WebRTC connection failed - likely network issue");
+        toast({
+          title: "Connection Failed",
+          description: "Unable to establish connection. If on mobile data, ensure you have a stable connection.",
+          variant: "destructive",
+        });
       } else if (pc.connectionState === "disconnected") {
         console.warn("WebRTC connection disconnected");
-        
-        if (isMobileConnection()) {
-          toast({
-            title: "Connection Lost",
-            description: "Mobile network connection lost. Attempting to reconnect...",
-            variant: "destructive",
-          });
-        }
       }
     };
 
-    // Enhanced ICE gathering state handling with mobile diagnostics
+    // Handle ICE gathering state for better debugging
     pc.onicegatheringstatechange = () => {
       console.log(`ICE gathering state: ${pc.iceGatheringState}`);
-      updateConnectionDiagnostics(pc);
-      
-      if (pc.iceGatheringState === 'gathering') {
-        console.log('ICE candidates gathering started...');
-      } else if (pc.iceGatheringState === 'complete') {
-        console.log('ICE candidate gathering completed');
-        logIceCandidateSummary();
-      }
     };
 
     // Handle ICE connection state changes with improved restart logic
@@ -328,26 +236,10 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector",
       }
     };
 
-    // Enhanced ICE candidate handling with mobile diagnostics
-    const candidateTypes = new Set<string>();
+    // Handle ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        const { type, protocol, address, port } = event.candidate;
-        if (type) {
-          candidateTypes.add(type);
-        }
-        
-        console.log(`ICE candidate - Type: ${type}, Protocol: ${protocol}, Address: ${address}, Port: ${port}`);
-        
-        // Log specific mobile-relevant candidates
-        if (type && type === 'relay') {
-          console.log('✅ TURN relay candidate found - good for mobile networks');
-        } else if (type && type === 'srflx') {
-          console.log('✅ STUN server reflexive candidate found');
-        } else if (type && type === 'host') {
-          console.log('ℹ️ Host candidate found');
-        }
-        
+        console.log(`ICE candidate type: ${event.candidate.type}, protocol: ${event.candidate.protocol}`);
         sendMessage({
           type: "ice-candidate",
           callId,
@@ -356,17 +248,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector",
         });
       } else {
         console.log("ICE candidate gathering complete");
-        console.log(`Candidate types found: ${Array.from(candidateTypes).join(', ')}`);
-        
-        // Check if we have mobile-friendly candidates
-        if (isMobileConnection() && !candidateTypes.has('relay')) {
-          console.warn('⚠️ No TURN relay candidates found for mobile connection - this may cause connectivity issues');
-          toast({
-            title: "Network Warning",
-            description: "Limited connectivity options detected on mobile network. Connection may be unstable.",
-            variant: "destructive",
-          });
-        }
       }
     };
 
@@ -436,68 +317,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector",
       iceRestartInProgressRef.current = false;
     }
   }, [userRole, callId, sendMessage]);
-
-  // Connection diagnostics helpers
-  const updateConnectionDiagnostics = useCallback((pc: RTCPeerConnection) => {
-    const diagnostics = {
-      networkType: getNetworkType(),
-      isMobile: isMobileConnection(),
-      iceGatheringState: pc.iceGatheringState,
-      connectionState: pc.connectionState,
-      candidateTypes: [] as string[]
-    };
-    
-    setConnectionDiagnostics(diagnostics);
-    console.log('Connection diagnostics updated:', diagnostics);
-  }, []);
-  
-  const logIceCandidateSummary = useCallback(() => {
-    console.log('ICE candidate gathering summary:');
-    console.log('- Network type:', getNetworkType());
-    console.log('- Mobile device:', isMobileConnection());
-    console.log('- User role:', userRole);
-  }, [userRole]);
-  
-  const handleConnectionFailure = useCallback((pc: RTCPeerConnection) => {
-    const networkType = getNetworkType();
-    const isMobile = isMobileConnection();
-    
-    console.error('Connection failure analysis:');
-    console.error('- Network type:', networkType);
-    console.error('- Mobile connection:', isMobile);
-    console.error('- ICE connection state:', pc.iceConnectionState);
-    console.error('- Connection state:', pc.connectionState);
-    
-    let errorMessage = "Connection failed.";
-    let description = "Unable to establish WebRTC connection.";
-    
-    if (isMobile && networkType === 'cellular') {
-      errorMessage = "Mobile Network Issue";
-      description = "Your mobile carrier may be blocking video connections. Try switching to Wi-Fi or moving to an area with better signal.";
-    } else if (isMobile) {
-      errorMessage = "Mobile Connection Failed";
-      description = "Mobile network connectivity issue detected. Please check your connection and try again.";
-    } else {
-      errorMessage = "Network Connection Failed";
-      description = "Please check your internet connection and try again.";
-    }
-    
-    toast({
-      title: errorMessage,
-      description,
-      variant: "destructive",
-    });
-    
-    // Attempt automatic reconnection for mobile users
-    if (isMobile) {
-      console.log('Attempting mobile reconnection in 5 seconds...');
-      setTimeout(() => {
-        if (pc.connectionState === 'failed') {
-          handleIceRestart();
-        }
-      }, 5000);
-    }
-  }, [handleIceRestart, toast]);
 
   async function createAnswer(offer: RTCSessionDescriptionInit) {
     const pc = peerConnectionRef.current;
@@ -1301,6 +1120,5 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector",
     isCapturing,
     startRecording,
     stopRecording,
-    connectionDiagnostics,
   };
 }
