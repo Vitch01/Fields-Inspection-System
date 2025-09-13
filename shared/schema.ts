@@ -89,14 +89,65 @@ export const signalingMessageSchema = z.object({
     "capture-request",
     "capture-complete",
     "capture-error",
-    "ice-restart-request"
+    "ice-restart-request",
+    "user-joined",
+    "user-left",
+    "image-captured"
   ]),
   callId: z.string(),
   userId: z.string(),
   data: z.any().optional(),
+  // HTTP polling transport metadata
+  transport: z.enum(["websocket", "http-polling"]).optional(),
+  messageId: z.string().optional(), // Unique ID for deduplication
+  timestamp: z.number().optional(), // Message timestamp for ordering
+  metadata: z.object({
+    networkType: z.enum(["wifi", "cellular", "unknown"]).optional(),
+    carrierRisk: z.enum(["high", "medium", "low"]).optional(),
+    fallbackReason: z.string().optional(), // Why fallback was triggered
+    rtt: z.number().optional(), // Round trip time
+    connectionQuality: z.enum(["excellent", "good", "poor", "unknown"]).optional()
+  }).optional()
 });
 
 export type SignalingMessage = z.infer<typeof signalingMessageSchema>;
+
+// HTTP Polling specific schemas
+export const httpPollingStatusSchema = z.object({
+  callId: z.string(),
+  httpPollingClients: z.array(z.object({
+    userId: z.string(),
+    lastPollTime: z.number(),
+    isConnected: z.boolean(),
+    timeSinceLastPoll: z.number()
+  })),
+  webSocketClients: z.array(z.object({
+    userId: z.string(),
+    readyState: z.number(),
+    connected: z.boolean()
+  })),
+  queuedMessageCount: z.number(),
+  transport: z.literal("status"),
+  timestamp: z.string()
+});
+
+export const httpPollingResponseSchema = z.object({
+  messages: z.array(z.any()),
+  transport: z.literal("http-polling"),
+  timeout: z.boolean().optional(),
+  timestamp: z.string()
+});
+
+export const httpPollingSendResponseSchema = z.object({
+  success: z.boolean(),
+  transport: z.literal("http-polling"),
+  timestamp: z.string(),
+  error: z.string().optional()
+});
+
+export type HttpPollingStatus = z.infer<typeof httpPollingStatusSchema>;
+export type HttpPollingResponse = z.infer<typeof httpPollingResponseSchema>;
+export type HttpPollingSendResponse = z.infer<typeof httpPollingSendResponseSchema>;
 
 // Video recording validation schema
 export const videoRecordingSchema = z.object({

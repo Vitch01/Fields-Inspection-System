@@ -1,38 +1,228 @@
-// Mobile network detection utilities
-export function isMobileConnection(): boolean {
+// ============================================================
+// ENHANCED MOBILE CARRIER DETECTION AND TRANSPORT SELECTION
+// ============================================================
+
+export interface NetworkInfo {
+  type: 'wifi' | 'cellular' | 'unknown';
+  effectiveType: string;
+  downlink?: number;
+  rtt?: number;
+  saveData?: boolean;
+  isMobileDevice: boolean;
+  carrierLikelihood: 'high' | 'medium' | 'low';
+  recommendedTransport: 'websocket' | 'http-polling' | 'auto';
+}
+
+export interface CarrierDetectionResult {
+  isProblematicCarrier: boolean;
+  reason: string;
+  confidence: 'high' | 'medium' | 'low';
+  recommendHttpPolling: boolean;
+}
+
+// Enhanced mobile carrier detection with WebSocket blocking indicators
+export function detectMobileCarrierBlocking(): CarrierDetectionResult {
   const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+  const userAgent = navigator.userAgent.toLowerCase();
   
-  if (connection) {
-    // Check if connection is cellular
-    const cellularTypes = ['cellular', '2g', '3g', '4g', '5g'];
-    if (cellularTypes.includes(connection.effectiveType?.toLowerCase()) || 
-        cellularTypes.includes(connection.type?.toLowerCase())) {
-      return true;
-    }
+  let isProblematic = false;
+  let reason = '';
+  let confidence: 'high' | 'medium' | 'low' = 'low';
+  
+  // Check for mobile device first
+  const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+  
+  if (!isMobileDevice) {
+    return {
+      isProblematicCarrier: false,
+      reason: 'Not a mobile device',
+      confidence: 'high',
+      recommendHttpPolling: false
+    };
   }
   
-  // Fallback detection methods
+  // Analyze connection characteristics for carrier blocking indicators
+  if (connection) {
+    const cellularTypes = ['cellular', '2g', '3g', '4g', '5g'];
+    const isOnCellular = cellularTypes.includes(connection.effectiveType?.toLowerCase()) || 
+                        cellularTypes.includes(connection.type?.toLowerCase());
+    
+    if (isOnCellular) {
+      // High RTT combined with cellular connection indicates potential proxy/filtering
+      const highRTT = connection.rtt && connection.rtt > 500;
+      const lowBandwidth = connection.downlink && connection.downlink < 1.0;
+      const dataRestrictions = connection.saveData;
+      
+      if (highRTT || dataRestrictions) {
+        isProblematic = true;
+        reason = `Cellular network with${highRTT ? ' high latency' : ''}${dataRestrictions ? ' data restrictions' : ''}`;
+        confidence = 'high';
+      } else if (lowBandwidth) {
+        isProblematic = true;
+        reason = 'Cellular network with limited bandwidth - may block WebSocket';
+        confidence = 'medium';
+      } else {
+        // General cellular connection - moderate risk
+        isProblematic = true;
+        reason = 'Cellular connection detected - some carriers block WebSocket';
+        confidence = 'medium';
+      }
+    }
+  } else if (isMobileDevice) {
+    // Mobile device without connection API - assume risk
+    isProblematic = true;
+    reason = 'Mobile device without network info - assuming carrier risk';
+    confidence = 'medium';
+  }
+  
+  // Additional mobile-specific indicators
+  const operaMini = userAgent.includes('opera mini');
+  const chromeDataSaver = userAgent.includes('chrome') && userAgent.includes('mobile') && connection?.saveData;
+  
+  if (operaMini || chromeDataSaver) {
+    isProblematic = true;
+    reason = 'Data compression/proxy detected - likely blocks WebSocket';
+    confidence = 'high';
+  }
+  
+  return {
+    isProblematicCarrier: isProblematic,
+    reason,
+    confidence,
+    recommendHttpPolling: isProblematic && confidence !== 'low'
+  };
+}
+
+// Enhanced network analysis for transport selection
+export function analyzeNetworkConnection(): NetworkInfo {
+  const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
   const userAgent = navigator.userAgent.toLowerCase();
   const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
   
-  return isMobileDevice;
-}
-
-export function getNetworkType(): 'wifi' | 'cellular' | 'unknown' {
-  const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+  const networkInfo: NetworkInfo = {
+    type: 'unknown',
+    effectiveType: 'unknown',
+    isMobileDevice,
+    carrierLikelihood: 'low',
+    recommendedTransport: 'websocket'
+  };
   
   if (connection) {
+    networkInfo.downlink = connection.downlink;
+    networkInfo.rtt = connection.rtt;
+    networkInfo.saveData = connection.saveData;
+    networkInfo.effectiveType = connection.effectiveType || connection.type || 'unknown';
+    
+    // Determine network type
     const cellularTypes = ['cellular', '2g', '3g', '4g', '5g'];
     if (cellularTypes.includes(connection.effectiveType?.toLowerCase()) || 
         cellularTypes.includes(connection.type?.toLowerCase())) {
-      return 'cellular';
-    }
-    if (connection.type === 'wifi') {
-      return 'wifi';
+      networkInfo.type = 'cellular';
+    } else if (connection.type === 'wifi') {
+      networkInfo.type = 'wifi';
     }
   }
   
-  return 'unknown';
+  // Assess carrier blocking likelihood
+  const carrierDetection = detectMobileCarrierBlocking();
+  
+  if (carrierDetection.isProblematicCarrier) {
+    if (carrierDetection.confidence === 'high') {
+      networkInfo.carrierLikelihood = 'high';
+      networkInfo.recommendedTransport = 'http-polling';
+    } else if (carrierDetection.confidence === 'medium') {
+      networkInfo.carrierLikelihood = 'medium';
+      networkInfo.recommendedTransport = 'auto'; // Try WebSocket first, fallback to HTTP
+    }
+  }
+  
+  // Override for known good connections
+  if (networkInfo.type === 'wifi' && !isMobileDevice) {
+    networkInfo.carrierLikelihood = 'low';
+    networkInfo.recommendedTransport = 'websocket';
+  }
+  
+  return networkInfo;
+}
+
+// Legacy functions maintained for compatibility
+export function isMobileConnection(): boolean {
+  const networkInfo = analyzeNetworkConnection();
+  return networkInfo.isMobileDevice || networkInfo.type === 'cellular';
+}
+
+export function getNetworkType(): 'wifi' | 'cellular' | 'unknown' {
+  const networkInfo = analyzeNetworkConnection();
+  return networkInfo.type;
+}
+
+// Transport selection utility
+export function selectOptimalTransport(): 'websocket' | 'http-polling' {
+  const networkInfo = analyzeNetworkConnection();
+  
+  console.log('🔍 [Transport Selection] Network analysis:', {
+    type: networkInfo.type,
+    effectiveType: networkInfo.effectiveType,
+    isMobile: networkInfo.isMobileDevice,
+    carrierRisk: networkInfo.carrierLikelihood,
+    recommended: networkInfo.recommendedTransport,
+    rtt: networkInfo.rtt,
+    downlink: networkInfo.downlink
+  });
+  
+  // Force HTTP polling for high-risk mobile connections
+  if (networkInfo.recommendedTransport === 'http-polling') {
+    console.log('📱 [Transport Selection] Selecting HTTP polling due to high carrier blocking risk');
+    return 'http-polling';
+  }
+  
+  // Default to WebSocket for most connections
+  return 'websocket';
+}
+
+// WebSocket blocking detection utilities
+export function isWebSocketLikelyBlocked(errorCode?: number): boolean {
+  // WebSocket error codes that indicate mobile carrier blocking
+  const blockingCodes = [1005, 1006, 1015]; // No status code, abnormal closure, TLS handshake failure
+  
+  if (errorCode && blockingCodes.includes(errorCode)) {
+    return true;
+  }
+  
+  // Additional heuristics based on network analysis
+  const networkInfo = analyzeNetworkConnection();
+  return networkInfo.carrierLikelihood === 'high';
+}
+
+// Connectivity testing utilities
+export async function testWebSocketConnectivity(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    
+    const testWs = new WebSocket(wsUrl);
+    const timeout = setTimeout(() => {
+      testWs.close();
+      resolve(false);
+    }, 5000); // 5 second timeout
+    
+    testWs.onopen = () => {
+      clearTimeout(timeout);
+      testWs.close();
+      resolve(true);
+    };
+    
+    testWs.onerror = () => {
+      clearTimeout(timeout);
+      resolve(false);
+    };
+    
+    testWs.onclose = (event) => {
+      clearTimeout(timeout);
+      // Successful close after open means connectivity is working
+      resolve(event.wasClean);
+    };
+  });
 }
 
 export function createPeerConnection(forceMobileOptimization: boolean = false): RTCPeerConnection {

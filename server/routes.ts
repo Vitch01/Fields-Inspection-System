@@ -267,12 +267,140 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // ============================================================
+  // HTTP POLLING FALLBACK SYSTEM FOR MOBILE CARRIERS
+  // ============================================================
+  
+  // Message queue for HTTP polling fallback when WebSocket is blocked
+  interface QueuedMessage {
+    id: string;
+    callId: string;
+    message: any;
+    timestamp: number;
+    targetUserId?: string; // If specified, only for this user
+  }
+  
+  interface HttpPollingClient {
+    callId: string;
+    userId: string;
+    lastPollTime: number;
+    responseCallback?: express.Response;
+    isConnected: boolean;
+  }
+  
+  // Message queues by callId -> userId -> messages[]
+  const httpMessageQueues = new Map<string, Map<string, QueuedMessage[]>>();
+  
+  // Active HTTP polling clients
+  const httpPollingClients = new Map<string, HttpPollingClient>();
+  
+  // Long polling timeout (30 seconds)
+  const POLL_TIMEOUT = 30000;
+  
+  // Message cleanup interval (5 minutes)
+  const MESSAGE_CLEANUP_INTERVAL = 300000;
+  
+  function addMessageToQueue(callId: string, message: any, targetUserId?: string, excludeUserId?: string) {
+    const queuedMessage: QueuedMessage = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      callId,
+      message,
+      timestamp: Date.now(),
+      targetUserId
+    };
+    
+    if (!httpMessageQueues.has(callId)) {
+      httpMessageQueues.set(callId, new Map());
+    }
+    
+    const callQueues = httpMessageQueues.get(callId)!;
+    
+    if (targetUserId) {
+      // Message for specific user
+      if (!callQueues.has(targetUserId)) {
+        callQueues.set(targetUserId, []);
+      }
+      callQueues.get(targetUserId)!.push(queuedMessage);
+      console.log(`📨 [HTTP Queue] Added targeted message for user ${targetUserId} in call ${callId}`);
+    } else {
+      // Broadcast message to all users in call except sender
+      httpPollingClients.forEach((client, clientKey) => {
+        if (client.callId === callId && client.userId !== excludeUserId) {
+          if (!callQueues.has(client.userId)) {
+            callQueues.set(client.userId, []);
+          }
+          callQueues.get(client.userId)!.push(queuedMessage);
+        }
+      });
+      console.log(`📨 [HTTP Queue] Added broadcast message to call ${callId} (excluding ${excludeUserId})`);
+    }
+    
+    // Notify waiting polling clients
+    notifyPollingClients(callId, targetUserId, excludeUserId);
+  }
+  
+  function notifyPollingClients(callId: string, targetUserId?: string, excludeUserId?: string) {
+    httpPollingClients.forEach((client, clientKey) => {
+      if (client.callId === callId && client.userId !== excludeUserId) {
+        if (!targetUserId || client.userId === targetUserId) {
+          if (client.responseCallback) {
+            const messages = getMessagesForUser(callId, client.userId);
+            if (messages.length > 0) {
+              client.responseCallback.json({
+                messages: messages.map(m => m.message),
+                transport: 'http-polling',
+                timestamp: new Date().toISOString()
+              });
+              client.responseCallback = undefined;
+              client.lastPollTime = Date.now();
+            }
+          }
+        }
+      }
+    });
+  }
+  
+  function getMessagesForUser(callId: string, userId: string): QueuedMessage[] {
+    const callQueues = httpMessageQueues.get(callId);
+    if (!callQueues || !callQueues.has(userId)) {
+      return [];
+    }
+    
+    const messages = callQueues.get(userId)!;
+    // Clear messages after retrieval
+    callQueues.set(userId, []);
+    
+    return messages;
+  }
+  
+  function cleanupOldMessages() {
+    const now = Date.now();
+    const maxAge = 300000; // 5 minutes
+    
+    httpMessageQueues.forEach((callQueues, callId) => {
+      callQueues.forEach((messages, userId) => {
+        const filteredMessages = messages.filter(msg => now - msg.timestamp < maxAge);
+        if (filteredMessages.length !== messages.length) {
+          callQueues.set(userId, filteredMessages);
+          console.log(`🧹 [HTTP Queue] Cleaned old messages for user ${userId} in call ${callId}`);
+        }
+      });
+    });
+  }
+  
+  // Start cleanup interval
+  setInterval(cleanupOldMessages, MESSAGE_CLEANUP_INTERVAL);
+
   function broadcastToCall(callId: string, message: any, excludeUserId?: string) {
+    // Send via WebSocket to connected clients
     clients.forEach((client, userId) => {
       if (client.callId === callId && userId !== excludeUserId && client.readyState === WebSocket.OPEN) {
         client.send(JSON.stringify(message));
       }
     });
+    
+    // Queue message for HTTP polling clients
+    addMessageToQueue(callId, message, undefined, excludeUserId);
   }
 
   // API Routes
@@ -284,6 +412,246 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.head('/api', (req, res) => {
     res.status(200).end();
+  });
+
+  // ============================================================
+  // HTTP POLLING SIGNALING ENDPOINTS (MOBILE FALLBACK)
+  // ============================================================
+  
+  // Send signaling message via HTTP (fallback for blocked WebSocket)
+  app.post('/api/signaling/send', express.json(), (req, res) => {
+    try {
+      const message = signalingMessageSchema.parse(req.body);
+      const clientIP = req.socket.remoteAddress;
+      const userAgent = req.headers['user-agent'] || 'Unknown';
+      
+      console.log(`📤 [HTTP Signaling] Message received:`, {
+        type: message.type,
+        callId: message.callId,
+        userId: message.userId,
+        clientIP,
+        userAgent: userAgent.substring(0, 80),
+        timestamp: new Date().toISOString()
+      });
+      
+      // Process message same as WebSocket - handle different message types
+      switch (message.type) {
+        case 'join-call':
+          // Register HTTP polling client
+          const clientKey = `${message.callId}_${message.userId}`;
+          httpPollingClients.set(clientKey, {
+            callId: message.callId,
+            userId: message.userId,
+            lastPollTime: Date.now(),
+            isConnected: true
+          });
+          
+          console.log(`✅ [HTTP Polling] User ${message.userId} joined call ${message.callId} via HTTP. Active HTTP clients: ${httpPollingClients.size}`);
+          
+          // Broadcast to WebSocket and other HTTP polling clients
+          broadcastToCall(message.callId, {
+            type: 'user-joined',
+            userId: message.userId,
+            callId: message.callId
+          }, message.userId);
+          break;
+
+        case 'leave-call':
+          const leaveClientKey = `${message.callId}_${message.userId}`;
+          httpPollingClients.delete(leaveClientKey);
+          
+          broadcastToCall(message.callId, {
+            type: 'user-left',
+            userId: message.userId,
+            callId: message.callId
+          }, message.userId);
+          break;
+
+        case 'offer':
+        case 'answer':
+        case 'ice-candidate':
+          // Forward WebRTC signaling to other participants
+          broadcastToCall(message.callId, message, message.userId);
+          break;
+
+        case 'capture-image':
+          // Notify about image capture
+          broadcastToCall(message.callId, {
+            type: 'image-captured',
+            callId: message.callId,
+            data: message.data
+          });
+          break;
+
+        case 'chat-message':
+          // Forward chat message to other participants
+          broadcastToCall(message.callId, {
+            type: 'chat-message',
+            callId: message.callId,
+            userId: message.userId,
+            data: message.data
+          }, message.userId);
+          break;
+
+        case 'capture-request':
+          // Forward capture request from coordinator to inspector
+          broadcastToCall(message.callId, {
+            type: 'capture-request',
+            callId: message.callId,
+            userId: message.userId,
+            data: message.data
+          }, message.userId);
+          break;
+
+        case 'capture-complete':
+          // Forward capture complete notification from inspector to coordinator
+          broadcastToCall(message.callId, {
+            type: 'capture-complete',
+            callId: message.callId,
+            userId: message.userId,
+            data: message.data
+          }, message.userId);
+          break;
+
+        case 'capture-error':
+          // Forward capture error from inspector to coordinator
+          broadcastToCall(message.callId, {
+            type: 'capture-error',
+            callId: message.callId,
+            userId: message.userId,
+            data: message.data
+          }, message.userId);
+          break;
+
+        case 'ice-restart-request':
+          // Forward ICE restart request from inspector to coordinator
+          broadcastToCall(message.callId, {
+            type: 'ice-restart-request',
+            callId: message.callId,
+            userId: message.userId,
+            data: message.data
+          }, message.userId);
+          break;
+      }
+      
+      res.json({ 
+        success: true, 
+        transport: 'http-polling',
+        timestamp: new Date().toISOString() 
+      });
+      
+    } catch (error) {
+      console.error('❌ [HTTP Signaling] Message parsing error:', {
+        error: error instanceof Error ? error.message : String(error),
+        body: req.body,
+        timestamp: new Date().toISOString()
+      });
+      
+      res.status(400).json({ 
+        error: 'Invalid signaling message',
+        transport: 'http-polling' 
+      });
+    }
+  });
+  
+  // Long polling endpoint to receive signaling messages
+  app.get('/api/signaling/poll/:callId/:userId', (req, res) => {
+    const { callId, userId } = req.params;
+    const clientKey = `${callId}_${userId}`;
+    const clientIP = req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'] || 'Unknown';
+    
+    console.log(`📡 [HTTP Polling] Long poll started:`, {
+      callId,
+      userId,
+      clientIP,
+      userAgent: userAgent.substring(0, 80),
+      timestamp: new Date().toISOString()
+    });
+    
+    // Check if user is registered for this call
+    if (!httpPollingClients.has(clientKey)) {
+      return res.status(404).json({ 
+        error: 'User not found in call. Call join-call first.',
+        transport: 'http-polling' 
+      });
+    }
+    
+    // Update client's last poll time
+    const client = httpPollingClients.get(clientKey)!;
+    client.lastPollTime = Date.now();
+    
+    // Check for existing messages
+    const existingMessages = getMessagesForUser(callId, userId);
+    if (existingMessages.length > 0) {
+      console.log(`📨 [HTTP Polling] Immediate response with ${existingMessages.length} messages for ${userId}`);
+      return res.json({ 
+        messages: existingMessages.map(m => m.message),
+        transport: 'http-polling',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Set up long polling - wait for new messages
+    client.responseCallback = res;
+    
+    // Set timeout for long polling
+    const pollTimeout = setTimeout(() => {
+      if (client.responseCallback) {
+        console.log(`⏰ [HTTP Polling] Timeout for ${userId}, sending empty response`);
+        client.responseCallback.json({ 
+          messages: [],
+          transport: 'http-polling', 
+          timeout: true,
+          timestamp: new Date().toISOString()
+        });
+        client.responseCallback = undefined;
+      }
+    }, POLL_TIMEOUT);
+    
+    // Clean up on client disconnect
+    req.on('close', () => {
+      clearTimeout(pollTimeout);
+      if (client.responseCallback) {
+        client.responseCallback = undefined;
+        console.log(`🔌 [HTTP Polling] Client ${userId} disconnected during poll`);
+      }
+    });
+    
+    httpPollingClients.set(clientKey, client);
+  });
+  
+  // Get HTTP polling status for diagnostics
+  app.get('/api/signaling/status/:callId', (req, res) => {
+    const { callId } = req.params;
+    
+    const httpClients = Array.from(httpPollingClients.entries())
+      .filter(([key, client]) => client.callId === callId)
+      .map(([key, client]) => ({
+        userId: client.userId,
+        lastPollTime: client.lastPollTime,
+        isConnected: client.isConnected,
+        timeSinceLastPoll: Date.now() - client.lastPollTime
+      }));
+    
+    const wsClients = Array.from(clients.entries())
+      .filter(([userId, client]) => client.callId === callId)
+      .map(([userId, client]) => ({
+        userId,
+        readyState: client.readyState,
+        connected: client.readyState === WebSocket.OPEN
+      }));
+    
+    const queuedMessageCount = httpMessageQueues.get(callId)?.size || 0;
+    
+    res.json({
+      callId,
+      httpPollingClients: httpClients,
+      webSocketClients: wsClients,
+      queuedMessageCount,
+      transport: 'status',
+      timestamp: new Date().toISOString()
+    });
   });
 
   // Mobile connectivity diagnostic endpoints
