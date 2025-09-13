@@ -189,43 +189,48 @@ export default function CoordinatorCall() {
         <InspectorLocation location={(call as any)?.inspectorLocation || null} />
       </div>
 
-      {/* Main Video Area */}
-      <main className="flex-1">
-        <VideoDisplay
-          localStream={localStream}
-          remoteStream={remoteStream}
-          isCoordinator={true}
-          onCaptureImage={(rotation = 0) => captureImage(rotation)}
-          onRotationChange={setVideoRotation}
-          inspectorName={(call as any)?.inspectorId ? getInspectorName((call as any).inspectorId) : undefined}
-          callStartTime={(call as any)?.startedAt}
-        />
-      </main>
+      {/* Main Content Area - 75% Video / 25% Controls */}
+      <main className="flex-1 grid grid-cols-1 lg:grid-cols-[3fr_1fr]">
+        {/* Video Area - 75% width on desktop */}
+        <section className="min-w-0">
+          <VideoDisplay
+            localStream={localStream}
+            remoteStream={remoteStream}
+            isCoordinator={true}
+            onCaptureImage={(rotation = 0) => captureImage(rotation)}
+            onRotationChange={setVideoRotation}
+            inspectorName={(call as any)?.inspectorId ? getInspectorName((call as any).inspectorId) : undefined}
+            callStartTime={(call as any)?.startedAt}
+          />
+        </section>
 
-      {/* Bottom Control Bar */}
-      <CallControls
-        isMuted={isMuted}
-        isVideoEnabled={isVideoEnabled}
-        capturedImages={capturedMedia}
-        onToggleMute={toggleMute}
-        onToggleVideo={toggleVideo}
-        onOpenSettings={() => setShowSettings(true)}
-        onOpenChat={() => {
-          clearUnreadCount();
-          setShowChat(true);
-        }}
-        onEndCall={endCall}
-        onImageClick={setSelectedImage}
-        onCaptureImage={(rotation = 0) => captureImage(rotation)}
-        isCoordinator={true}
-        videoRotation={videoRotation}
-        unreadCount={unreadCount}
-        isRecording={isRecording}
-        isCapturing={isCapturing}
-        onStartRecording={() => startRecording(videoRotation)}
-        onStopRecording={handleStopRecording}
-        hasStreamToRecord={!!(remoteStream || localStream)}
-      />
+        {/* Controls Sidebar - 25% width on desktop */}
+        <aside className="min-w-[300px] border-l border-border bg-card">
+          <CallControls
+            isMuted={isMuted}
+            isVideoEnabled={isVideoEnabled}
+            capturedImages={capturedMedia}
+            onToggleMute={toggleMute}
+            onToggleVideo={toggleVideo}
+            onOpenSettings={() => setShowSettings(true)}
+            onOpenChat={() => {
+              clearUnreadCount();
+              setShowChat(true);
+            }}
+            onEndCall={endCall}
+            onImageClick={setSelectedImage}
+            onCaptureImage={(rotation = 0) => captureImage(rotation)}
+            isCoordinator={true}
+            videoRotation={videoRotation}
+            unreadCount={unreadCount}
+            isRecording={isRecording}
+            isCapturing={isCapturing}
+            onStartRecording={() => startRecording(videoRotation)}
+            onStopRecording={handleStopRecording}
+            hasStreamToRecord={!!(remoteStream || localStream)}
+          />
+        </aside>
+      </main>
 
       {/* Chat Panel */}
       <ChatPanel

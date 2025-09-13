@@ -226,7 +226,7 @@ export default function VideoDisplay({
         isFullscreen
           ? getFullscreenContainerClass() // Adapt to rotation in fullscreen
           : isCoordinator
-            ? 'inset-0 overflow-hidden' // Container for enlarged video (50% larger)
+            ? 'inset-1 overflow-hidden' // Container for enlarged video
             : 'inset-2' // Smaller area for portrait mode
       }`}>
         <video
