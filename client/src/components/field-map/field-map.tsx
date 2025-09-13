@@ -27,49 +27,23 @@ interface FieldMapProps {
   currentCallInspectorId?: string;
 }
 
-const MOCK_INSPECTORS: Inspector[] = [
-  {
-    id: "inspector1-id",
-    name: "John Martinez",
-    latitude: 37.104181,
-    longitude: -113.585664,
-    status: 'available',
-    specialization: 'Electrical Systems'
-  },
-  {
-    id: "inspector2-id", 
-    name: "Maria Garcia",
-    latitude: 37.106181,
-    longitude: -113.583664,
-    status: 'available',
-    specialization: 'Structural Engineering'
-  },
-  {
-    id: "inspector3-id",
-    name: "David Chen",
-    latitude: 37.102181,
-    longitude: -113.587664,
-    status: 'busy',
-    specialization: 'HVAC Systems'
-  },
-  {
-    id: "inspector4-id",
-    name: "Sarah Johnson",
-    latitude: 37.108181,
-    longitude: -113.581664,
-    status: 'available',
-    specialization: 'Safety Compliance'
-  }
-];
+// Google My Maps configuration
+const GOOGLE_MY_MAPS_ID = '18BQR9080Tx73UGM6yWqKjZ2bHWk6UZcp';
+const FIELD_CENTER = { lat: 37.104181274405406, lng: -113.58566425 };
+
+// Inspector data loaded from Google My Maps KML
+let FIELD_INSPECTORS: Inspector[] = [];
 
 export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspectorId }: FieldMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const googleMapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const kmlLayerRef = useRef<any>(null);
   const [selectedInspector, setSelectedInspector] = useState<Inspector | null>(null);
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [inspectors, setInspectors] = useState<Inspector[]>([]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -130,6 +104,74 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
     };
   }, [isOpen]);
 
+  const extractInspectorsFromKML = async (kmlLayer: any) => {
+    // This function would ideally parse KML data to extract inspector information
+    // For now, we'll use the click events to populate inspector data dynamically
+    console.log('KML layer loaded successfully');
+  };
+
+  const getMarkerColor = (status: string, isCurrentCall: boolean) => {
+    if (isCurrentCall) return '#22c55e';
+    switch (status) {
+      case 'available': return '#3b82f6';
+      case 'busy': return '#f59e0b';
+      case 'offline': return '#6b7280';
+      default: return '#6b7280';
+    }
+  };
+
+  const showInspectorInfo = (inspector: Inspector, position: any) => {
+    const isCurrentCall = inspector.id === currentCallInspectorId;
+    const markerColor = getMarkerColor(inspector.status, isCurrentCall);
+
+    // Create info window content using DOM to avoid XSS
+    const infoWindowContent = document.createElement('div');
+    infoWindowContent.style.cssText = 'padding: 8px; min-width: 200px;';
+    
+    const nameEl = document.createElement('h3');
+    nameEl.style.cssText = 'margin: 0 0 8px 0; color: #1f2937;';
+    nameEl.textContent = inspector.name;
+    infoWindowContent.appendChild(nameEl);
+
+    const specializationEl = document.createElement('p');
+    specializationEl.style.cssText = 'margin: 0 0 4px 0; color: #6b7280; font-size: 14px;';
+    specializationEl.textContent = inspector.specialization || 'Field Representative';
+    infoWindowContent.appendChild(specializationEl);
+
+    const statusEl = document.createElement('p');
+    statusEl.style.cssText = `margin: 0 0 8px 0; color: ${markerColor}; font-weight: 500; font-size: 14px; text-transform: capitalize;`;
+    statusEl.textContent = isCurrentCall ? 'On Current Call' : inspector.status;
+    infoWindowContent.appendChild(statusEl);
+
+    if (!isCurrentCall && inspector.status === 'available') {
+      const buttonEl = document.createElement('button');
+      buttonEl.style.cssText = 'background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px;';
+      buttonEl.textContent = 'Start Call';
+      buttonEl.addEventListener('click', () => {
+        onSelectInspector(inspector);
+        onClose();
+      });
+      infoWindowContent.appendChild(buttonEl);
+    }
+
+    const infoWindow = new window.google.maps.InfoWindow({
+      content: infoWindowContent,
+      position: position
+    });
+
+    infoWindow.open(googleMapRef.current);
+    setSelectedInspector(inspector);
+
+    // Add inspector to our list if not already present
+    setInspectors(prev => {
+      const exists = prev.find(i => i.id === inspector.id);
+      if (!exists) {
+        return [...prev, inspector];
+      }
+      return prev;
+    });
+  };
+
   const initializeMap = () => {
     if (!mapRef.current || !window.google) {
       setMapError("Google Maps API failed to load");
@@ -139,7 +181,7 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
     try {
       // Initialize map centered on the field location
       const map = new window.google.maps.Map(mapRef.current, {
-        center: { lat: 37.104181, lng: -113.585664 },
+        center: FIELD_CENTER,
         zoom: 15,
         mapTypeId: window.google.maps.MapTypeId.SATELLITE,
         styles: [
@@ -153,40 +195,66 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
       googleMapRef.current = map;
 
-      // Add field boundary from the provided Google Maps data
-      // This is a simplified version - in a real app, you'd load the actual KML/GeoJSON
-      const fieldBoundary = new window.google.maps.Polygon({
-        paths: [
-          { lat: 37.103, lng: -113.588 },
-          { lat: 37.105, lng: -113.588 },
-          { lat: 37.105, lng: -113.583 },
-          { lat: 37.103, lng: -113.583 }
-        ],
-        strokeColor: '#FF0000',
-        strokeOpacity: 0.8,
-        strokeWeight: 2,
-        fillColor: '#FF0000',
-        fillOpacity: 0.1,
-      });
-
-      fieldBoundary.setMap(map);
-
-      // Add inspector markers
-      addInspectorMarkers(map);
+      // Load KML data from Google My Maps
+      const kmlUrl = `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1`;
       
-      // Wait for map to fully load before setting as loaded
-      map.addListener('tilesloaded', () => {
-        setIsMapLoaded(true);
-        setMapError(null);
+      const kmlLayer = new window.google.maps.KmlLayer({
+        url: kmlUrl,
+        suppressInfoWindows: true, // We'll handle our own info windows
+        preserveViewport: false, // Auto-zoom to KML bounds
+        map: map
       });
 
-      // Fallback timeout in case tilesloaded doesn't fire
+      kmlLayerRef.current = kmlLayer;
+
+      // Extract inspector data from KML features when clicked
+      kmlLayer.addListener('click', function(event: any) {
+        if (event.featureData) {
+          const featureData = event.featureData;
+          
+          // Extract inspector information from KML data
+          const inspector: Inspector = {
+            id: featureData.name || `inspector-${Date.now()}`,
+            name: featureData.name || 'Unknown Inspector',
+            latitude: event.latLng.lat(),
+            longitude: event.latLng.lng(),
+            status: 'available' as const, // Default status - could be enhanced
+            specialization: featureData.description || 'Field Representative'
+          };
+
+          // Show custom info window
+          showInspectorInfo(inspector, event.latLng);
+        }
+      });
+
+      // Monitor KML loading status
+      kmlLayer.addListener('status_changed', function() {
+        const status = kmlLayer.getStatus();
+        console.log('KML Layer status:', status);
+        
+        if (status === 'OK') {
+          setIsMapLoaded(true);
+          setMapError(null);
+          extractInspectorsFromKML(kmlLayer);
+        } else if (status === 'DOCUMENT_NOT_FOUND') {
+          setMapError("Google My Maps data not found. Please check if the map is publicly accessible.");
+          setIsMapLoaded(false);
+        } else if (status === 'FETCH_ERROR') {
+          setMapError("Failed to load field data. Please check your internet connection.");
+          setIsMapLoaded(false);
+        } else if (status === 'INVALID_DOCUMENT') {
+          setMapError("Invalid map data format. Please check your Google My Maps setup.");
+          setIsMapLoaded(false);
+        }
+      });
+
+      // Fallback timeout in case status doesn't change
       setTimeout(() => {
         if (!isMapLoaded && !mapError) {
           setIsMapLoaded(true);
           setMapError(null);
         }
-      }, 3000);
+      }, 5000);
     } catch (error) {
       console.error('Error initializing Google Maps:', error);
       setMapError("Failed to initialize map. This may be due to an invalid API key or quota exceeded.");
@@ -194,73 +262,6 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
     }
   };
 
-  const addInspectorMarkers = (map: any) => {
-    // Clear existing markers
-    markersRef.current.forEach(marker => marker.setMap(null));
-    markersRef.current = [];
-
-    MOCK_INSPECTORS.forEach(inspector => {
-      const isCurrentCall = inspector.id === currentCallInspectorId;
-      const markerColor = isCurrentCall ? '#22c55e' : 
-                         inspector.status === 'available' ? '#3b82f6' :
-                         inspector.status === 'busy' ? '#ef4444' : '#6b7280';
-
-      const marker = new window.google.maps.Marker({
-        position: { lat: inspector.latitude, lng: inspector.longitude },
-        map: map,
-        title: inspector.name,
-        icon: {
-          path: window.google.maps.SymbolPath.CIRCLE,
-          scale: 10,
-          fillColor: markerColor,
-          fillOpacity: 1,
-          strokeWeight: 2,
-          strokeColor: '#ffffff'
-        }
-      });
-
-      // Create info window content using DOM to avoid XSS
-      const infoWindowContent = document.createElement('div');
-      infoWindowContent.style.cssText = 'padding: 8px; min-width: 200px;';
-      
-      const nameEl = document.createElement('h3');
-      nameEl.style.cssText = 'margin: 0 0 8px 0; color: #1f2937;';
-      nameEl.textContent = inspector.name;
-      infoWindowContent.appendChild(nameEl);
-
-      const specializationEl = document.createElement('p');
-      specializationEl.style.cssText = 'margin: 0 0 4px 0; color: #6b7280; font-size: 14px;';
-      specializationEl.textContent = inspector.specialization || '';
-      infoWindowContent.appendChild(specializationEl);
-
-      const statusEl = document.createElement('p');
-      statusEl.style.cssText = `margin: 0 0 8px 0; color: ${markerColor}; font-weight: 500; font-size: 14px; text-transform: capitalize;`;
-      statusEl.textContent = isCurrentCall ? 'On Current Call' : inspector.status;
-      infoWindowContent.appendChild(statusEl);
-
-      if (!isCurrentCall && inspector.status === 'available') {
-        const buttonEl = document.createElement('button');
-        buttonEl.style.cssText = 'background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px;';
-        buttonEl.textContent = 'Start Call';
-        buttonEl.addEventListener('click', () => {
-          onSelectInspector(inspector);
-          onClose();
-        });
-        infoWindowContent.appendChild(buttonEl);
-      }
-
-      const infoWindow = new window.google.maps.InfoWindow({
-        content: infoWindowContent
-      });
-
-      marker.addListener('click', () => {
-        setSelectedInspector(inspector);
-        infoWindow.open(map, marker);
-      });
-
-      markersRef.current.push(marker);
-    });
-  };
 
   const retryLoadMap = () => {
     setIsRetrying(true);
@@ -385,7 +386,7 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
             <div className="border-l border-gray-200 bg-gray-50 p-4 overflow-y-auto">
               <h3 className="text-lg font-semibold text-black mb-4">Available Inspectors</h3>
               <div className="space-y-3">
-                {MOCK_INSPECTORS.map(inspector => {
+                {inspectors.map((inspector: Inspector) => {
                   const isCurrentCall = inspector.id === currentCallInspectorId;
                   return (
                     <Card 
