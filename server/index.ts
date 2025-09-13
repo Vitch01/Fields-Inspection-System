@@ -22,7 +22,17 @@ app.use((req, res, next) => {
     // Log API requests but skip frequent health check requests to reduce noise
     if (path.startsWith("/api") && !(req.method === "HEAD" && path === "/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
+      
+      // Handle sensitive endpoints by logging safe metadata only
+      if (path === "/api/turn-credentials" && capturedJsonResponse && res.statusCode === 200) {
+        // Log only safe metadata for TURN credentials endpoint
+        const iceServers = capturedJsonResponse.iceServers || [];
+        const stunCount = iceServers.filter((server: any) => server.url?.startsWith('stun:')).length;
+        const turnCount = iceServers.filter((server: any) => server.url?.startsWith('turn:')).length;
+        const provider = capturedJsonResponse.provider || 'unknown';
+        logLine += ` :: ICE servers: ${iceServers.length} (STUN: ${stunCount}, TURN: ${turnCount}, provider: ${provider})`;
+      } else if (capturedJsonResponse && path !== "/api/turn-credentials") {
+        // Log full response for non-sensitive endpoints
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
 
