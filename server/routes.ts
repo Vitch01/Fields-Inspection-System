@@ -362,8 +362,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/turn-credentials', async (_req, res) => {
     try {
       // Check for required Twilio credentials
-      const accountSid = process.env.TWILIO_ACCOUNT_SID;
-      const authToken = process.env.TWILIO_AUTH_TOKEN;
+      const accountSid = process.env.TWILIO_ACCOUNT_SIDV;
+      const authToken = process.env.TWILIO_AUTH_TOKENV;
       
       if (!accountSid || !authToken) {
         console.error('Missing Twilio credentials. TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN must be set.');
