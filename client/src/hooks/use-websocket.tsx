@@ -21,6 +21,7 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
   const isPollingActiveRef = useRef(false);
   const httpPollingJoinedRef = useRef(false);
   const fallbackTriggeredRef = useRef(false);
+  const wsJoinedRef = useRef(false);
 
   useEffect(() => {
     if (enabled) {
@@ -62,31 +63,9 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
     
     console.log(`📡 [HTTP Polling] Starting long polling for ${userRole} in call ${callId}`);
     isPollingActiveRef.current = true;
-    
-    // First, join the call via HTTP
-    if (!httpPollingJoinedRef.current) {
-      const joinMessage: any = {
-        type: "join-call",
-        callId,
-        userId: userRole,
-      };
-      if (displayName) {
-        joinMessage.displayName = displayName;
-      }
-      const joinSuccess = await sendHttpMessage(joinMessage);
-      
-      if (joinSuccess) {
-        httpPollingJoinedRef.current = true;
-        setIsConnected(true);
-        setTransportMode('http-polling');
-        otherOptions.onConnect?.();
-        console.log(`✅ [HTTP Polling] Successfully joined call ${callId} as ${userRole}`);
-      } else {
-        console.error(`❌ [HTTP Polling] Failed to join call ${callId}`);
-        setTransportMode('failed');
-        return;
-      }
-    }
+    setIsConnected(true);
+    setTransportMode('http-polling');
+    otherOptions.onConnect?.();
     
     pollForMessages();
   }
@@ -272,17 +251,7 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
         setTransportMode('websocket');
         otherOptions.onConnect?.();
 
-        // Join the call room with enhanced logging
-        const joinMessage: any = {
-          type: "join-call",
-          callId,
-          userId: userRole,
-        };
-        if (displayName) {
-          joinMessage.displayName = displayName;
-        }
-        console.log("📞 [WebSocket] Sending join-call message:", joinMessage);
-        sendMessage(joinMessage);
+        console.log("📞 [WebSocket] Connection established - ready for manual join");
       };
 
       ws.onmessage = (event) => {
@@ -410,6 +379,53 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
     fallbackTriggeredRef.current = false;
   }
 
+  async function join(): Promise<boolean> {
+    const joinMessage: any = {
+      type: "join-call",
+      callId,
+      userId: userRole,
+    };
+    if (displayName) {
+      joinMessage.displayName = displayName;
+    }
+    
+    console.log("📞 [Manual Join] Sending join-call message:", joinMessage);
+    
+    // Handle WebSocket transport
+    if (transportMode === 'websocket' && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      if (!wsJoinedRef.current) {
+        wsJoinedRef.current = true;
+        sendMessage(joinMessage);
+        console.log("✅ [WebSocket] Successfully sent join-call");
+        return true;
+      } else {
+        console.log("ℹ️ [WebSocket] Already joined via WebSocket");
+        return true;
+      }
+    }
+    
+    // Handle HTTP polling transport
+    if (transportMode === 'http-polling' || fallbackTriggeredRef.current) {
+      if (!httpPollingJoinedRef.current) {
+        const success = await sendHttpMessage(joinMessage);
+        if (success) {
+          httpPollingJoinedRef.current = true;
+          console.log("✅ [HTTP Polling] Successfully sent join-call");
+          return true;
+        } else {
+          console.error("❌ [HTTP Polling] Failed to send join-call");
+          return false;
+        }
+      } else {
+        console.log("ℹ️ [HTTP Polling] Already joined via HTTP");
+        return true;
+      }
+    }
+    
+    console.warn("⚠️ [Manual Join] No suitable transport available for join");
+    return false;
+  }
+
   function sendMessage(message: any) {
     // Route message based on current transport mode
     if (transportMode === 'websocket' && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -449,6 +465,7 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
   return {
     isConnected,
     sendMessage,
+    join, // Manual join function to be called when RTCPeerConnection is ready
     disconnect,
     transportMode, // Expose current transport for debugging and UI indicators
   };

@@ -128,7 +128,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector",
     }
   }, []);
 
-  const { sendMessage, isConnected: wsConnected } = useWebSocket(callId, userRole, {
+  const { sendMessage, join: joinCall, isConnected: wsConnected } = useWebSocket(callId, userRole, {
     onMessage: handleSignalingMessage,
     enabled,
     displayName,
@@ -144,12 +144,23 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector",
     };
   }, [enabled]);
 
-  // Initialize peer connection when WebSocket is connected and enabled
+  // Initialize peer connection when WebSocket is connected and enabled, then join the call
   useEffect(() => {
     if (enabled && wsConnected && localStream) {
       initializePeerConnection();
+      // Join call AFTER peer connection is initialized to prevent race condition
+      console.log('🔗 [WebRTC] Peer connection ready - sending join-call to prevent race condition');
+      joinCall().then((success) => {
+        if (success) {
+          console.log('✅ [WebRTC] Successfully joined call after peer connection setup');
+        } else {
+          console.warn('⚠️ [WebRTC] Failed to join call after peer connection setup');
+        }
+      }).catch((error) => {
+        console.error('❌ [WebRTC] Error joining call:', error);
+      });
     }
-  }, [enabled, wsConnected, localStream]);
+  }, [enabled, wsConnected, localStream, joinCall]);
 
   async function initializeLocalStream() {
     try {
