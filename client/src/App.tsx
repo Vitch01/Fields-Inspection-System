@@ -8,6 +8,9 @@ import Home from "@/pages/home";
 import CoordinatorCall from "@/pages/coordinator-call";
 import InspectorCall from "@/pages/inspector-call";
 import InspectorThankYou from "@/pages/inspector-thank-you";
+import ClientLogin from "@/pages/client-login";
+import ClientDashboard from "@/pages/client-dashboard";
+import SubmitRequest from "@/pages/submit-request";
 
 function Router() {
   return (
@@ -17,6 +20,9 @@ function Router() {
       <Route path="/inspector/:callId" component={InspectorCall} />
       <Route path="/join/:callId" component={InspectorCall} />
       <Route path="/inspector-thank-you" component={InspectorThankYou} />
+      <Route path="/client/login" component={ClientLogin} />
+      <Route path="/client/dashboard" component={ClientDashboard} />
+      <Route path="/client/submit-request" component={SubmitRequest} />
       <Route component={NotFound} />
     </Switch>
   );

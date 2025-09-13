@@ -3,7 +3,8 @@ import express from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertCallSchema, insertCapturedImageSchema, insertVideoRecordingSchema, signalingMessageSchema, videoRecordingSchema, allowedVideoMimeTypes, allowedVideoExtensions } from "@shared/schema";
+import { insertCallSchema, insertCapturedImageSchema, insertVideoRecordingSchema, signalingMessageSchema, videoRecordingSchema, allowedVideoMimeTypes, allowedVideoExtensions, clientLoginSchema, clientRegistrationSchema, inspectionRequestFormSchema } from "@shared/schema";
+import { generateToken, authenticateClient, authorizeClientResource, type AuthenticatedRequest } from "./auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -365,6 +366,209 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ user: { id: user.id, username: user.username, role: user.role, name: user.name } });
     } catch (error) {
       res.status(500).json({ message: 'Login failed' });
+    }
+  });
+
+  // Client authentication routes
+  app.post('/api/client/register', async (req, res) => {
+    try {
+      const clientData = clientRegistrationSchema.parse(req.body);
+      
+      // Check if client already exists
+      const existingClient = await storage.getClientByEmail(clientData.email);
+      if (existingClient) {
+        return res.status(400).json({ message: 'Email already registered' });
+      }
+
+      // Remove confirmPassword from data before storing
+      const { confirmPassword, ...clientToStore } = clientData;
+      
+      // Create client with hashed password (handled in storage layer)
+      const client = await storage.createClient(clientToStore);
+      
+      // Generate JWT token for immediate login
+      const token = generateToken(client);
+      
+      res.json({ 
+        client: { 
+          id: client.id, 
+          name: client.name, 
+          email: client.email,
+          role: 'client'
+        },
+        token
+      });
+    } catch (error: any) {
+      console.error('Client registration failed:', error.message);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: 'Invalid registration data', errors: error.errors });
+      }
+      res.status(500).json({ message: 'Registration failed' });
+    }
+  });
+
+  app.post('/api/client/login', async (req, res) => {
+    try {
+      const { email, password } = clientLoginSchema.parse(req.body);
+      
+      // Use secure password validation from storage layer
+      const client = await storage.validateClientPassword(email, password);
+      if (!client) {
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
+      
+      // Generate JWT token for authenticated session
+      const token = generateToken(client);
+      
+      res.json({ 
+        client: { 
+          id: client.id, 
+          name: client.name, 
+          email: client.email,
+          role: 'client'
+        },
+        token
+      });
+    } catch (error: any) {
+      console.error('Client login failed:', error.message);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: 'Invalid login data', errors: error.errors });
+      }
+      res.status(500).json({ message: 'Login failed' });
+    }
+  });
+
+  // Inspection request management routes - secured with authentication
+  app.post('/api/inspection-requests', authenticateClient, async (req: AuthenticatedRequest, res) => {
+    try {
+      const requestData = inspectionRequestFormSchema.parse(req.body);
+      
+      // Use authenticated client ID instead of accepting from request body
+      const inspectionRequest = await storage.createInspectionRequest({
+        ...requestData,
+        clientId: req.user!.id // Override any client-supplied clientId with authenticated user
+      });
+      
+      res.json(inspectionRequest);
+    } catch (error: any) {
+      console.error('Inspection request creation failed:', error.message);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: 'Invalid request data', errors: error.errors });
+      }
+      res.status(500).json({ message: 'Failed to create inspection request' });
+    }
+  });
+
+  // Change from /client/:clientId to /me to use authenticated context
+  app.get('/api/inspection-requests/me', authenticateClient, async (req: AuthenticatedRequest, res) => {
+    try {
+      // Use authenticated client ID instead of URL parameter
+      const requests = await storage.getInspectionRequestsByClient(req.user!.id);
+      
+      res.json(requests);
+    } catch (error: any) {
+      console.error('Failed to fetch client inspection requests:', error.message);
+      res.status(500).json({ message: 'Failed to fetch inspection requests' });
+    }
+  });
+  
+  // Secure the existing endpoint with authorization checks (for backward compatibility)
+  app.get('/api/inspection-requests/client/:clientId', authenticateClient, authorizeClientResource, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { clientId } = req.params;
+      
+      const requests = await storage.getInspectionRequestsByClient(clientId);
+      
+      res.json(requests);
+    } catch (error: any) {
+      console.error('Failed to fetch client inspection requests:', error.message);
+      res.status(500).json({ message: 'Failed to fetch inspection requests' });
+    }
+  });
+
+  app.get('/api/inspection-requests/:id', authenticateClient, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      
+      const request = await storage.getInspectionRequest(id);
+      if (!request) {
+        return res.status(404).json({ message: 'Inspection request not found' });
+      }
+      
+      // Ensure client can only access their own inspection requests
+      if (request.clientId !== req.user!.id) {
+        return res.status(403).json({ message: 'Access denied: Cannot access other clients\' inspection requests' });
+      }
+      
+      res.json(request);
+    } catch (error: any) {
+      console.error('Failed to fetch inspection request:', error.message);
+      res.status(500).json({ message: 'Failed to fetch inspection request' });
+    }
+  });
+
+  // File upload endpoint for inspection request asset photos
+  app.post('/api/inspection-requests/:id/photos', authenticateClient, imageUpload.array('photos', 10), async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const files = req.files as Express.Multer.File[];
+      
+      if (!files || files.length === 0) {
+        return res.status(400).json({ message: 'No files uploaded' });
+      }
+      
+      // Verify client owns this inspection request
+      const inspectionRequest = await storage.getInspectionRequest(id);
+      if (!inspectionRequest) {
+        return res.status(404).json({ message: 'Inspection request not found' });
+      }
+      
+      if (inspectionRequest.clientId !== req.user!.id) {
+        return res.status(403).json({ message: 'Access denied: Cannot upload photos to other clients\' requests' });
+      }
+      
+      // Return file information for frontend to display
+      const uploadedFiles = files.map(file => ({
+        id: file.filename,
+        filename: file.filename,
+        originalName: file.originalname,
+        size: file.size,
+        url: `/uploads/${file.filename}`,
+        uploadedAt: new Date().toISOString()
+      }));
+      
+      res.json({ 
+        message: 'Photos uploaded successfully',
+        files: uploadedFiles 
+      });
+    } catch (error: any) {
+      console.error('Photo upload failed:', error.message);
+      res.status(500).json({ message: 'Failed to upload photos' });
+    }
+  });
+
+  // Only allow coordinators/admin to update status - clients cannot modify their own requests after submission
+  app.put('/api/inspection-requests/:id/status', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+      
+      if (!status) {
+        return res.status(400).json({ message: 'Status is required' });
+      }
+      
+      // TODO: Add coordinator/admin authentication here when implementing admin features
+      // For now, this endpoint should be restricted to internal use only
+      
+      const updatedRequest = await storage.updateInspectionRequestStatus(id, status);
+      if (!updatedRequest) {
+        return res.status(404).json({ message: 'Inspection request not found' });
+      }
+      
+      res.json(updatedRequest);
+    } catch (error: any) {
+      console.error('Failed to update inspection request status:', error.message);
+      res.status(500).json({ message: 'Failed to update inspection request status' });
     }
   });
 

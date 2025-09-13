@@ -19,6 +19,7 @@ export const clients = pgTable("clients", {
   name: text("name").notNull(),
   contactPerson: text("contact_person"),
   email: text("email").notNull(),
+  password: text("password").notNull(), // Hashed password for authentication
   phone: text("phone"),
   address: text("address"),
   city: text("city"),
@@ -359,3 +360,55 @@ export const videoRecordingSchema = z.object({
 
 export const allowedVideoMimeTypes = ["video/webm", "video/mp4"] as const;
 export const allowedVideoExtensions = [".webm", ".mp4"] as const;
+
+// Client authentication schemas
+export const clientLoginSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
+
+export const clientRegistrationSchema = insertClientSchema.extend({
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  confirmPassword: z.string().min(6, "Please confirm your password"),
+  contactPerson: z.string().optional(),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+});
+
+// Enhanced inspection request schema for form submission
+export const inspectionRequestFormSchema = insertInspectionRequestSchema.extend({
+  location: z.object({
+    address: z.string().min(1, "Address is required"),
+    city: z.string().min(1, "City is required"),
+    state: z.string().min(1, "State is required"),
+    zipCode: z.string().min(1, "ZIP code is required"),
+    latitude: z.number().optional(),
+    longitude: z.number().optional(),
+  }),
+  requestedDate: z.date({
+    required_error: "Please select a preferred inspection date",
+  }),
+  priority: z.enum(["low", "medium", "high", "urgent"], {
+    required_error: "Please select inspection priority",
+  }),
+  assetType: z.enum(["building", "equipment", "infrastructure", "vehicle", "other"], {
+    required_error: "Please select asset type",
+  }),
+  inspectionType: z.enum(["condition_assessment", "wear_tear_analysis", "appraisal", "combined"], {
+    required_error: "Please select inspection type",
+  }),
+  description: z.string().optional(),
+  assetDescription: z.string().optional(),
+  estimatedValue: z.number().optional(),
+});
+
+// Types for client authentication
+export type ClientLogin = z.infer<typeof clientLoginSchema>;
+export type ClientRegistration = z.infer<typeof clientRegistrationSchema>;
+export type InspectionRequestForm = z.infer<typeof inspectionRequestFormSchema>;

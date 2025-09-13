@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Video, Users, Shield, Clock } from "lucide-react";
+import { Video, Users, Shield, Clock, Building } from "lucide-react";
 import logoImage from "@assets/1767 copy_1757516319425.png";
 
 export default function Home() {
@@ -161,54 +161,82 @@ export default function Home() {
           />
         </div>
 
-        {/* Coordinator Card */}
-        <Card className="bg-white border border-white">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2 text-black">
-              <Video className="w-5 h-5 text-black" />
-              <span>Start New Inspection</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="inspector" className="text-black">Inspector</Label>
-              <Select value={inspectorId} onValueChange={setInspectorId}>
-                <SelectTrigger 
-                  data-testid="select-inspector"
-                  className="bg-white text-black border-black focus:ring-black focus:border-black"
-                >
-                  <SelectValue placeholder="Select inspector" />
-                </SelectTrigger>
-                <SelectContent className="bg-white border-black">
-                  <SelectItem value="inspector1-id" className="text-black hover:bg-gray-100 focus:bg-gray-100">John Martinez</SelectItem>
-                  <SelectItem value="inspector2-id" className="text-black hover:bg-gray-100 focus:bg-gray-100">Maria Garcia</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="reference" className="text-black">Inspection Reference Number</Label>
-              <Input
-                id="reference"
-                value={inspectionReference}
-                onChange={(e) => setInspectionReference(e.target.value)}
-                placeholder="INS-2024-001"
-                data-testid="input-reference"
-                className="bg-white text-black border-gray-300"
-              />
-            </div>
-            <Button 
-              onClick={handleStartCall} 
-              className="w-full bg-black text-white hover:bg-gray-800 border border-black" 
-              disabled={isLoading || !inspectorId || !inspectionReference}
-              data-testid="button-start-call"
-            >
-              {isLoading ? "Starting..." : "Start Inspection Call"}
-            </Button>
-            <div className="text-center text-sm text-black mt-4">
-              IFS Video Inspection System
-            </div>
-          </CardContent>
-        </Card>
+        {/* User Type Selection */}
+        <div className="space-y-4">
+          {/* Coordinator Card */}
+          <Card className="bg-white border border-white">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2 text-black">
+                <Video className="w-5 h-5 text-black" />
+                <span>Coordinator - Start New Inspection</span>
+              </CardTitle>
+              <p className="text-gray-600 text-sm">Start a video inspection call with an inspector</p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="inspector" className="text-black">Inspector</Label>
+                <Select value={inspectorId} onValueChange={setInspectorId}>
+                  <SelectTrigger 
+                    data-testid="select-inspector"
+                    className="bg-white text-black border-black focus:ring-black focus:border-black"
+                  >
+                    <SelectValue placeholder="Select inspector" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-black">
+                    <SelectItem value="inspector1-id" className="text-black hover:bg-gray-100 focus:bg-gray-100">John Martinez</SelectItem>
+                    <SelectItem value="inspector2-id" className="text-black hover:bg-gray-100 focus:bg-gray-100">Maria Garcia</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reference" className="text-black">Inspection Reference Number</Label>
+                <Input
+                  id="reference"
+                  value={inspectionReference}
+                  onChange={(e) => setInspectionReference(e.target.value)}
+                  placeholder="INS-2024-001"
+                  data-testid="input-reference"
+                  className="bg-white text-black border-gray-300"
+                />
+              </div>
+              <Button 
+                onClick={handleStartCall} 
+                className="w-full bg-black text-white hover:bg-gray-800 border border-black" 
+                disabled={isLoading || !inspectorId || !inspectionReference}
+                data-testid="button-start-call"
+              >
+                {isLoading ? "Starting..." : "Start Inspection Call"}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Client Portal Card */}
+          <Card className="bg-white border border-white">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2 text-black">
+                <Building className="w-5 h-5 text-black" />
+                <span>Client Portal - Request Inspection</span>
+              </CardTitle>
+              <p className="text-gray-600 text-sm">Submit inspection requests for your assets</p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-gray-700 text-sm">
+                Access the client portal to submit inspection requests, track progress, and view completed reports for your properties and assets.
+              </p>
+              <Button 
+                onClick={() => setLocation("/client/login")} 
+                className="w-full bg-black text-white hover:bg-gray-800 border border-black" 
+                data-testid="button-client-portal"
+              >
+                Access Client Portal
+              </Button>
+            </CardContent>
+          </Card>
+
+          <div className="text-center text-sm text-black mt-4">
+            IFS Video Inspection System
+          </div>
+        </div>
       </main>
     </div>
   );

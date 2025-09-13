@@ -1,13 +1,27 @@
-import { type User, type InsertUser, type Call, type InsertCall, type CapturedImage, type InsertCapturedImage, type VideoRecording, type InsertVideoRecording } from "@shared/schema";
+import { type User, type InsertUser, type Call, type InsertCall, type CapturedImage, type InsertCapturedImage, type VideoRecording, type InsertVideoRecording, type Client, type InsertClient, type InspectionRequest, type InsertInspectionRequest } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { users, calls, capturedImages, videoRecordings } from "@shared/schema";
+import { users, calls, capturedImages, videoRecordings, clients, inspectionRequests } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import bcrypt from "bcrypt";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  
+  // Client authentication methods
+  getClient(id: string): Promise<Client | undefined>;
+  getClientByEmail(email: string): Promise<Client | undefined>;
+  createClient(client: InsertClient): Promise<Client>;
+  updateClient(id: string, updates: Partial<Client>): Promise<Client | undefined>;
+  validateClientPassword(email: string, password: string): Promise<Client | undefined>;
+  
+  // Inspection request management
+  getInspectionRequest(id: string): Promise<InspectionRequest | undefined>;
+  getInspectionRequestsByClient(clientId: string): Promise<InspectionRequest[]>;
+  createInspectionRequest(request: InsertInspectionRequest): Promise<InspectionRequest>;
+  updateInspectionRequestStatus(id: string, status: string): Promise<InspectionRequest | undefined>;
   
   getCall(id: string): Promise<Call | undefined>;
   createCall(call: InsertCall): Promise<Call>;
@@ -69,6 +83,83 @@ export class DbStorage implements IStorage {
 
   async createUser(user: InsertUser): Promise<User> {
     const result = await db.insert(users).values(user).returning();
+    return result[0];
+  }
+
+  // Client authentication methods
+  async getClient(id: string): Promise<Client | undefined> {
+    const result = await db.select().from(clients).where(eq(clients.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getClientByEmail(email: string): Promise<Client | undefined> {
+    const result = await db.select().from(clients).where(eq(clients.email, email)).limit(1);
+    return result[0];
+  }
+
+  async createClient(client: InsertClient): Promise<Client> {
+    // Hash the password before storing
+    const hashedPassword = await bcrypt.hash(client.password, 12);
+    const clientWithHashedPassword = { ...client, password: hashedPassword };
+    
+    const result = await db.insert(clients).values(clientWithHashedPassword).returning();
+    return result[0];
+  }
+
+  async updateClient(id: string, updates: Partial<Client>): Promise<Client | undefined> {
+    // If password is being updated, hash it
+    if (updates.password) {
+      updates.password = await bcrypt.hash(updates.password, 12);
+    }
+    
+    const result = await db.update(clients)
+      .set(updates)
+      .where(eq(clients.id, id))
+      .returning();
+    
+    return result[0];
+  }
+
+  async validateClientPassword(email: string, password: string): Promise<Client | undefined> {
+    const client = await this.getClientByEmail(email);
+    if (!client) {
+      return undefined;
+    }
+    
+    const isValid = await bcrypt.compare(password, client.password);
+    if (!isValid) {
+      return undefined;
+    }
+    
+    return client;
+  }
+
+  // Inspection request management
+  async getInspectionRequest(id: string): Promise<InspectionRequest | undefined> {
+    const result = await db.select().from(inspectionRequests).where(eq(inspectionRequests.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getInspectionRequestsByClient(clientId: string): Promise<InspectionRequest[]> {
+    const result = await db.select()
+      .from(inspectionRequests)
+      .where(eq(inspectionRequests.clientId, clientId))
+      .orderBy(inspectionRequests.createdAt);
+    
+    return result;
+  }
+
+  async createInspectionRequest(request: InsertInspectionRequest): Promise<InspectionRequest> {
+    const result = await db.insert(inspectionRequests).values(request).returning();
+    return result[0];
+  }
+
+  async updateInspectionRequestStatus(id: string, status: string): Promise<InspectionRequest | undefined> {
+    const result = await db.update(inspectionRequests)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(inspectionRequests.id, id))
+      .returning();
+    
     return result[0];
   }
 
