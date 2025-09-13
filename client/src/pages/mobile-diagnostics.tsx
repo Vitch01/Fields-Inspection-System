@@ -111,16 +111,22 @@ export default function MobileDiagnostics() {
       const wsUrl = `${protocol}//${window.location.host}/ws`;
       
       const ws = new WebSocket(wsUrl);
+      let testCompleted = false;
       
       const timeout = setTimeout(() => {
-        ws.close();
-        const duration = Date.now() - start;
-        updateResult('WebSocket Connection', 'error', `Connection timeout after ${duration}ms`, duration);
+        if (!testCompleted) {
+          testCompleted = true;
+          ws.close();
+          const duration = Date.now() - start;
+          updateResult('WebSocket Connection', 'error', `Connection timeout after ${duration}ms`, duration);
+        }
       }, 10000);
 
       ws.onopen = () => {
-        clearTimeout(timeout);
+        if (testCompleted) return;
+        
         const duration = Date.now() - start;
+        console.log(`✅ [Diagnostics] WebSocket connection opened in ${duration}ms`);
         
         // Send a test message
         ws.send(JSON.stringify({
@@ -129,30 +135,43 @@ export default function MobileDiagnostics() {
           userId: 'diagnostic-user'
         }));
         
+        // Complete the test after a short delay to allow message processing
         setTimeout(() => {
-          ws.close();
-          updateResult('WebSocket Connection', 'success', `WebSocket connected successfully (${duration}ms)`, duration, {
-            url: wsUrl,
-            readyState: ws.readyState
-          });
-          
-          // Report test results to server
-          fetch('/api/mobile-diagnostics/websocket-test', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              success: true,
-              duration,
-              networkInfo
-            })
-          }).catch(console.error);
-          
+          if (!testCompleted) {
+            testCompleted = true;
+            clearTimeout(timeout);
+            
+            // Close with normal status code
+            ws.close(1000, 'Diagnostic test completed');
+            
+            updateResult('WebSocket Connection', 'success', `WebSocket connected successfully (${duration}ms)`, duration, {
+              url: wsUrl,
+              readyState: ws.readyState,
+              closeCode: 1000
+            });
+            
+            // Report test results to server
+            fetch('/api/mobile-diagnostics/websocket-test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                success: true,
+                duration,
+                networkInfo
+              })
+            }).catch(console.error);
+          }
         }, 1000);
       };
 
       ws.onerror = (error) => {
+        if (testCompleted) return;
+        testCompleted = true;
         clearTimeout(timeout);
+        
         const duration = Date.now() - start;
+        console.error(`❌ [Diagnostics] WebSocket error after ${duration}ms:`, error);
+        
         updateResult('WebSocket Connection', 'error', `WebSocket error: ${error.toString()}`, duration, {
           url: wsUrl,
           error: error.toString()
@@ -171,16 +190,38 @@ export default function MobileDiagnostics() {
       };
 
       ws.onclose = (event) => {
-        if (!timeout) return; // Already handled
+        // Only handle unexpected closures (when test hasn't completed successfully)
+        if (testCompleted) {
+          console.log(`🔌 [Diagnostics] WebSocket closed normally: code ${event.code}, reason: ${event.reason}`);
+          return;
+        }
+        
+        testCompleted = true;
         clearTimeout(timeout);
         const duration = Date.now() - start;
         
-        if (event.code !== 1000) {
-          updateResult('WebSocket Connection', 'error', `WebSocket closed unexpectedly: ${event.code} - ${event.reason}`, duration, {
+        // Handle unexpected closures
+        const isExpectedClose = event.code === 1000 || event.wasClean;
+        
+        if (!isExpectedClose) {
+          console.warn(`🚨 [Diagnostics] WebSocket closed unexpectedly: code ${event.code}, reason: ${event.reason}, wasClean: ${event.wasClean}`);
+          
+          updateResult('WebSocket Connection', 'error', `WebSocket closed unexpectedly: ${event.code} - ${event.reason || 'No reason provided'}`, duration, {
             code: event.code,
             reason: event.reason,
             wasClean: event.wasClean
           });
+          
+          fetch('/api/mobile-diagnostics/websocket-test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              success: false,
+              error: `WebSocket closed with code ${event.code}`,
+              duration,
+              networkInfo
+            })
+          }).catch(console.error);
         }
       };
 
