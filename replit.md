@@ -3,6 +3,10 @@
 This is a real-time video calling application built for remote site inspections. The application enables coordinators to create video calls with inspectors for conducting site surveys and quality assessments. During calls, users can capture and share images for documentation purposes. The system uses React with TypeScript for the frontend, Express.js for the backend, and WebRTC for real-time video communication.
 
 **Recent Updates (Sep 2025):**
+- **Fixed mobile data connectivity**: Implemented Twilio Network Traversal Service to resolve mobile WebRTC connection issues
+- Added real TURN servers to handle carrier-grade NAT (CGNAT) on mobile networks
+- Enhanced ICE candidate diagnostics with comprehensive logging for mobile debugging
+- Fixed security vulnerability preventing sensitive TURN credentials from being logged
 - Added inspector thank you page with company branding displayed after call completion
 - Enhanced home page with dual interface: coordinator call creation and inspector call joining
 - Improved camera permission cleanup to fully revoke access when inspectors end calls
@@ -41,7 +45,9 @@ Uses Drizzle ORM with PostgreSQL for data persistence:
 WebRTC implementation for peer-to-peer video calling:
 
 - **Signaling Server**: WebSocket-based signaling for connection establishment
-- **STUN Servers**: Google STUN servers for NAT traversal
+- **TURN Service**: Twilio Network Traversal Service provides global STUN/TURN infrastructure for mobile connectivity
+- **Mobile NAT Traversal**: Dynamic TURN credentials with 1-hour TTL for carrier-grade NAT networks
+- **ICE Diagnostics**: Comprehensive logging of candidate types (host, srflx, relay) for debugging
 - **Media Constraints**: Configurable video quality (720p default) with audio enhancement features
 
 ## Authentication & Authorization
@@ -78,6 +84,7 @@ Image capture and storage system:
 ## Real-Time Communication
 - **WebSocket (ws)**: Server-side WebSocket implementation
 - **WebRTC**: Browser native peer-to-peer communication APIs
+- **Twilio**: Network Traversal Service for STUN/TURN infrastructure
 - **TanStack Query**: Server state management and caching
 
 ## Development Tools
