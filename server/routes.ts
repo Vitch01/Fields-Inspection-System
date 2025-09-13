@@ -89,19 +89,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
   const clients = new Map<string, WebSocketClient>();
 
-  // WebSocket connection handling
-  wss.on('connection', (ws: WebSocketClient) => {
-    console.log('New WebSocket connection');
+  // WebSocket connection handling with enhanced mobile diagnostics
+  wss.on('connection', (ws: WebSocketClient, req) => {
+    const clientIP = req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'] || 'Unknown';
+    const origin = req.headers.origin || 'Unknown';
+    const forwardedFor = req.headers['x-forwarded-for'] || 'None';
+    
+    // Enhanced connection logging for mobile debugging
+    console.log('🔗 New WebSocket connection established:', {
+      clientIP,
+      userAgent: userAgent.substring(0, 100), // Truncate long user agents
+      origin,
+      forwardedFor,
+      timestamp: new Date().toISOString()
+    });
 
+    // Track connection duration and quality
+    const connectionStart = Date.now();
+    
     ws.on('message', async (data) => {
       try {
         const message = signalingMessageSchema.parse(JSON.parse(data.toString()));
+        
+        // Enhanced logging for join-call messages to track mobile users
+        if (message.type === 'join-call') {
+          console.log('👋 User joining call:', {
+            userId: message.userId,
+            callId: message.callId,
+            userAgent: userAgent.substring(0, 80),
+            clientIP,
+            connectionDuration: Date.now() - connectionStart,
+            timestamp: new Date().toISOString()
+          });
+        }
         
         switch (message.type) {
           case 'join-call':
             ws.userId = message.userId;
             ws.callId = message.callId;
             clients.set(message.userId, ws);
+            
+            console.log(`✅ User ${message.userId} successfully joined call ${message.callId}. Active connections: ${clients.size}`);
             
             // Broadcast to other participants in the call
             broadcastToCall(message.callId, {
@@ -187,13 +216,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
             break;
         }
       } catch (error) {
-        console.error('WebSocket message error:', error);
+        console.error('❌ WebSocket message parsing error:', {
+          error: error instanceof Error ? error.message : String(error),
+          userId: ws.userId,
+          callId: ws.callId,
+          userAgent: userAgent.substring(0, 80),
+          clientIP,
+          timestamp: new Date().toISOString()
+        });
       }
     });
 
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
+      const connectionDuration = Date.now() - connectionStart;
+      
+      console.log('🔌 WebSocket connection closed:', {
+        userId: ws.userId,
+        callId: ws.callId,
+        code,
+        reason: reason.toString(),
+        duration: connectionDuration,
+        userAgent: userAgent.substring(0, 80),
+        clientIP,
+        timestamp: new Date().toISOString()
+      });
+      
       if (ws.userId) {
         clients.delete(ws.userId);
+        console.log(`🚪 User ${ws.userId} left. Remaining connections: ${clients.size}`);
+        
         if (ws.callId) {
           broadcastToCall(ws.callId, {
             type: 'user-left',
@@ -202,6 +253,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }, ws.userId);
         }
       }
+    });
+
+    ws.on('error', (error) => {
+      console.error('💥 WebSocket connection error:', {
+        error: error.message,
+        userId: ws.userId,
+        callId: ws.callId,
+        userAgent: userAgent.substring(0, 80),
+        clientIP,
+        timestamp: new Date().toISOString()
+      });
     });
   });
 
@@ -222,6 +284,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.head('/api', (req, res) => {
     res.status(200).end();
+  });
+
+  // Mobile connectivity diagnostic endpoints
+  app.get('/api/mobile-diagnostics', (req, res) => {
+    const clientIP = req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'] || 'Unknown';
+    const origin = req.headers.origin || 'Unknown';
+    const forwardedFor = req.headers['x-forwarded-for'] || 'None';
+    const acceptLanguage = req.headers['accept-language'] || 'None';
+    const connection = req.headers.connection || 'None';
+    
+    // Analyze User-Agent for mobile detection
+    const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+    const isTabletUA = /iPad|Android.*Tablet|Windows.*Touch/i.test(userAgent);
+    const browserInfo = {
+      isMobile: isMobileUA,
+      isTablet: isTabletUA,
+      isDesktop: !isMobileUA && !isTabletUA,
+      browser: userAgent.includes('Chrome') ? 'Chrome' : 
+               userAgent.includes('Firefox') ? 'Firefox' : 
+               userAgent.includes('Safari') ? 'Safari' : 'Unknown'
+    };
+
+    const diagnostics = {
+      timestamp: new Date().toISOString(),
+      server: {
+        healthy: true,
+        port: process.env.PORT || '5000',
+        environment: process.env.NODE_ENV || 'development'
+      },
+      client: {
+        ip: clientIP,
+        forwardedFor,
+        userAgent: userAgent.substring(0, 200),
+        origin,
+        acceptLanguage,
+        connection,
+        browserInfo
+      },
+      websocket: {
+        serverRunning: !!wss,
+        activeConnections: clients.size,
+        path: '/ws',
+        url: `${req.protocol === 'https' ? 'wss' : 'ws'}://${req.get('host')}/ws`
+      },
+      network: {
+        // These will be filled by client-side tests
+        message: 'Run client-side network tests for complete analysis'
+      }
+    };
+
+    console.log('📊 Mobile diagnostics requested:', {
+      from: clientIP,
+      userAgent: userAgent.substring(0, 100),
+      browserInfo,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json(diagnostics);
+  });
+
+  app.post('/api/mobile-diagnostics/websocket-test', (req, res) => {
+    const { success, error, duration, networkInfo } = req.body;
+    const clientIP = req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'] || 'Unknown';
+    
+    console.log('🧪 WebSocket test result received:', {
+      success,
+      error,
+      duration,
+      networkInfo,
+      from: clientIP,
+      userAgent: userAgent.substring(0, 100),
+      timestamp: new Date().toISOString()
+    });
+
+    // Store test results for analysis (in production, this would go to a database)
+    res.json({ received: true, timestamp: new Date().toISOString() });
   });
 
   // Auth routes
