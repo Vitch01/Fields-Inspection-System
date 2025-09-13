@@ -1,5 +1,5 @@
 // Fetch TURN credentials from Twilio Network Traversal Service
-export async function fetchTurnCredentialss(): Promise<RTCIceServer[]> {
+export async function fetchTurnCredentials(): Promise<RTCIceServer[]> {
   try {
     const response = await fetch('/api/turn-credentials');
     
