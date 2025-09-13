@@ -348,7 +348,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { username, password } = req.body;
       
       const user = await storage.getUserByUsername(username);
-      if (!user || user.password !== password) {
+      if (!user) {
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
+      
+      // Handle optional password for coordinators vs required password for inspectors
+      if (user.role === 'inspector' && (!user.password || user.password !== password)) {
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
+      
+      // Coordinators with no password use default authentication
+      if (user.role === 'coordinator' && user.password && user.password !== password) {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
 

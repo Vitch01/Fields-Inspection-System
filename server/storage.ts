@@ -39,7 +39,7 @@ export class DbStorage implements IStorage {
         // Add some test users if none exist
         await this.createUser({
           username: "coordinator1",
-          password: "password",
+          // No password - coordinators use default authentication
           role: "coordinator",
           name: "Sarah Johnson"
         });
