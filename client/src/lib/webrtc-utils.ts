@@ -1,59 +1,57 @@
-export function createPeerConnection(): RTCPeerConnection {
+// Fetch TURN credentials from Twilio Network Traversal Service
+export async function fetchTurnCredentials(): Promise<RTCIceServer[]> {
+  try {
+    const response = await fetch('/api/turn-credentials');
+    
+    if (!response.ok) {
+      console.warn('Failed to fetch TURN credentials, using fallback servers');
+      const fallbackData = await response.json();
+      return fallbackData.fallbackServers || getBasicSTUNServers();
+    }
+    
+    const data = await response.json();
+    console.log('Successfully fetched Twilio TURN credentials');
+    return data.iceServers;
+  } catch (error) {
+    console.error('Error fetching TURN credentials:', error);
+    console.warn('Falling back to basic STUN servers only');
+    return getBasicSTUNServers();
+  }
+}
+
+// Get basic STUN servers as fallback
+function getBasicSTUNServers(): RTCIceServer[] {
+  return [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' }
+  ];
+}
+
+// Create peer connection with dynamic TURN servers from Twilio
+export async function createPeerConnection(): Promise<RTCPeerConnection> {
+  // Get dynamic TURN servers from Twilio Network Traversal Service
+  const iceServers = await fetchTurnCredentials();
+  
   const configuration: RTCConfiguration = {
-    iceServers: [
-      // STUN servers for NAT traversal
-      // Using multiple Google STUN servers for redundancy
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
-      
-      // ============================================================
-      // TEMPORARY PUBLIC TURN SERVERS FOR MOBILE CONNECTIVITY
-      // ============================================================
-      // WARNING: These are public demo TURN servers with public credentials
-      // They enable connectivity for mobile devices on restrictive carrier-grade NAT networks
-      // DO NOT use these in production - they are a temporary stopgap solution
-      // 
-      // PRODUCTION IMPLEMENTATION:
-      // 1. Set up a backend endpoint to generate time-limited credentials (24-hour expiry)
-      // 2. Use per-user authentication tokens for credential generation
-      // 3. Implement secure credential rotation mechanism
-      // 4. Consider using services like:
-      //    - Twilio Network Traversal Service
-      //    - Xirsys TURN servers
-      //    - Self-hosted CoTURN server
-      //    - Cloudflare Calls TURN service
-      //
-      // LIMITATIONS OF THESE PUBLIC SERVERS:
-      // - May have usage limits or bandwidth restrictions
-      // - Could be shut down at any time without notice
-      // - No guarantee of availability or performance
-      // - Shared with other users (potential congestion)
-      //
-      // These Cloudflare public TURN servers use "public" credentials intentionally
-      // for demo/development purposes only
-      { 
-        urls: 'turn:turn.cloudflare.com:3478',
-        username: 'public',
-        credential: 'public'
-      },
-      { 
-        urls: 'turn:turn.cloudflare.com:443?transport=tcp',
-        username: 'public',
-        credential: 'public'
-      }
-      // ============================================================
-    ],
+    iceServers,
     // Improve ICE gathering on mobile networks
     iceCandidatePoolSize: 10,
-    // Force all traffic through TURN for mobile connections if needed
-    iceTransportPolicy: 'all', // Use 'all' to allow both STUN and TURN
+    // Use 'all' to allow both STUN and TURN - essential for mobile connectivity
+    iceTransportPolicy: 'all',
     // Better handling of network changes
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require'
   };
+
+  console.log('Creating peer connection with configuration:', {
+    iceServerCount: iceServers.length,
+    hasSTUNServers: iceServers.some(server => server.urls.toString().includes('stun:')),
+    hasTURNServers: iceServers.some(server => server.urls.toString().includes('turn:')),
+    iceTransportPolicy: configuration.iceTransportPolicy
+  });
 
   return new RTCPeerConnection(configuration);
 }

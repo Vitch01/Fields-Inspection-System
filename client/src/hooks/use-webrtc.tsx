@@ -182,8 +182,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }
 
-  function initializePeerConnection() {
-    const pc = createPeerConnection();
+  async function initializePeerConnection() {
+    const pc = await createPeerConnection();
     peerConnectionRef.current = pc;
 
     // Add local stream tracks
@@ -236,10 +236,36 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       }
     };
 
-    // Handle ICE candidates
+    // Handle ICE candidates with detailed diagnostics
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        console.log(`ICE candidate type: ${event.candidate.type}, protocol: ${event.candidate.protocol}`);
+        const candidate = event.candidate;
+        
+        // Enhanced ICE candidate logging for mobile debugging
+        console.log('ICE Candidate Details:', {
+          type: candidate.type,
+          protocol: candidate.protocol,
+          address: candidate.address || 'N/A',
+          port: candidate.port || 'N/A',
+          priority: candidate.priority,
+          component: candidate.component,
+          foundation: candidate.foundation,
+          sdpMLineIndex: candidate.sdpMLineIndex,
+          sdpMid: candidate.sdpMid,
+          usernameFragment: candidate.usernameFragment
+        });
+        
+        // Log candidate type for mobile connectivity analysis
+        if (candidate.type === 'host') {
+          console.log('✓ Host candidate - direct connection possible');
+        } else if (candidate.type === 'srflx') {
+          console.log('✓ Server reflexive candidate - STUN server working');
+        } else if (candidate.type === 'relay') {
+          console.log('✓ Relay candidate - TURN server working (essential for mobile)');
+        } else if (candidate.type === 'prflx') {
+          console.log('✓ Peer reflexive candidate - discovered during connectivity checks');
+        }
+        
         sendMessage({
           type: "ice-candidate",
           callId,
@@ -247,7 +273,38 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           data: event.candidate,
         });
       } else {
-        console.log("ICE candidate gathering complete");
+        console.log("✓ ICE candidate gathering complete");
+        
+        // Log summary of gathered candidates for mobile debugging
+        pc.getStats().then(stats => {
+          const candidateTypes = new Set<string>();
+          const localCandidates: any[] = [];
+          
+          stats.forEach(report => {
+            if (report.type === 'local-candidate') {
+              candidateTypes.add(report.candidateType);
+              localCandidates.push({
+                type: report.candidateType,
+                protocol: report.protocol,
+                address: report.address,
+                port: report.port
+              });
+            }
+          });
+          
+          console.log('ICE Gathering Summary:', {
+            candidateTypes: Array.from(candidateTypes),
+            totalLocalCandidates: localCandidates.length,
+            hasRelayCandidates: candidateTypes.has('relay'),
+            localCandidates: localCandidates
+          });
+          
+          if (!candidateTypes.has('relay')) {
+            console.warn('⚠️ No relay candidates found - mobile data connections may fail');
+          } else {
+            console.log('✓ Relay candidates available - mobile connectivity should work');
+          }
+        }).catch(err => console.warn('Failed to get candidate stats:', err));
       }
     };
 

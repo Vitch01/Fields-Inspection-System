@@ -7,6 +7,7 @@ import { insertCallSchema, insertCapturedImageSchema, insertVideoRecordingSchema
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import twilio from "twilio";
 
 // Multer configuration for image uploads (10MB limit)
 // Configure multer storage for images
@@ -354,6 +355,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ user: { id: user.id, username: user.username, role: user.role, name: user.name } });
     } catch (error) {
       res.status(500).json({ message: 'Login failed' });
+    }
+  });
+
+  // TURN credentials endpoint for WebRTC with Twilio Network Traversal Service
+  app.get('/api/turn-credentials', async (req, res) => {
+    try {
+      // Check for required Twilio credentials
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const authToken = process.env.TWILIO_AUTH_TOKEN;
+      
+      if (!accountSid || !authToken) {
+        console.error('Missing Twilio credentials. TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN must be set.');
+        return res.status(500).json({ 
+          error: 'TURN service unavailable - missing configuration',
+          fallbackServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ]
+        });
+      }
+
+      // Create Twilio client and generate ephemeral TURN credentials
+      const client = twilio(accountSid, authToken);
+      const token = await client.tokens.create({ 
+        ttl: 3600 // 1 hour TTL for credentials
+      });
+      
+      // Return the ice servers from Twilio token
+      res.json({ 
+        iceServers: token.iceServers,
+        ttl: 3600,
+        provider: 'twilio'
+      });
+      
+      console.log('Successfully generated Twilio TURN credentials');
+    } catch (error: any) {
+      console.error('Failed to generate TURN credentials from Twilio:', error.message);
+      
+      // Return fallback STUN servers if Twilio fails
+      res.status(500).json({ 
+        error: 'Failed to generate TURN credentials',
+        fallbackServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' }
+        ]
+      });
     }
   });
 
