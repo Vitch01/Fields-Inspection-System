@@ -460,7 +460,7 @@ export const inspectionRequestFormSchema = insertInspectionRequestSchema.extend(
     latitude: z.number().optional(),
     longitude: z.number().optional(),
   }),
-  requestedDate: z.date({
+  requestedDate: z.coerce.date({
     required_error: "Please select a preferred inspection date",
   }),
   priority: z.enum(["low", "medium", "high", "urgent"], {
