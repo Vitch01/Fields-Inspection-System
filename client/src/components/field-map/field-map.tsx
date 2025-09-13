@@ -269,29 +269,47 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
       ];
       
       // Test KML URLs directly first
-      console.log('Testing KML URLs for accessibility:');
-      kmlUrls.forEach((url, index) => {
-        console.log(`URL ${index + 1}:`, url);
-        // Test if URL is accessible by creating a simple fetch request
-        fetch(url, { method: 'HEAD', mode: 'no-cors' })
-          .then(() => console.log(`URL ${index + 1} is accessible`))
-          .catch(error => console.log(`URL ${index + 1} failed:`, error));
-      });
+      console.log('Testing KML URLs for your Google My Maps layer...');
+      console.log('Primary URL with layer ID:', kmlUrls[0]);
+      console.log('Fallback URL without layer ID:', kmlUrls[1]);
+      
+      // Test actual KML content
+      fetch(kmlUrls[0])
+        .then(response => response.text().then(kmlText => ({response, kmlText})))
+        .then(({response, kmlText}) => {
+          console.log('KML Response status:', response.status);
+          console.log('KML Response headers:', Object.fromEntries(response.headers.entries()));
+          console.log('KML Content preview (first 500 chars):', kmlText.substring(0, 500));
+          
+          if (kmlText.includes('<Placemark>')) {
+            console.log('✓ KML contains Placemark elements - your layer data is accessible!');
+          } else if (kmlText.includes('<!DOCTYPE html>')) {
+            console.log('✗ KML URL returned HTML - map may not be public');
+          } else {
+            console.log('? KML format unclear - checking for NetworkLinks...');
+          }
+        })
+        .catch(error => {
+          console.log('KML fetch error:', error);
+        });
       
       // Try loading the first KML URL (with your layer ID)
       let kmlLayer: any = null;
       let successfulUrl: string = '';
       
       const primaryKmlUrl = kmlUrls[0]; // Use your specific layer URL
-      console.log('Loading KML from primary URL:', primaryKmlUrl);
+      console.log('Creating KML Layer for your Google My Maps...');
+      console.log('KML URL:', primaryKmlUrl);
       
       kmlLayer = new window.google.maps.KmlLayer({
         url: primaryKmlUrl,
-        suppressInfoWindows: false, // Allow info windows to see if features load
-        preserveViewport: true, // Keep the map centered on specified coordinates
+        suppressInfoWindows: false, // Show info windows from your layer
+        preserveViewport: false, // Let KML define the viewport to show your layer bounds
         map: map
       });
+      
       successfulUrl = primaryKmlUrl;
+      console.log('KML Layer created, waiting for status...');
 
       kmlLayerRef.current = kmlLayer;
 
@@ -408,15 +426,20 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
         });
       }
 
-      // Fallback timeout in case status doesn't change
+      // Give more time for your Google My Maps to load
       setTimeout(() => {
         if (!isMapLoaded && !mapError) {
-          console.log('KML loading timed out. Using fallback inspector data from your field...');
-          addFallbackMarkers(map);
-          setIsMapLoaded(true);
-          setMapError(null);
+          console.log('Still waiting for your Google My Maps layer to load...');
+          // Don't use fallback immediately - let your real data load
+          setTimeout(() => {
+            if (!isMapLoaded && !mapError) {
+              console.log('Final timeout - your Google My Maps may need different sharing settings');
+              setIsMapLoaded(true);
+              setMapError('Unable to load your Google My Maps layer. Please ensure your map is shared as "Anyone with the link - Viewer" and try refreshing.');
+            }
+          }, 10000);
         }
-      }, 8000); // Longer timeout to account for debugging delays
+      }, 5000);
     } catch (error) {
       console.error('Error initializing Google Maps:', error);
       setMapError("Failed to initialize map. This may be due to an invalid API key or quota exceeded.");
