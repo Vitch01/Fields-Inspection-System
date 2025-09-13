@@ -3,12 +3,13 @@ import express from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertCallSchema, insertCapturedImageSchema, insertVideoRecordingSchema, signalingMessageSchema, videoRecordingSchema, allowedVideoMimeTypes, allowedVideoExtensions, clientLoginSchema, clientRegistrationSchema, inspectionRequestFormSchema, coordinatorInspectionRequestsQuerySchema, assignDepartmentSchema, assignCoordinatorSchema, updateInspectionRequestSchema, coordinatorParamsSchema, departmentParamsSchema, inspectionRequestParamsSchema, coordinatorLoginSchema } from "@shared/schema";
+import { insertCallSchema, insertCapturedImageSchema, insertVideoRecordingSchema, signalingMessageSchema, videoRecordingSchema, allowedVideoMimeTypes, allowedVideoExtensions, clientLoginSchema, clientRegistrationSchema, inspectionRequestFormSchema, coordinatorInspectionRequestsQuerySchema, assignDepartmentSchema, assignCoordinatorSchema, updateInspectionRequestSchema, coordinatorParamsSchema, departmentParamsSchema, inspectionRequestParamsSchema, coordinatorLoginSchema, insertEmailLogSchema } from "@shared/schema";
 import { generateToken, generateUserToken, authenticateClient, authenticateCoordinator, authenticateUser, authorizeClientResource, authorizeCoordinatorResource, type AuthenticatedRequest } from "./auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import twilio from "twilio";
+import { emailService } from "./lib/email";
 
 // Multer configuration for image uploads (10MB limit)
 // Configure multer storage for images
@@ -1265,6 +1266,175 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Failed to get recordings:', error);
       res.status(500).json({ message: 'Failed to get recordings' });
+    }
+  });
+
+  // Email API endpoints for inspector notifications
+  app.post('/api/emails/inspector-assignment', authenticateCoordinator, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { 
+        inspectorEmail, 
+        inspectorName, 
+        inspectionRequestId, 
+        callId 
+      } = req.body;
+
+      // Validate required fields
+      if (!inspectorEmail || !inspectorName || !inspectionRequestId || !callId) {
+        return res.status(400).json({ 
+          message: 'Missing required fields: inspectorEmail, inspectorName, inspectionRequestId, callId' 
+        });
+      }
+
+      // Get inspection request details
+      const inspectionRequest = await storage.getInspectionRequest(inspectionRequestId);
+      if (!inspectionRequest) {
+        return res.status(404).json({ message: 'Inspection request not found' });
+      }
+
+      // Get client details
+      const client = await storage.getClient(inspectionRequest.clientId);
+      if (!client) {
+        return res.status(404).json({ message: 'Client not found' });
+      }
+
+      // Get coordinator details
+      const coordinator = req.user!;
+
+      // Generate call join URL (using secure base URL to prevent host header injection)
+      const baseUrl = process.env.PUBLIC_BASE_URL || 'https://localhost:5000';
+      const callJoinUrl = `${baseUrl}/inspector-call?callId=${callId}`;
+
+      // Create email log entry first
+      const emailLogData = {
+        callId,
+        inspectionRequestId,
+        recipientType: 'inspector' as const,
+        recipientEmail: inspectorEmail,
+        senderEmail: process.env.FROM_EMAIL || 'noreply@inspections.com',
+        emailType: 'assignment' as const,
+        subject: `New Inspection Assignment - ${client.name} | ${inspectionRequest.title}`,
+        status: 'pending' as const,
+        emailProvider: 'nodemailer',
+        metadata: {
+          inspectorName,
+          coordinatorId: coordinator.id,
+          coordinatorName: coordinator.name
+        }
+      };
+
+      const emailLog = await storage.createEmailLog(emailLogData);
+
+      // Prepare email data
+      const emailData = {
+        inspector: {
+          name: inspectorName,
+          email: inspectorEmail
+        },
+        client,
+        inspectionRequest,
+        callId,
+        callJoinUrl,
+        coordinator
+      };
+
+      // Send email
+      const emailResult = await emailService.sendInspectorAssignmentEmail(emailData);
+
+      if (emailResult.success) {
+        // Update email log with success
+        await storage.updateEmailLogStatus(
+          emailLog.id, 
+          'sent', 
+          new Date(), 
+          undefined, 
+          undefined
+        );
+
+        console.log(`✓ Inspector assignment email sent successfully to ${inspectorEmail}`);
+        res.json({ 
+          success: true, 
+          message: 'Email sent successfully',
+          emailLogId: emailLog.id,
+          messageId: emailResult.messageId
+        });
+      } else {
+        // Update email log with failure
+        await storage.updateEmailLogStatus(
+          emailLog.id, 
+          'failed', 
+          undefined, 
+          undefined, 
+          emailResult.error
+        );
+
+        console.error(`✗ Failed to send inspector assignment email: ${emailResult.error}`);
+        res.status(500).json({ 
+          success: false, 
+          message: 'Failed to send email',
+          error: emailResult.error,
+          emailLogId: emailLog.id
+        });
+      }
+    } catch (error: any) {
+      console.error('Email assignment endpoint error:', error);
+      res.status(500).json({ 
+        message: 'Internal server error',
+        error: error.message 
+      });
+    }
+  });
+
+  // Get email logs for a call
+  app.get('/api/calls/:callId/emails', authenticateUser, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { callId } = req.params;
+      
+      // Verify user has access to this call
+      const call = await storage.getCall(callId);
+      if (!call) {
+        return res.status(404).json({ message: 'Call not found' });
+      }
+
+      // Check user permissions
+      const user = req.user!;
+      if (user.role === 'coordinator' && call.coordinatorId !== user.id) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+      if (user.role === 'inspector' && call.inspectorId !== user.id) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      const emailLogs = await storage.getEmailLogsForCall(callId);
+      res.json(emailLogs);
+    } catch (error: any) {
+      console.error('Email logs retrieval error:', error);
+      res.status(500).json({ 
+        message: 'Failed to retrieve email logs',
+        error: error.message 
+      });
+    }
+  });
+
+  // Get email logs for an inspection request
+  app.get('/api/inspection-requests/:requestId/emails', authenticateCoordinator, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { requestId } = req.params;
+      
+      // Verify inspection request exists
+      const inspectionRequest = await storage.getInspectionRequest(requestId);
+      if (!inspectionRequest) {
+        return res.status(404).json({ message: 'Inspection request not found' });
+      }
+
+      const emailLogs = await storage.getEmailLogsForInspectionRequest(requestId);
+      res.json(emailLogs);
+    } catch (error: any) {
+      console.error('Email logs retrieval error:', error);
+      res.status(500).json({ 
+        message: 'Failed to retrieve email logs',
+        error: error.message 
+      });
     }
   });
 

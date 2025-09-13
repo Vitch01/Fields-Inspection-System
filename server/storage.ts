@@ -1,7 +1,7 @@
-import { type User, type InsertUser, type Call, type InsertCall, type CapturedImage, type InsertCapturedImage, type VideoRecording, type InsertVideoRecording, type Client, type InsertClient, type InspectionRequest, type InsertInspectionRequest } from "@shared/schema";
+import { type User, type InsertUser, type Call, type InsertCall, type CapturedImage, type InsertCapturedImage, type VideoRecording, type InsertVideoRecording, type Client, type InsertClient, type InspectionRequest, type InsertInspectionRequest, type EmailLog, type InsertEmailLog } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { users, calls, capturedImages, videoRecordings, clients, inspectionRequests } from "@shared/schema";
+import { users, calls, capturedImages, videoRecordings, clients, inspectionRequests, emailLogs } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
@@ -52,6 +52,12 @@ export interface IStorage {
   getVideoRecordings(callId: string): Promise<VideoRecording[]>;
   createVideoRecording(recording: InsertVideoRecording): Promise<VideoRecording>;
   deleteVideoRecording(id: string): Promise<boolean>;
+  
+  // Email logging methods
+  createEmailLog(emailLog: InsertEmailLog): Promise<EmailLog>;
+  updateEmailLogStatus(id: string, status: string, sentAt?: Date, deliveredAt?: Date, failureReason?: string): Promise<EmailLog | undefined>;
+  getEmailLogsForCall(callId: string): Promise<EmailLog[]>;
+  getEmailLogsForInspectionRequest(inspectionRequestId: string): Promise<EmailLog[]>;
 }
 
 
@@ -417,6 +423,70 @@ export class DbStorage implements IStorage {
     } catch (error) {
       console.error('Error deleting video recording:', error);
       return false;
+    }
+  }
+
+  // Email logging methods
+  async createEmailLog(emailLog: InsertEmailLog): Promise<EmailLog> {
+    try {
+      const result = await db.insert(emailLogs).values(emailLog).returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error creating email log:', error);
+      throw error;
+    }
+  }
+
+  async updateEmailLogStatus(
+    id: string, 
+    status: string, 
+    sentAt?: Date, 
+    deliveredAt?: Date, 
+    failureReason?: string
+  ): Promise<EmailLog | undefined> {
+    try {
+      const updates: any = { status };
+      if (sentAt) updates.sentAt = sentAt;
+      if (deliveredAt) updates.deliveredAt = deliveredAt;
+      if (failureReason) updates.failureReason = failureReason;
+
+      const result = await db.update(emailLogs)
+        .set(updates)
+        .where(eq(emailLogs.id, id))
+        .returning();
+
+      return result[0];
+    } catch (error) {
+      console.error('Error updating email log status:', error);
+      return undefined;
+    }
+  }
+
+  async getEmailLogsForCall(callId: string): Promise<EmailLog[]> {
+    try {
+      const result = await db.select()
+        .from(emailLogs)
+        .where(eq(emailLogs.callId, callId))
+        .orderBy(emailLogs.createdAt);
+      
+      return result;
+    } catch (error) {
+      console.error('Error fetching email logs for call:', error);
+      return [];
+    }
+  }
+
+  async getEmailLogsForInspectionRequest(inspectionRequestId: string): Promise<EmailLog[]> {
+    try {
+      const result = await db.select()
+        .from(emailLogs)
+        .where(eq(emailLogs.inspectionRequestId, inspectionRequestId))
+        .orderBy(emailLogs.createdAt);
+      
+      return result;
+    } catch (error) {
+      console.error('Error fetching email logs for inspection request:', error);
+      return [];
     }
   }
 }

@@ -460,6 +460,7 @@ export default function CoordinatorDashboard() {
     if (!requestForCall) return;
 
     try {
+      // First create the call
       const response = await apiRequest("POST", "/api/calls", {
         coordinatorId: currentUser.id,
         inspectorId: inspector.id,
@@ -467,6 +468,11 @@ export default function CoordinatorDashboard() {
         status: "pending",
         inspectionReference: `INS-${Date.now()}`,
       });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to create call: ${response.statusText}`);
+      }
+      
       const call = await response.json();
       
       toast({
@@ -478,6 +484,39 @@ export default function CoordinatorDashboard() {
       await apiRequest("PATCH", `/api/coordinator/inspection-requests/${requestForCall.id}`, {
         status: "in_progress"
       });
+      
+      // Send email to inspector with inspection details and call link
+      try {
+        const emailResponse = await apiRequest("POST", "/api/emails/inspector-assignment", {
+          inspectorEmail: inspector.email,
+          inspectorName: inspector.name,
+          inspectionRequestId: requestForCall.id,
+          callId: call.id
+        });
+
+        const emailResult = await emailResponse.json();
+        
+        if (emailResult.success) {
+          toast({
+            title: "Inspector Notified",
+            description: `Email sent to ${inspector.name} with inspection details and call link`,
+          });
+        } else {
+          console.error("Email sending failed:", emailResult.error);
+          toast({
+            title: "Email Warning",
+            description: "Call created but email notification failed. You may need to contact the inspector directly.",
+            variant: "destructive",
+          });
+        }
+      } catch (emailError) {
+        console.error("Email sending error:", emailError);
+        toast({
+          title: "Email Warning", 
+          description: "Call created but email notification failed. You may need to contact the inspector directly.",
+          variant: "destructive",
+        });
+      }
       
       setShowFieldMap(false);
       setRequestForCall(null);
