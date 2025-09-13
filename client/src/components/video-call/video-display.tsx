@@ -30,6 +30,8 @@ export default function VideoDisplay({
   const [callDuration, setCallDuration] = useState(0);
   const [isVideoBlocked, setIsVideoBlocked] = useState(false);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [isLocalVideoBlocked, setIsLocalVideoBlocked] = useState(false);
+  const [isLocalVideoPlaying, setIsLocalVideoPlaying] = useState(false);
 
   // Calculate call duration
   useEffect(() => {
@@ -124,9 +126,59 @@ export default function VideoDisplay({
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
+      console.log('VideoDisplay: Setting local video stream', {
+        streamId: localStream.id,
+        tracks: localStream.getTracks().map(t => ({ kind: t.kind, id: t.id, enabled: t.enabled })),
+        isCoordinator
+      });
+      
       localVideoRef.current.srcObject = localStream;
+      
+      const video = localVideoRef.current;
+      
+      // Handle local video play events
+      const handleLocalPlay = () => {
+        console.log('VideoDisplay: Local video started playing');
+        setIsLocalVideoPlaying(true);
+        setIsLocalVideoBlocked(false);
+      };
+      
+      const handleLocalPause = () => {
+        console.log('VideoDisplay: Local video paused');
+        setIsLocalVideoPlaying(false);
+      };
+      
+      video.addEventListener('play', handleLocalPlay);
+      video.addEventListener('pause', handleLocalPause);
+      
+      // Attempt programmatic play for local video after a short delay
+      const playLocalVideo = async () => {
+        try {
+          console.log('VideoDisplay: Attempting programmatic local video play');
+          await video.play();
+          console.log('VideoDisplay: Local video play succeeded');
+        } catch (error: any) {
+          console.error('VideoDisplay: Local video play failed:', error);
+          
+          if (error.name === 'NotAllowedError' || error.name === 'NotSupportedError') {
+            console.log('VideoDisplay: Local video autoplay blocked, showing play button');
+            setIsLocalVideoBlocked(true);
+          } else {
+            console.error('VideoDisplay: Unexpected local video play error:', error);
+          }
+        }
+      };
+      
+      // Delay play attempt to ensure video element is ready
+      const playTimeout = setTimeout(playLocalVideo, 100);
+      
+      return () => {
+        video.removeEventListener('play', handleLocalPlay);
+        video.removeEventListener('pause', handleLocalPause);
+        clearTimeout(playTimeout);
+      };
     }
-  }, [localStream]);
+  }, [localStream, isCoordinator]);
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
@@ -221,6 +273,26 @@ export default function VideoDisplay({
         // Even user gesture failed - might be a deeper issue
         if (error.name === 'NotAllowedError') {
           console.error('VideoDisplay: Manual play still not allowed - may need user interaction on document first');
+        }
+      }
+    }
+  };
+
+  // Handle manual local video play for when autoplay is blocked
+  const handleManualLocalPlay = async () => {
+    if (localVideoRef.current) {
+      try {
+        console.log('VideoDisplay: Manual local play button clicked');
+        await localVideoRef.current.play();
+        console.log('VideoDisplay: Manual local play succeeded');
+        setIsLocalVideoBlocked(false);
+        setIsLocalVideoPlaying(true);
+      } catch (error: any) {
+        console.error('VideoDisplay: Manual local play failed:', error);
+        
+        // Even user gesture failed - might be a deeper issue
+        if (error.name === 'NotAllowedError') {
+          console.error('VideoDisplay: Manual local play still not allowed - may need user interaction on document first');
         }
       }
     }
@@ -420,6 +492,20 @@ export default function VideoDisplay({
         <div className="absolute bottom-1 left-1 bg-white text-black text-xs px-1 rounded border border-gray-300">
           {isCoordinator ? "You" : "You"}
         </div>
+        
+        {/* Local Video Blocked Overlay - Small Play Button */}
+        {isLocalVideoBlocked && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm rounded-lg">
+            <Button
+              size="icon"
+              className="w-8 h-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={handleManualLocalPlay}
+              data-testid="button-manual-local-play"
+            >
+              <Play className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Floating Capture Button - Only show when not fullscreen */}
