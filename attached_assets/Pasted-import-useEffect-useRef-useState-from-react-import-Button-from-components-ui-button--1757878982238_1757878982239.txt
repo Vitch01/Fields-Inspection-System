@@ -303,8 +303,8 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
     } catch (error) {
       console.error('💥 Error initializing Google Maps:', error);
-      console.error('Error details:', (error as Error).message, (error as Error).stack);
-      setMapError(`Failed to initialize map: ${(error as Error).message || 'Unknown error'}. This may be due to an invalid API key or network issues.`);
+      console.error('Error details:', error.message, error.stack);
+      setMapError(`Failed to initialize map: ${error.message || 'Unknown error'}. This may be due to an invalid API key or network issues.`);
       setIsMapLoaded(false);
     }
   };
@@ -568,119 +568,117 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
             <X className="w-4 h-4" />
           </Button>
         </CardHeader>
-        <CardContent className="p-0 h-[calc(80vh-80px)] flex">
-          <div className="flex-1 relative">
-            {mapError ? (
-              <div className="flex flex-col items-center justify-center h-full p-8 bg-gray-50">
-                <MapPin className="w-16 h-16 text-gray-400 mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2 text-center">Unable to Load Map</h3>
-                <p className="text-sm text-gray-600 text-center max-w-md mb-6">{mapError}</p>
-                <Button
-                  onClick={retryLoadMap}
-                  disabled={isRetrying}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                  data-testid="button-retry-map"
-                >
-                  {isRetrying ? 'Loading...' : 'Try Again'}
-                </Button>
-              </div>
-            ) : (
+        <CardContent className="p-0 h-full">
+          <div className="grid grid-cols-1 lg:grid-cols-3 h-full">
+            {/* Map Area */}
+            <div className="lg:col-span-2 relative">
               <div
                 ref={mapRef}
                 className="w-full h-full"
                 data-testid="google-map-container"
               />
-            )}
-            {!isMapLoaded && !mapError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                  <p className="text-sm text-gray-600">Loading map...</p>
+              {!isMapLoaded && !mapError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                    <p className="text-black">Loading field map...</p>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-          
-          <div className="w-80 border-l border-gray-300 bg-white">
-            <div className="p-4 border-b border-gray-300">
-              <h3 className="font-medium text-gray-900">Available Inspectors</h3>
+              )}
+              {mapError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white">
+                  <div className="text-center">
+                    <div className="text-red-600 mb-4">
+                      <p className="font-medium">Map Loading Error</p>
+                      <p className="text-sm text-black mt-1">{mapError}</p>
+                    </div>
+                    <Button 
+                      onClick={retryLoadMap} 
+                      size="sm"
+                      disabled={isRetrying || !import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
+                    >
+                      {isRetrying ? "Retrying..." : "Retry"}
+                    </Button>
+                    {!import.meta.env.VITE_GOOGLE_MAPS_API_KEY && (
+                      <p className="text-xs text-black mt-2">
+                        Contact administrator to configure Google Maps API key
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="overflow-y-auto h-[calc(80vh-160px)]">
-              {inspectors.length > 0 ? (
-                <div className="p-4 space-y-3">
-                  {inspectors.map((inspector) => {
-                    const isCurrentCall = inspector.id === currentCallInspectorId;
-                    return (
-                      <div
-                        key={inspector.id}
-                        className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 cursor-pointer"
-                        onClick={() => showInspectorInfo(inspector, { lat: inspector.latitude, lng: inspector.longitude })}
-                        data-testid={`inspector-card-${inspector.id}`}
-                      >
-                        <div className="flex items-start justify-between mb-2">
+
+            {/* Inspector List */}
+            <div className="border-l border-gray-300 bg-white p-4 overflow-y-auto">
+              <h3 className="text-lg font-semibold text-black mb-4">Available Inspectors</h3>
+              <div className="space-y-3">
+                {inspectors.map((inspector: Inspector) => {
+                  const isCurrentCall = inspector.id === currentCallInspectorId;
+                  return (
+                    <Card 
+                      key={inspector.id} 
+                      className={`p-3 cursor-pointer transition-colors bg-white hover:bg-gray-50 border border-gray-200 ${
+                        selectedInspector?.id === inspector.id ? 'ring-2 ring-blue-500' : ''
+                      }`}
+                      onClick={() => setSelectedInspector(inspector)}
+                      data-testid={`inspector-card-${inspector.id}`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <MapPin className="w-4 h-4 text-muted-foreground" />
+                            <span className="font-medium text-black">{inspector.name}</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground mb-2">{inspector.specialization}</p>
                           <div className="flex items-center space-x-2">
-                            <MapPin className="w-4 h-4 text-gray-400" />
-                            <h4 className="font-medium text-gray-900 text-sm">{inspector.name}</h4>
+                            <div className={`w-2 h-2 rounded-full ${getStatusDot(inspector.status, isCurrentCall)}`}></div>
+                            <span className={`text-sm font-medium ${getStatusColor(inspector.status, isCurrentCall)}`}>
+                              {isCurrentCall ? 'On Current Call' : inspector.status.charAt(0).toUpperCase() + inspector.status.slice(1)}
+                            </span>
                           </div>
-                          <div className={`w-2 h-2 rounded-full ${getStatusDot(inspector.status, isCurrentCall)}`}></div>
                         </div>
-                        <p className="text-xs text-gray-600 mb-1">{inspector.specialization}</p>
-                        <div className="flex items-center space-x-2">
-                          <span className={`text-xs font-medium ${getStatusColor(inspector.status, isCurrentCall)}`}>
-                            {isCurrentCall ? 'On Current Call' : inspector.status.charAt(0).toUpperCase() + inspector.status.slice(1)}
-                          </span>
-                        </div>
-                        {inspector.phone && (
-                          <div className="flex items-center space-x-1 mt-2">
-                            <Phone className="w-3 h-3 text-gray-400" />
-                            <span className="text-xs text-gray-600">{inspector.phone}</span>
-                          </div>
-                        )}
                         {!isCurrentCall && inspector.status === 'available' && (
                           <Button
                             size="sm"
-                            className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white"
                             onClick={(e) => {
                               e.stopPropagation();
                               onSelectInspector(inspector);
                               onClose();
                             }}
-                            data-testid={`button-select-inspector-${inspector.id}`}
+                            className="ml-2"
+                            data-testid={`button-call-inspector-${inspector.id}`}
                           >
+                            <Phone className="w-3 h-3 mr-1" />
                             Call
                           </Button>
                         )}
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="p-4 text-center">
-                  <MapPin className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600">
-                    {isMapLoaded ? 'No inspectors found in your area' : 'Loading inspectors...'}
-                  </p>
-                </div>
-              )}
-            </div>
-            
-            <div className="p-4 border-t border-gray-300 bg-gray-50">
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                  <span className="text-xs text-gray-600">On Current Call</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                  <span className="text-xs text-gray-600">Available</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                  <span className="text-xs text-gray-600">Busy</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 rounded-full bg-gray-500"></div>
-                  <span className="text-xs text-gray-600">Offline</span>
+                    </Card>
+                  );
+                })}
+              </div>
+
+              {/* Map Legend */}
+              <div className="mt-6 pt-4 border-t border-border">
+                <h4 className="font-medium text-black mb-3">Legend</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                    <span className="text-black">On Current Call</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                    <span className="text-black">Available</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                    <span className="text-black">Busy</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-3 h-3 rounded-full bg-gray-500"></div>
+                    <span className="text-black">Offline</span>
+                  </div>
                 </div>
               </div>
             </div>
