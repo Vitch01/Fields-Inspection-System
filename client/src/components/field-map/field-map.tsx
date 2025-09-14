@@ -556,15 +556,15 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-      <Card className="w-full max-w-7xl h-[85vh] bg-card border-card-border shadow-2xl">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-6 border-b border-border bg-gradient-to-r from-primary/5 to-secondary/5">
+      <Card className="w-full max-w-7xl h-[85vh] bg-white border border-gray-200 shadow-2xl">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-teal-50">
           <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <MapIcon className="w-5 h-5 text-primary" />
+            <div className="p-2 rounded-lg bg-blue-100">
+              <MapIcon className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <CardTitle className="text-2xl font-bold text-foreground">Field Inspector Map</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">Select an inspector to start a video call</p>
+              <CardTitle className="text-2xl font-bold text-gray-900">Field Inspector Map</CardTitle>
+              <p className="text-sm text-gray-600 mt-1">Select an inspector to start a video call</p>
             </div>
           </div>
           <Button
@@ -580,13 +580,13 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
         <CardContent className="p-0 h-[calc(80vh-80px)] flex">
           <div className="flex-1 relative">
             {mapError ? (
-              <div className="h-full flex items-center justify-center bg-muted/30 rounded-l-lg">
+              <div className="h-full flex items-center justify-center bg-gray-50 rounded-l-lg">
                 <div className="text-center p-8 max-w-md">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-destructive/10 flex items-center justify-center">
-                    <MapIcon className="w-8 h-8 text-destructive" />
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
+                    <MapIcon className="w-8 h-8 text-red-600" />
                   </div>
-                  <h3 className="text-lg font-semibold text-foreground mb-2">Map Loading Error</h3>
-                  <p className="text-muted-foreground mb-6 leading-relaxed">{mapError}</p>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Map Loading Error</h3>
+                  <p className="text-gray-600 mb-6 leading-relaxed">{mapError}</p>
                   <Button 
                     onClick={retryLoadMap} 
                     disabled={isRetrying}
@@ -612,34 +612,34 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
               />
             )}
             {!isMapLoaded && !mapError && (
-              <div className="absolute inset-0 bg-muted/50 backdrop-blur-sm flex items-center justify-center rounded-l-lg">
+              <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center rounded-l-lg">
                 <div className="text-center p-8">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
                   </div>
-                  <h3 className="text-lg font-semibold text-foreground mb-2">Loading Field Map</h3>
-                  <p className="text-muted-foreground">Please wait while we load your Google My Maps locations</p>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Loading Field Map</h3>
+                  <p className="text-gray-600">Please wait while we load your Google My Maps locations</p>
                 </div>
               </div>
             )}
           </div>
           
-          <div className="w-84 bg-muted/30 border-l border-border overflow-y-auto">
-            <div className="p-6 bg-card border-b border-border">
+          <div className="w-84 bg-gray-50 border-l border-gray-200 overflow-y-auto">
+            <div className="p-6 bg-white border-b border-gray-200">
               <div className="flex items-center space-x-2 mb-3">
-                <User className="w-5 h-5 text-primary" />
-                <h3 className="text-lg font-semibold text-foreground">Available Inspectors</h3>
+                <User className="w-5 h-5 text-blue-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Available Inspectors</h3>
               </div>
-              <p className="text-sm text-muted-foreground">Click on an inspector card to start a video call</p>
+              <p className="text-sm text-gray-600">Click on an inspector card to start a video call</p>
             </div>
             <div className="p-6 space-y-4">
               {inspectors.length === 0 ? (
                 <div className="text-center py-12">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted/50 flex items-center justify-center">
-                    <User className="w-8 h-8 text-muted-foreground" />
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                    <User className="w-8 h-8 text-gray-400" />
                   </div>
-                  <h4 className="text-lg font-semibold text-foreground mb-2">No Inspectors Found</h4>
-                  <p className="text-sm text-muted-foreground max-w-xs mx-auto leading-relaxed">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-2">No Inspectors Found</h4>
+                  <p className="text-sm text-gray-600 max-w-xs mx-auto leading-relaxed">
                     Make sure your Google My Maps contains field inspector locations and they match your database users
                   </p>
                 </div>
@@ -651,12 +651,12 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
                   return (
                     <Card
                       key={inspector.id}
-                      className={`p-5 transition-all duration-200 border cursor-pointer hover-elevate ${
+                      className={`p-5 transition-all duration-200 border cursor-pointer hover:shadow-md hover:border-blue-300 ${
                         isCurrentCall 
-                          ? 'bg-primary/5 border-primary/20 ring-1 ring-primary/20' 
+                          ? 'bg-blue-50 border-blue-200 ring-1 ring-blue-200' 
                           : isAvailable
-                          ? 'bg-card border-border hover:border-primary/30'
-                          : 'bg-muted/30 border-muted cursor-not-allowed opacity-75'
+                          ? 'bg-white border-gray-200 hover:bg-blue-50'
+                          : 'bg-gray-100 border-gray-200 cursor-not-allowed opacity-75'
                       }`}
                       onClick={() => {
                         if (isAvailable) {
@@ -672,10 +672,10 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
                         <div className="flex-shrink-0">
                           <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
                             isCurrentCall 
-                              ? 'bg-primary text-primary-foreground' 
+                              ? 'bg-blue-600 text-white' 
                               : isAvailable
-                              ? 'bg-secondary/10 text-secondary'
-                              : 'bg-muted text-muted-foreground'
+                              ? 'bg-teal-100 text-teal-600'
+                              : 'bg-gray-200 text-gray-500'
                           }`}>
                             <User className="w-5 h-5" />
                           </div>
@@ -683,7 +683,7 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
                         
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center space-x-2 mb-1">
-                            <h4 className="font-semibold text-foreground truncate">{inspector.name}</h4>
+                            <h4 className="font-semibold text-gray-900 truncate">{inspector.name}</h4>
                             <Badge 
                               variant={isCurrentCall ? 'default' : isAvailable ? 'secondary' : 'outline'}
                               className="text-xs"
@@ -692,31 +692,31 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
                             </Badge>
                           </div>
                           
-                          <p className="text-sm text-muted-foreground mb-3">
+                          <p className="text-sm text-gray-600 mb-3">
                             {inspector.specialization || 'Field Representative'}
                           </p>
                           
                           <div className="space-y-1">
                             {inspector.phone && (
-                              <div className="flex items-center text-xs text-muted-foreground">
+                              <div className="flex items-center text-xs text-gray-500">
                                 <Phone className="w-3 h-3 mr-2 flex-shrink-0" />
                                 <span className="truncate">{inspector.phone}</span>
                               </div>
                             )}
                             {inspector.email && (
-                              <div className="flex items-center text-xs text-muted-foreground">
+                              <div className="flex items-center text-xs text-gray-500">
                                 <Mail className="w-3 h-3 mr-2 flex-shrink-0" />
                                 <span className="truncate">{inspector.email}</span>
                               </div>
                             )}
                             {inspector.price && (
-                              <div className="flex items-center text-xs text-muted-foreground">
+                              <div className="flex items-center text-xs text-gray-500">
                                 <DollarSign className="w-3 h-3 mr-2 flex-shrink-0" />
                                 <span className="truncate">{inspector.price}</span>
                               </div>
                             )}
                             {inspector.note && (
-                              <div className="flex items-center text-xs text-muted-foreground">
+                              <div className="flex items-center text-xs text-gray-500">
                                 <FileText className="w-3 h-3 mr-2 flex-shrink-0" />
                                 <span className="truncate">{inspector.note}</span>
                               </div>
@@ -744,24 +744,24 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
               )}
             </div>
             
-            <div className="p-6 border-t border-border bg-muted/20">
-              <h4 className="font-medium text-foreground mb-4">Status Legend</h4>
+            <div className="p-6 border-t border-gray-200 bg-gray-50">
+              <h4 className="font-medium text-gray-900 mb-4">Status Legend</h4>
               <div className="space-y-3">
                 <div className="flex items-center space-x-3">
                   <Badge variant="default" className="text-xs">Active Call</Badge>
-                  <span className="text-xs text-muted-foreground">Currently on a video call</span>
+                  <span className="text-xs text-gray-600">Currently on a video call</span>
                 </div>
                 <div className="flex items-center space-x-3">
                   <Badge variant="secondary" className="text-xs">Available</Badge>
-                  <span className="text-xs text-muted-foreground">Ready to start a call</span>
+                  <span className="text-xs text-gray-600">Ready to start a call</span>
                 </div>
                 <div className="flex items-center space-x-3">
                   <Badge variant="outline" className="text-xs">Busy</Badge>
-                  <span className="text-xs text-muted-foreground">Currently unavailable</span>
+                  <span className="text-xs text-gray-600">Currently unavailable</span>
                 </div>
                 <div className="flex items-center space-x-3">
                   <Badge variant="outline" className="text-xs opacity-60">Offline</Badge>
-                  <span className="text-xs text-muted-foreground">Not connected</span>
+                  <span className="text-xs text-gray-600">Not connected</span>
                 </div>
               </div>
             </div>
