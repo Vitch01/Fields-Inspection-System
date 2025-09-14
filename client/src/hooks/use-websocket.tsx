@@ -46,6 +46,8 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
   const messageQueueRef = useRef<any[]>([]);
   const fallbackPollIntervalRef = useRef<NodeJS.Timeout>();
   const isManualDisconnectRef = useRef(false);
+  const isConnectingRef = useRef(false);
+  const visibilityHandlerRef = useRef<(() => void) | null>(null);
   const lastPongRef = useRef<number>(Date.now());
   
   // Mobile-specific configuration
@@ -61,14 +63,40 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
   const MAX_RECONNECT_DELAY = 30000;
 
   useEffect(() => {
-    connect();
+    // Add jittered delay to prevent simultaneous connections from multiple tabs/devices
+    const jitteredDelay = 200 + Math.random() * 300; // 200-500ms
+    const connectTimer = setTimeout(() => {
+      connect();
+    }, jitteredDelay);
+    
+    // Add page visibility handling for fast reconnect
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !connectionState.isConnected && !isManualDisconnectRef.current) {
+        console.log('🔄 Page became visible, attempting fast reconnect');
+        connect();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    visibilityHandlerRef.current = handleVisibilityChange;
+    
     return () => {
+      clearTimeout(connectTimer);
       cleanup();
+      if (visibilityHandlerRef.current) {
+        document.removeEventListener('visibilitychange', visibilityHandlerRef.current);
+        visibilityHandlerRef.current = null;
+      }
     };
   }, [callId]);
 
-  function cleanup() {
-    isManualDisconnectRef.current = true;
+  function cleanup(isExplicitDisconnect = false) {
+    // Only mark as manual disconnect if explicitly requested (e.g., "end call" button)
+    if (isExplicitDisconnect) {
+      isManualDisconnectRef.current = true;
+    }
+    
+    isConnectingRef.current = false;
     
     // Clear all timeouts
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
@@ -79,7 +107,8 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
     
     // Close WebSocket
     if (wsRef.current) {
-      wsRef.current.close(1000, 'Client disconnect');
+      const closeReason = isExplicitDisconnect ? 'Client disconnect' : 'Component cleanup';
+      wsRef.current.close(1000, closeReason);
       wsRef.current = null;
     }
     
@@ -154,7 +183,24 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
   }
 
   const connect = useCallback(async () => {
-    if (isManualDisconnectRef.current) return;
+    if (isManualDisconnectRef.current) {
+      console.log('🚫 Skipping connection attempt - manual disconnect active');
+      return;
+    }
+    
+    // Prevent overlapping connection attempts
+    if (isConnectingRef.current) {
+      console.log('🚫 Skipping connection attempt - already connecting');
+      return;
+    }
+    
+    // Don't create new connection if current one is OPEN or CONNECTING
+    if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+      console.log(`🚫 Skipping connection attempt - existing connection state: ${wsRef.current.readyState}`);
+      return;
+    }
+    
+    isConnectingRef.current = true;
     
     try {
       // Clear existing connection timeout
@@ -181,6 +227,8 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
       ws.onopen = () => {
         console.log('✅ WebSocket connected successfully!');
         console.log(`📡 Connection details: readyState=${ws.readyState}, url=${ws.url}`);
+        
+        isConnectingRef.current = false;
         if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
         
         setConnectionState(prev => ({
@@ -234,6 +282,8 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
         console.log(`❌ WebSocket disconnected (code: ${event.code}, reason: '${event.reason}', wasClean: ${event.wasClean})`);
         console.log(`📡 Final readyState: ${ws.readyState}, URL: ${ws.url}`);
         
+        isConnectingRef.current = false;
+        
         // Log detailed close code meanings
         const closeCodeMeanings = {
           1000: 'Normal Closure',
@@ -284,6 +334,8 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
       ws.onerror = (error) => {
         console.error('💥 WebSocket error occurred:', error);
         console.log(`📡 WebSocket state at error: readyState=${ws.readyState}, url=${ws.url}`);
+        
+        isConnectingRef.current = false;
         options.onError?.('WebSocket error', error);
         
         if (!isManualDisconnectRef.current) {
@@ -298,6 +350,7 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
         stack: error instanceof Error ? error.stack : undefined,
         url: 'WebSocket creation failed before URL assignment'
       });
+      isConnectingRef.current = false;
       handleConnectionFailure('Failed to create WebSocket');
     }
   }, [callId, userRole, connectionState.reconnectAttempts]);
@@ -371,7 +424,12 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
   }
 
   function disconnect() {
-    cleanup();
+    cleanup(true); // Mark as explicit disconnect
+  }
+  
+  function endCall() {
+    isManualDisconnectRef.current = true;
+    cleanup(true);
   }
 
   function sendMessage(message: any) {
@@ -422,5 +480,6 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
     connectionType,
     sendMessage,
     disconnect,
+    endCall,
   };
 }

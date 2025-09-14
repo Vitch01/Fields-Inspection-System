@@ -24,6 +24,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingSupported, setIsRecordingSupported] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isPeerReady, setIsPeerReady] = useState(false);
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -33,6 +34,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const captureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const captureRequestIdRef = useRef<string | null>(null);
   const iceRestartInProgressRef = useRef<boolean>(false);
+  const queuedIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const remoteDescriptionSetRef = useRef<boolean>(false);
   const { toast } = useToast();
 
   // Helper function to get supported mimeType
@@ -518,6 +521,10 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
     try {
       await pc.setRemoteDescription(offer);
+      remoteDescriptionSetRef.current = true;
+      // Flush any queued ICE candidates
+      flushQueuedIceCandidates();
+      
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       
@@ -532,6 +539,26 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }
 
+  // Function to flush queued ICE candidates
+  async function flushQueuedIceCandidates() {
+    const pc = peerConnectionRef.current;
+    if (!pc || queuedIceCandidatesRef.current.length === 0) return;
+    
+    console.log(`🧊 ${userRole}: Flushing ${queuedIceCandidatesRef.current.length} queued ICE candidates`);
+    
+    const candidates = [...queuedIceCandidatesRef.current];
+    queuedIceCandidatesRef.current = []; // Clear the queue
+    
+    for (const candidate of candidates) {
+      try {
+        await pc.addIceCandidate(candidate);
+        console.log(`✅ ${userRole}: Added queued ICE candidate`);
+      } catch (error) {
+        console.error(`❌ ${userRole}: Failed to add queued ICE candidate:`, error);
+      }
+    }
+  }
+  
   async function handleSignalingMessage(message: any) {
     console.log(`🔗 ${userRole}: Received signaling message for call ${callId}:`, message.type, message);
     const pc = peerConnectionRef.current;
@@ -549,14 +576,36 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           if (!pc) return;
           if (userRole === "coordinator") {
             await pc.setRemoteDescription(message.data);
+            remoteDescriptionSetRef.current = true;
+            // Flush any queued ICE candidates
+            flushQueuedIceCandidates();
           }
           break;
 
         case "ice-candidate":
           if (!pc) return;
-          // Only add ICE candidate if we have remote description set
-          if (pc.remoteDescription) {
-            await pc.addIceCandidate(message.data);
+          // Queue ICE candidates until remote description is set
+          if (pc.remoteDescription || remoteDescriptionSetRef.current) {
+            try {
+              await pc.addIceCandidate(message.data);
+              console.log(`✅ ${userRole}: Added ICE candidate`);
+            } catch (error) {
+              console.error(`❌ ${userRole}: Failed to add ICE candidate:`, error);
+            }
+          } else {
+            console.log(`⏳ ${userRole}: Queuing ICE candidate (no remote description yet)`);
+            queuedIceCandidatesRef.current.push(message.data);
+          }
+          break;
+
+        case "peer-ready":
+          console.log(`🤝 ${userRole}: Received peer-ready message:`, message);
+          setIsPeerReady(true);
+          
+          // If coordinator and there are existing peers, create offer
+          if (userRole === "coordinator" && message.peers && message.peers.length > 0) {
+            console.log(`🚀 ${userRole}: Creating offer for existing peers:`, message.peers);
+            setTimeout(() => createOffer(), 500); // Small delay to ensure connection is stable
           }
           break;
 
@@ -565,10 +614,12 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
           // Track that a peer has joined (only if it's not our own join message)
           if (message.userId !== userRole) {
             setHasPeerJoined(true);
-          }
-          // Initiate offer when someone joins (for coordinator)
-          if (userRole === "coordinator" && message.userId !== userRole) {
-            setTimeout(() => createOffer(), 1000);
+            
+            // Only create offer if we're coordinator, peer is ready, and it's not our own join
+            if (userRole === "coordinator" && isPeerReady) {
+              console.log(`🚀 ${userRole}: Creating offer for newly joined user: ${message.userId}`);
+              setTimeout(() => createOffer(), 500); // Small delay to ensure connection is stable
+            }
           }
           break;
 

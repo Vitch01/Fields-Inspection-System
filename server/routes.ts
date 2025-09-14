@@ -156,6 +156,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`✅ User ${message.userId} joined call ${message.callId}`);
             console.log(`   📊 Total active clients: ${clients.size}`);
             
+            // Get list of existing peers in the call (excluding the joining user)
+            const existingPeers: string[] = [];
+            clients.forEach((client, userId) => {
+              if (client.callId === message.callId && userId !== message.userId && client.readyState === WebSocket.OPEN) {
+                existingPeers.push(userId);
+              }
+            });
+            
+            console.log(`👥 Existing peers in call ${message.callId}: [${existingPeers.join(', ')}]`);
+            
+            // Send peer-ready message to the joining user with list of existing peers
+            const peerReadyMessage = {
+              type: 'peer-ready',
+              callId: message.callId,
+              userId: message.userId,
+              peers: existingPeers
+            };
+            
+            try {
+              ws.send(JSON.stringify(peerReadyMessage));
+              console.log(`🤝 Sent peer-ready message to ${message.userId}:`, peerReadyMessage);
+            } catch (error) {
+              console.error(`❌ Failed to send peer-ready message to ${message.userId}:`, error);
+            }
+            
             // Broadcast to other participants in the call
             const joinedMessage = {
               type: 'user-joined',
