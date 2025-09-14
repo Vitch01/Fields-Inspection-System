@@ -14,6 +14,10 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CoordinatorCall() {
+  // FORCE IMMEDIATE ALERT TO TEST IF COMPONENT EXECUTES
+  alert('🟦 COORDINATOR CALL COMPONENT IS EXECUTING! URL: ' + window.location.pathname);
+  console.log('🟦 COORDINATOR CALL COMPONENT EXECUTING!', window.location.pathname);
+  
   // ALL HOOKS AT TOP LEVEL - FOLLOW RULES OF HOOKS
   const { callId } = useParams();
   const [showSettings, setShowSettings] = useState(false);

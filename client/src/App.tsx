@@ -23,7 +23,10 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/coordinator/dashboard" component={CoordinatorDashboard} />
-      <Route path="/coordinator/:callId" component={CoordinatorCall} />
+      <Route path="/coordinator/:callId" component={() => {
+        console.log('🔵 COORDINATOR CALL ROUTE MATCHED! URL:', window.location.pathname);
+        return <CoordinatorCall />;
+      }} />
       <Route path="/coordinator/packages/prepare/:id" component={PackageDelivery} />
       <Route path="/coordinator/packages/:id" component={CoordinatorPackageDetails} />
       <Route path="/inspector/:callId" component={InspectorCall} />
