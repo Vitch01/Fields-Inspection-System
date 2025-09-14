@@ -55,7 +55,7 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
     const loadDbInspectors = async () => {
       try {
         console.log('🔄 Loading database inspectors...');
-        const response = await fetch('/api/users?role=inspector');
+        const response = await fetch('/api/inspectors');
         if (response.ok) {
           const inspectors = await response.json();
           setDbInspectors(inspectors);
