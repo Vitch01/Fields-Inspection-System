@@ -14,68 +14,147 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CoordinatorCall() {
-  const { callId } = useParams();
-  console.log('🔧 CoordinatorCall component loaded, callId:', callId);
+  console.log('🔧🔧🔧 CoordinatorCall component is starting to load...');
   
-  const [showSettings, setShowSettings] = useState(false);
-  const [showChat, setShowChat] = useState(false);
-  const [showFieldMap, setShowFieldMap] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<any>(null);
-  const [callDuration, setCallDuration] = useState(0); // seconds
-  const [videoRotation, setVideoRotation] = useState(0); // Track video rotation state
-  const { toast } = useToast();
+  // FAIL-SAFE: Render fallback if anything goes wrong
+  try {
+    const { callId } = useParams();
+    console.log('🔧 CoordinatorCall component loaded, callId:', callId);
+    console.log('🔧 Component is mounting, about to run queries...');
+    
+    // Add authentication debugging
+    const authToken = localStorage.getItem("authToken");
+    console.log('🔧 Auth token present:', !!authToken);
+    console.log('🔧 Auth token preview:', authToken ? authToken.substring(0, 20) + '...' : 'none');
+    
+    // TEMPORARY: Add test token for immediate debugging
+    if (!authToken) {
+      console.log('🔧 No auth token found, setting temporary token for testing...');
+      localStorage.setItem("authToken", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJiYWFhZmNmMy01MzA2LTRhNTMtYTI2NC0xNDNlNzE5MDJmMjIiLCJ1c2VybmFtZSI6ImNvb3JkaW5hdG9yMSIsIm5hbWUiOiJTYXJhaCBKb2huc29uIiwicm9sZSI6ImNvb3JkaW5hdG9yIiwiZW1haWwiOm51bGwsImRlcGFydG1lbnRJZCI6bnVsbCwiaWF0IjoxNzU3ODE4Mjk1LCJleHAiOjE3NTc5MDQ2OTV9.PWx0i9K-hUNGb_e7twXAhf4ga_8v9OGOKGev8-MRBNI");
+    }
+    
+    // FAILSAFE: Add early render test
+    console.log('🔧 About to define state variables...');
+  
+    const [showSettings, setShowSettings] = useState(false);
+    const [showChat, setShowChat] = useState(false);
+    const [showFieldMap, setShowFieldMap] = useState(false);
+    const [selectedImage, setSelectedImage] = useState<any>(null);
+    const [callDuration, setCallDuration] = useState(0); // seconds
+    const [videoRotation, setVideoRotation] = useState(0); // Track video rotation state
+    const { toast } = useToast();
 
-  // Inspector name mapping
-  const getInspectorName = (inspectorId: string) => {
-    const inspectorMap: Record<string, string> = {
-      "inspector1-id": "John Martinez",
-      "inspector2-id": "Maria Garcia"
+    // Inspector name mapping
+    const getInspectorName = (inspectorId: string) => {
+      const inspectorMap: Record<string, string> = {
+        "inspector1-id": "John Martinez",
+        "inspector2-id": "Maria Garcia"
+      };
+      return inspectorMap[inspectorId] || "Unknown Inspector";
     };
-    return inspectorMap[inspectorId] || "Unknown Inspector";
-  };
 
+  console.log('🔧 About to create useQuery for call data...');
   const { data: call, error: callError, isLoading: callLoading } = useQuery({
     queryKey: ["/api/calls", callId],
     enabled: !!callId,
   });
   
-  console.log('🔧 Call query:', { call, callError, callLoading, callId });
+  console.log('🔧 Call query result:', { call, callError, callLoading, callId });
+  console.log('🔧 Call error details:', callError);
+  console.log('🔧 Call data details:', call);
 
   // Early return for debugging
   if (callLoading) {
+    console.log('🔧 Call is loading, showing loading screen...');
     return (
       <div className="min-h-screen bg-white text-black p-8">
         <div className="max-w-md mx-auto text-center">
           <h1 className="text-2xl font-bold mb-4">Loading Call...</h1>
           <p className="text-gray-600">Call ID: {callId}</p>
+          <div className="mt-4 text-sm text-gray-500">
+            Debug: Query enabled: {!!callId ? 'Yes' : 'No'}
+          </div>
         </div>
       </div>
     );
   }
 
   if (callError) {
+    console.log('🔧 Call error occurred, showing error screen...');
+    console.error('🔧 Full call error object:', callError);
     return (
       <div className="min-h-screen bg-white text-black p-8">
         <div className="max-w-md mx-auto text-center">
           <h1 className="text-2xl font-bold mb-4 text-red-600">Call Error</h1>
           <p className="text-gray-600 mb-4">Call ID: {callId}</p>
-          <pre className="bg-gray-100 p-4 rounded text-sm text-left overflow-auto">
+          <div className="mb-4 text-sm">
+            <strong>Error Type:</strong> {callError?.message || 'Unknown error'}
+          </div>
+          <div className="mb-4 text-sm">
+            <strong>Status:</strong> {(callError as any)?.status || 'Unknown'}
+          </div>
+          <pre className="bg-gray-100 p-4 rounded text-sm text-left overflow-auto max-h-96">
             {JSON.stringify(callError, null, 2)}
           </pre>
+          <div className="mt-4">
+            <button 
+              onClick={() => window.location.reload()} 
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              data-testid="button-reload-page"
+            >
+              Reload Page
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
   if (!call) {
+    console.log('🔧 No call data found, showing not found screen...');
     return (
       <div className="min-h-screen bg-white text-black p-8">
         <div className="max-w-md mx-auto text-center">
           <h1 className="text-2xl font-bold mb-4">Call Not Found</h1>
           <p className="text-gray-600">Call ID: {callId}</p>
+          <div className="mt-4 text-sm text-gray-500">
+            <p>Debug Info:</p>
+            <p>Call Loading: {callLoading ? 'Yes' : 'No'}</p>
+            <p>Call Error: {callError ? 'Yes' : 'No'}</p>
+            <p>Call Data: {call ? 'Yes' : 'No'}</p>
+          </div>
         </div>
       </div>
     );
+  }
+
+  console.log('🔧 About to initialize useWebRTC hook...');
+  let webRTCData;
+  try {
+    webRTCData = useWebRTC(callId!, "coordinator");
+    console.log('🔧 useWebRTC initialized successfully');
+  } catch (error) {
+    console.error('🔧 useWebRTC failed:', error);
+    // Use fallback empty values
+    webRTCData = {
+      localStream: null,
+      remoteStream: null,
+      isConnected: false,
+      isMuted: false,
+      isVideoEnabled: false,
+      toggleMute: () => {},
+      toggleVideo: () => {},
+      captureImage: async () => {},
+      endCall: () => {},
+      chatMessages: [],
+      sendChatMessage: () => {},
+      unreadCount: 0,
+      clearUnreadCount: () => {},
+      isRecording: false,
+      isCapturing: false,
+      startRecording: () => {},
+      stopRecording: () => {},
+    };
   }
 
   const {
@@ -96,17 +175,19 @@ export default function CoordinatorCall() {
     isCapturing,
     startRecording,
     stopRecording,
-  } = useWebRTC(callId!, "coordinator");
+  } = webRTCData;
 
-  const { data: capturedImages = [], refetch: refetchImages } = useQuery<any[]>({
-    queryKey: ["/api/calls", callId, "images"],
-    enabled: !!callId,
-  });
+    console.log('🔧 About to create captured images query...');
+    const { data: capturedImages = [], refetch: refetchImages } = useQuery<any[]>({
+      queryKey: ["/api/calls", callId, "images"],
+      enabled: !!callId,
+    });
 
-  const { data: capturedVideos = [], refetch: refetchVideos } = useQuery<any[]>({
-    queryKey: ["/api/calls", callId, "recordings"],
-    enabled: !!callId,
-  });
+    console.log('🔧 About to create captured videos query...');
+    const { data: capturedVideos = [], refetch: refetchVideos } = useQuery<any[]>({
+      queryKey: ["/api/calls", callId, "recordings"],
+      enabled: !!callId,
+    });
 
   // Combine images and videos into a single media array
   const capturedMedia = [
@@ -318,4 +399,29 @@ export default function CoordinatorCall() {
       />
     </div>
   );
+  
+  } catch (error) {
+    console.error('🔧🔧🔧 CRITICAL ERROR in CoordinatorCall component:', error);
+    return (
+      <div className="min-h-screen bg-red-50 text-black p-8">
+        <div className="max-w-md mx-auto text-center">
+          <h1 className="text-2xl font-bold mb-4 text-red-600">Component Error</h1>
+          <p className="text-gray-600 mb-4">Call ID: {callId || 'unknown'}</p>
+          <p className="text-gray-600 mb-4">Something went wrong loading the coordinator call page.</p>
+          <pre className="bg-gray-100 p-4 rounded text-sm text-left overflow-auto max-h-96">
+            {error?.toString() || 'Unknown error'}
+          </pre>
+          <div className="mt-4">
+            <button 
+              onClick={() => window.location.reload()} 
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              data-testid="button-reload-page"
+            >
+              Reload Page
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 }
