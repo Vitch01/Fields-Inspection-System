@@ -76,13 +76,17 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
     // Check if Google Maps API key is available
     if (!import.meta.env.VITE_GOOGLE_MAPS_API_KEY) {
-      setMapError("Google Maps API key is not configured");
+      console.error('❌ Google Maps API key is not configured');
+      setMapError("Google Maps API key is not configured. Please contact the administrator to set up the VITE_GOOGLE_MAPS_API_KEY environment variable.");
       return;
     }
+    
+    console.log('✅ Google Maps API key is available:', import.meta.env.VITE_GOOGLE_MAPS_API_KEY ? 'YES' : 'NO');
 
     // Set up auth failure handler
     (window as any).gm_authFailure = () => {
-      setMapError("Invalid or unauthorized Google Maps API key. Please check your API key and billing settings.");
+      console.error('❌ Google Maps authentication failed');
+      setMapError("Invalid or unauthorized Google Maps API key. Please check your API key configuration and billing settings.");
       setIsMapLoaded(false);
     };
 
@@ -95,8 +99,9 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
         // Add a small delay to ensure Google Maps is fully initialized
         setTimeout(initializeMap, 100);
       };
-      script.onerror = () => {
-        setMapError("Failed to load Google Maps. Please check your internet connection and API key validity.");
+      script.onerror = (error) => {
+        console.error('❌ Google Maps script failed to load:', error);
+        setMapError("Failed to load Google Maps script. Please check your internet connection and API key validity.");
       };
       document.head.appendChild(script);
     } else {
@@ -234,13 +239,24 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
   };
 
   const initializeMap = async () => {
-    if (!mapRef.current || !window.google) {
-      setMapError("Google Maps API failed to load");
+    console.log('🗺️ Initializing Google Maps...');
+    
+    if (!mapRef.current) {
+      console.error('❌ Map container not available');
+      setMapError('Map container not available');
       return;
     }
+    
+    if (!window.google) {
+      console.error('❌ Google Maps API not loaded');
+      setMapError('Google Maps API not loaded');
+      return;
+    }
+    
+    console.log('✅ Map container and Google API are available');
 
     try {
-      console.log('🗺️ Initializing Google Maps for field representatives...');
+      console.log('🗺️ Creating Google Maps instance...');
       
       // Initialize map centered on the field location in Utah
       const map = new window.google.maps.Map(mapRef.current, {
@@ -287,7 +303,8 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
     } catch (error) {
       console.error('💥 Error initializing Google Maps:', error);
-      setMapError("Failed to initialize map. This may be due to an invalid API key or network issues.");
+      console.error('Error details:', error.message, error.stack);
+      setMapError(`Failed to initialize map: ${error.message || 'Unknown error'}. This may be due to an invalid API key or network issues.`);
       setIsMapLoaded(false);
     }
   };
