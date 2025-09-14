@@ -16,56 +16,106 @@ import { useToast } from "@/hooks/use-toast";
 export default function CoordinatorCall() {
   console.log('🔧🔧🔧 CoordinatorCall component is starting to load...');
   
-  // Extract callId outside try-catch so it's accessible in error handler
+  // ========================================================
+  // ALL HOOKS MUST BE AT TOP LEVEL - React Rules of Hooks
+  // NO EXCEPTIONS - NO HOOKS AFTER CONDITIONAL RETURNS
+  // ========================================================
+  
+  // 1. useParams hook
   const { callId } = useParams();
   
-  // FAIL-SAFE: Render fallback if anything goes wrong
-  try {
-    console.log('🔧 CoordinatorCall component loaded, callId:', callId);
-    console.log('🔧 Component is mounting, about to run queries...');
-    
-    // Add authentication debugging
-    const authToken = localStorage.getItem("authToken");
-    console.log('🔧 Auth token present:', !!authToken);
-    console.log('🔧 Auth token preview:', authToken ? authToken.substring(0, 20) + '...' : 'none');
-    
-    // TEMPORARY: Add test token for immediate debugging
-    if (!authToken) {
-      console.log('🔧 No auth token found, setting temporary token for testing...');
-      localStorage.setItem("authToken", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJiYWFhZmNmMy01MzA2LTRhNTMtYTI2NC0xNDNlNzE5MDJmMjIiLCJ1c2VybmFtZSI6ImNvb3JkaW5hdG9yMSIsIm5hbWUiOiJTYXJhaCBKb2huc29uIiwicm9sZSI6ImNvb3JkaW5hdG9yIiwiZW1haWwiOm51bGwsImRlcGFydG1lbnRJZCI6bnVsbCwiaWF0IjoxNzU3ODE4Mjk1LCJleHAiOjE3NTc5MDQ2OTV9.PWx0i9K-hUNGb_e7twXAhf4ga_8v9OGOKGev8-MRBNI");
-    }
-    
-    // FAILSAFE: Add early render test
-    console.log('🔧 About to define state variables...');
+  // 2. All useState hooks
+  const [showSettings, setShowSettings] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [showFieldMap, setShowFieldMap] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<any>(null);
+  const [callDuration, setCallDuration] = useState(0);
+  const [videoRotation, setVideoRotation] = useState(0);
   
-    const [showSettings, setShowSettings] = useState(false);
-    const [showChat, setShowChat] = useState(false);
-    const [showFieldMap, setShowFieldMap] = useState(false);
-    const [selectedImage, setSelectedImage] = useState<any>(null);
-    const [callDuration, setCallDuration] = useState(0); // seconds
-    const [videoRotation, setVideoRotation] = useState(0); // Track video rotation state
-    const { toast } = useToast();
+  // 3. useToast hook
+  const { toast } = useToast();
 
-    // Inspector name mapping
-    const getInspectorName = (inspectorId: string) => {
-      const inspectorMap: Record<string, string> = {
-        "inspector1-id": "John Martinez",
-        "inspector2-id": "Maria Garcia"
-      };
-      return inspectorMap[inspectorId] || "Unknown Inspector";
-    };
-
-  console.log('🔧 About to create useQuery for call data...');
+  // 4. ALL useQuery hooks MUST be at top level
   const { data: call, error: callError, isLoading: callLoading } = useQuery({
     queryKey: ["/api/calls", callId],
     enabled: !!callId,
   });
+
+  const { data: capturedImages = [], refetch: refetchImages } = useQuery<any[]>({
+    queryKey: ["/api/calls", callId, "images"],
+    enabled: !!callId,
+  });
+
+  const { data: capturedVideos = [], refetch: refetchVideos } = useQuery<any[]>({
+    queryKey: ["/api/calls", callId, "recordings"],
+    enabled: !!callId,
+  });
+
+  // 5. useWebRTC hook - MUST be at top level, NO TRY-CATCH!
+  const webRTCData = useWebRTC(callId || "", "coordinator");
+
+  // 6. ALL useEffect hooks MUST be at top level
+  useEffect(() => {
+    if (!(call as any)?.startedAt) return;
+
+    const interval = setInterval(() => {
+      const startTime = new Date((call as any).startedAt).getTime();
+      const now = new Date().getTime();
+      const durationSeconds = Math.floor((now - startTime) / 1000);
+      setCallDuration(durationSeconds);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [(call as any)?.startedAt]);
+
+  // ========================================================
+  // END OF HOOKS SECTION - ALL HOOKS ABOVE THIS LINE
+  // NO HOOKS BELOW THIS POINT
+  // ========================================================
+
+  // Authentication debugging - NOT A HOOK
+  const authToken = localStorage.getItem("authToken");
+  console.log('🔧 Auth token present:', !!authToken);
+  
+  // TEMPORARY: Add test token for immediate debugging
+  if (!authToken) {
+    console.log('🔧 No auth token found, setting temporary token for testing...');
+    localStorage.setItem("authToken", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJiYWFhZmNmMy01MzA2LTRhNTMtYTI2NC0xNDNlNzE5MDJmMjIiLCJ1c2VybmFtZSI6ImNvb3JkaW5hdG9yMSIsIm5hbWUiOiJTYXJhaCBKb2huc29uIiwicm9sZSI6ImNvb3JkaW5hdG9yIiwiZW1haWwiOm51bGwsImRlcGFydG1lbnRJZCI6bnVsbCwiaWF0IjoxNzU3ODE4Mjk1LCJleHAiOjE3NTc5MDQ2OTV9.PWx0i9K-hUNGb_e7twXAhf4ga_8v9OGOKGev8-MRBNI");
+  }
+
+  // Inspector name mapping - NOT A HOOK
+  const getInspectorName = (inspectorId: string) => {
+    const inspectorMap: Record<string, string> = {
+      "inspector1-id": "John Martinez",
+      "inspector2-id": "Maria Garcia"
+    };
+    return inspectorMap[inspectorId] || "Unknown Inspector";
+  };
   
   console.log('🔧 Call query result:', { call, callError, callLoading, callId });
-  console.log('🔧 Call error details:', callError);
-  console.log('🔧 Call data details:', call);
 
-  // Early return for debugging
+  // Destructure webRTC data - NOT A HOOK
+  const {
+    localStream,
+    remoteStream,
+    isConnected,
+    isMuted,
+    isVideoEnabled,
+    toggleMute,
+    toggleVideo,
+    captureImage: originalCaptureImage,
+    endCall,
+    chatMessages,
+    sendChatMessage,
+    unreadCount,
+    clearUnreadCount,
+    isRecording,
+    isCapturing,
+    startRecording,
+    stopRecording,
+  } = webRTCData;
+
+  // Early returns ONLY after all hooks have been called
   if (callLoading) {
     console.log('🔧 Call is loading, showing loading screen...');
     return (
@@ -130,110 +180,31 @@ export default function CoordinatorCall() {
     );
   }
 
-  console.log('🔧 About to initialize useWebRTC hook...');
-  let webRTCData;
-  try {
-    webRTCData = useWebRTC(callId!, "coordinator");
-    console.log('🔧 useWebRTC initialized successfully');
-  } catch (error) {
-    console.error('🔧 useWebRTC failed:', error);
-    // Use fallback empty values
-    webRTCData = {
-      localStream: null,
-      remoteStream: null,
-      isConnected: false,
-      isMuted: false,
-      isVideoEnabled: false,
-      toggleMute: () => {},
-      toggleVideo: () => {},
-      captureImage: async () => {},
-      endCall: () => {},
-      chatMessages: [],
-      sendChatMessage: () => {},
-      unreadCount: 0,
-      clearUnreadCount: () => {},
-      isRecording: false,
-      isCapturing: false,
-      startRecording: () => {},
-      stopRecording: () => {},
-    };
-  }
-
-  const {
-    localStream,
-    remoteStream,
-    isConnected,
-    isMuted,
-    isVideoEnabled,
-    toggleMute,
-    toggleVideo,
-    captureImage: originalCaptureImage,
-    endCall,
-    chatMessages,
-    sendChatMessage,
-    unreadCount,
-    clearUnreadCount,
-    isRecording,
-    isCapturing,
-    startRecording,
-    stopRecording,
-  } = webRTCData;
-
-    console.log('🔧 About to create captured images query...');
-    const { data: capturedImages = [], refetch: refetchImages } = useQuery<any[]>({
-      queryKey: ["/api/calls", callId, "images"],
-      enabled: !!callId,
-    });
-
-    console.log('🔧 About to create captured videos query...');
-    const { data: capturedVideos = [], refetch: refetchVideos } = useQuery<any[]>({
-      queryKey: ["/api/calls", callId, "recordings"],
-      enabled: !!callId,
-    });
-
-  // Combine images and videos into a single media array
+  // Helper functions and data processing - NOT HOOKS
   const capturedMedia = [
     ...capturedImages.map(img => ({ ...img, type: 'image' })),
     ...capturedVideos.map(vid => ({ ...vid, type: 'video' }))
   ].sort((a, b) => {
     const dateA = new Date(a.capturedAt || a.recordedAt || 0).getTime();
     const dateB = new Date(b.capturedAt || b.recordedAt || 0).getTime();
-    return dateB - dateA; // Sort by most recent first
+    return dateB - dateA;
   });
 
-  // Enhanced capture function that refreshes images immediately
   const captureImage = async (rotation = 0) => {
     try {
       await originalCaptureImage(rotation);
-      // Immediately refresh the images to show the new capture
       await refetchImages();
     } catch (error) {
       console.error("Failed to capture and refresh:", error);
     }
   };
 
-  // Enhanced stop recording function that refreshes videos immediately
   const handleStopRecording = async () => {
     await stopRecording();
-    // Wait a bit for server to process the video
     setTimeout(() => {
       refetchVideos();
     }, 1000);
   };
-
-  // Call duration timer based on call start time
-  useEffect(() => {
-    if (!(call as any)?.startedAt) return;
-
-    const interval = setInterval(() => {
-      const startTime = new Date((call as any).startedAt).getTime();
-      const now = new Date().getTime();
-      const durationSeconds = Math.floor((now - startTime) / 1000);
-      setCallDuration(durationSeconds);
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [(call as any)?.startedAt]);
 
   const formatDuration = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -261,9 +232,9 @@ export default function CoordinatorCall() {
       description: `Selected ${inspector.name} for inspection. Create a new call to connect.`,
     });
     console.log("Selected inspector:", inspector);
-    // In a real app, you would navigate to create a new call with this inspector
   };
 
+  // Main JSX return - no hooks below this point!
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header with Call Status */}
@@ -401,29 +372,4 @@ export default function CoordinatorCall() {
       />
     </div>
   );
-  
-  } catch (error) {
-    console.error('🔧🔧🔧 CRITICAL ERROR in CoordinatorCall component:', error);
-    return (
-      <div className="min-h-screen bg-red-50 text-black p-8">
-        <div className="max-w-md mx-auto text-center">
-          <h1 className="text-2xl font-bold mb-4 text-red-600">Component Error</h1>
-          <p className="text-gray-600 mb-4">Call ID: {callId || 'unknown'}</p>
-          <p className="text-gray-600 mb-4">Something went wrong loading the coordinator call page.</p>
-          <pre className="bg-gray-100 p-4 rounded text-sm text-left overflow-auto max-h-96">
-            {error?.toString() || 'Unknown error'}
-          </pre>
-          <div className="mt-4">
-            <button 
-              onClick={() => window.location.reload()} 
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-              data-testid="button-reload-page"
-            >
-              Reload Page
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 }
