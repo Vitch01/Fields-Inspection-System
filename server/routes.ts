@@ -893,6 +893,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get users by role (for field map inspector loading)
+  app.get('/api/users', async (req, res) => {
+    try {
+      const { role } = req.query;
+      if (role && typeof role === 'string') {
+        const users = await storage.getUsersByRole(role);
+        res.json(users);
+      } else {
+        // Get all users if no role specified
+        const users = await storage.getAllUsers();
+        res.json(users);
+      }
+    } catch (error) {
+      res.status(500).json({ message: 'Failed to get users' });
+    }
+  });
+
   // Location tracking routes
   app.post('/api/calls/:callId/location', async (req, res) => {
     try {

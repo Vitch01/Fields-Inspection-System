@@ -8,6 +8,8 @@ import bcrypt from "bcrypt";
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUsersByRole(role: string): Promise<User[]>;
+  getAllUsers(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
   
   // Client authentication methods
@@ -194,6 +196,16 @@ export class DbStorage implements IStorage {
   async getUserByUsername(username: string): Promise<User | undefined> {
     const result = await db.select().from(users).where(eq(users.username, username)).limit(1);
     return result[0];
+  }
+
+  async getUsersByRole(role: string): Promise<User[]> {
+    const result = await db.select().from(users).where(eq(users.role, role));
+    return result;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    const result = await db.select().from(users);
+    return result;
   }
 
   async createUser(user: InsertUser): Promise<User> {

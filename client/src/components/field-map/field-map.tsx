@@ -48,6 +48,25 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
   const [mapError, setMapError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [inspectors, setInspectors] = useState<Inspector[]>([]);
+  const [dbInspectors, setDbInspectors] = useState<any[]>([]);
+
+  // Load inspector users from database on component mount
+  useEffect(() => {
+    const loadDbInspectors = async () => {
+      try {
+        const response = await fetch('/api/users?role=inspector');
+        if (response.ok) {
+          const inspectors = await response.json();
+          setDbInspectors(inspectors);
+          console.log('📋 Loaded database inspectors:', inspectors);
+        }
+      } catch (error) {
+        console.error('Failed to load database inspectors:', error);
+      }
+    };
+    
+    loadDbInspectors();
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -347,10 +366,25 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
               console.log(`📝 Description fallback - Phone: ${phone}, Email: ${email}, Price: ${price}, Note: ${note}`);
             }
 
-            // Create Inspector object
+            // Map to real database user by name matching
+            const inspectorName = name.trim();
+            const matchingDbUser = dbInspectors.find(dbInspector => 
+              dbInspector.name.toLowerCase().includes(inspectorName.toLowerCase()) ||
+              inspectorName.toLowerCase().includes(dbInspector.name.toLowerCase())
+            );
+            
+            // Use real user ID if found, otherwise skip this inspector
+            if (!matchingDbUser) {
+              console.warn(`⚠️ No database user found for field map inspector: ${inspectorName}`);
+              return; // Skip this inspector if no matching database user
+            }
+            
+            console.log(`✅ Mapped field inspector "${inspectorName}" to database user "${matchingDbUser.name}" (ID: ${matchingDbUser.id})`);
+
+            // Create Inspector object with real database user ID
             const inspector: Inspector = {
-              id: `inspector_${index}`,
-              name: name.trim(),
+              id: matchingDbUser.id, // Use real database user ID
+              name: matchingDbUser.name, // Use database name for consistency
               latitude: lat,
               longitude: lng,
               status: 'available', // Default status
