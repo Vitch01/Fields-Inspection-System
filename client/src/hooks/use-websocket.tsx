@@ -87,21 +87,16 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
   }
 
   function getWebSocketUrl(): string {
-    // Always use secure WebSocket on mobile devices or in production
-    const forceSecure = isMobile || window.location.protocol === "https:" || 
-                       window.location.hostname !== 'localhost';
-    const protocol = forceSecure ? "wss:" : "ws:";
+    // Use secure WebSocket only when page is served over HTTPS
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     
-    // Handle Replit development environment
-    let host = window.location.host;
-    if (!host || host.includes('undefined')) {
-      // Fallback to current hostname with explicit port for development
-      const hostname = window.location.hostname || 'localhost';
-      const port = window.location.port || '5000';
-      host = `${hostname}:${port}`;
-    }
+    // Use the same host as the current page
+    const host = window.location.host || `${window.location.hostname || 'localhost'}:${window.location.port || '5000'}`;
     
-    return `${protocol}//${host}/ws`;
+    const wsUrl = `${protocol}//${host}/ws`;
+    console.log(`🔌 WebSocket URL: ${wsUrl} (mobile: ${isMobile}, protocol: ${window.location.protocol})`);
+    
+    return wsUrl;
   }
 
   function calculateReconnectDelay(attempt: number): number {
