@@ -14,10 +14,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CoordinatorCall() {
-  // FORCE IMMEDIATE DEBUGGING - This should appear in console if component loads
-  console.log('🚨🚨🚨 COORDINATOR CALL LOADING - COMPONENT STARTING...', window.location.pathname);
-  console.error('🚨🚨🚨 COORDINATOR CALL ERROR LOG - COMPONENT STARTING...', window.location.pathname);
-  alert('🚨 COORDINATOR CALL COMPONENT LOADED! URL: ' + window.location.pathname);
+  console.log('Coordinator call component loading for:', window.location.pathname);
   
   // ALL HOOKS AT TOP LEVEL - FOLLOW RULES OF HOOKS
   const { callId } = useParams();
