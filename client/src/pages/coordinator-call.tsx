@@ -119,15 +119,17 @@ export default function CoordinatorCall() {
 
   const generateInspectorLink = () => {
     const inspectorUrl = `${window.location.origin}/join/${callId}`;
+    console.log(`🔗 Coordinator: Copying inspector link for call ${callId}: ${inspectorUrl}`);
     navigator.clipboard.writeText(inspectorUrl);
     toast({
       title: "Inspector Link Copied",
-      description: "Share this link with the inspector to join the call",
+      description: `Inspector link copied: /join/${callId}`,
     });
   };
 
   const openInspectorLink = () => {
     const inspectorUrl = `${window.location.origin}/join/${callId}`;
+    console.log(`🔗 Coordinator: Opening inspector link for call ${callId}: ${inspectorUrl}`);
     window.open(inspectorUrl, '_blank');
   };
 
@@ -166,6 +168,11 @@ export default function CoordinatorCall() {
           <div className="text-sm font-medium">
             Reference: <span className="text-primary" data-testid="text-inspection-reference">
               {(call as any)?.inspectionReference || "N/A"}
+            </span>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Call ID: <span className="font-mono text-primary" data-testid="text-call-id">
+              {callId}
             </span>
           </div>
           <div className="flex items-center space-x-2">

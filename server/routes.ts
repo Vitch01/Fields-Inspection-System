@@ -120,7 +120,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     ws.on('message', async (data) => {
       try {
         console.log(`📨 Message received on connection ${connectionId}:`);
-        console.log(`   📊 Data length: ${data.length} bytes`);
+        console.log(`   📊 Data length: ${Buffer.from(data as Buffer).length} bytes`);
         console.log(`   ⚡ WebSocket readyState: ${ws.readyState}`);
         
         const rawMessage = data.toString();

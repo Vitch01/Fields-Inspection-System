@@ -115,6 +115,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, []);
 
+  console.log(`🔗 ${userRole}: Initializing WebRTC for call ${callId}`);
+  
   const { sendMessage, isConnected: wsConnected } = useWebSocket(callId, userRole, {
     onMessage: handleSignalingMessage,
   });
@@ -396,6 +398,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }
 
   async function handleSignalingMessage(message: any) {
+    console.log(`🔗 ${userRole}: Received signaling message for call ${callId}:`, message.type, message);
     const pc = peerConnectionRef.current;
 
     try {

@@ -204,7 +204,7 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
           callId,
           userId: userRole,
         };
-        console.log('📤 Sending join-call message:', joinMessage);
+        console.log(`🔗 ${userRole}: Sending join-call message for call ${callId}:`, joinMessage);
         sendMessage(joinMessage);
         
         // Send any queued messages
@@ -296,7 +296,7 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
       console.log(`🔍 Error details:`, {
         message: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : undefined,
-        url: wsUrl
+        url: 'WebSocket creation failed before URL assignment'
       });
       handleConnectionFailure('Failed to create WebSocket');
     }

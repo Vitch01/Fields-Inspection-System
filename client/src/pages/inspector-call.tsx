@@ -59,6 +59,7 @@ export default function InspectorCall() {
 
   const handleJoinCall = () => {
     if (inspectorName.trim()) {
+      console.log(`🔗 Inspector: Joining call ${callId} as ${inspectorName}`);
       // Join the call immediately
       setHasJoined(true);
       
@@ -136,7 +137,8 @@ export default function InspectorCall() {
               </div>
               <p className="text-gray-600">
                 Site: Building A - Floor 3<br />
-                Coordinator: Sarah Johnson
+                Coordinator: Sarah Johnson<br />
+                <span className="text-xs">Call ID: <span className="font-mono text-black">{callId}</span></span>
               </p>
             </div>
 
