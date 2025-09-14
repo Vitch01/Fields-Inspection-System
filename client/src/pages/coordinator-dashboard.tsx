@@ -220,7 +220,7 @@ function RequestDetails({ request, onAssign, onStartCall, onClose }: RequestDeta
       )}
 
       {/* Assignment Section */}
-      {request.status === 'pending' && (
+      {(request.status === 'pending' || request.status === 'assigned') && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -407,10 +407,11 @@ export default function CoordinatorDashboard() {
       refetch();
       queryClient.invalidateQueries({ queryKey: ["/api/coordinator/inspection-requests"] });
     },
-    onError: () => {
+    onError: (error: any) => {
+      console.error('Department assignment error:', error);
       toast({
         title: "Assignment Failed",
-        description: "Failed to assign request to department",
+        description: error?.message || "Failed to assign request to department",
         variant: "destructive",
       });
     }
@@ -431,10 +432,11 @@ export default function CoordinatorDashboard() {
       refetch();
       queryClient.invalidateQueries({ queryKey: ["/api/coordinator/inspection-requests"] });
     },
-    onError: () => {
+    onError: (error: any) => {
+      console.error('Assignment error:', error);
       toast({
         title: "Assignment Failed",
-        description: "Failed to assign request to coordinator",
+        description: error?.message || "Failed to assign request to coordinator",
         variant: "destructive",
       });
     }
