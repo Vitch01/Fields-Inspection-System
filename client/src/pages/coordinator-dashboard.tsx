@@ -351,6 +351,7 @@ export default function CoordinatorDashboard() {
   const [showFieldMap, setShowFieldMap] = useState(false);
   const [selectedInspector, setSelectedInspector] = useState<any>(null);
   const [requestForCall, setRequestForCall] = useState<InspectionRequest | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const { toast } = useToast();
 
   // Get authenticated user from JWT token
@@ -831,12 +832,15 @@ export default function CoordinatorDashboard() {
                             </Button>
                           )}
                           
-                          <Dialog>
+                          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                             <DialogTrigger asChild>
                               <Button 
                                 variant="outline" 
                                 size="sm"
-                                onClick={() => setSelectedRequest(request)}
+                                onClick={() => {
+                                  setSelectedRequest(request);
+                                  setDialogOpen(true);
+                                }}
                                 data-testid={`button-view-details-${request.id}`}
                               >
                                 <Eye className="w-4 h-4 mr-2" />
@@ -852,7 +856,10 @@ export default function CoordinatorDashboard() {
                                   request={selectedRequest}
                                   onAssign={handleAssignment}
                                   onStartCall={handleStartCall}
-                                  onClose={() => setSelectedRequest(null)}
+                                  onClose={() => {
+                                    setSelectedRequest(null);
+                                    setDialogOpen(false);
+                                  }}
                                 />
                               )}
                             </DialogContent>
