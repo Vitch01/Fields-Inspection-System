@@ -356,7 +356,6 @@ export default function CoordinatorDashboard() {
 
   // Get authenticated user from JWT token
   const currentUser = getCurrentUserFromToken();
-  const [location, setLocation] = useLocation();
   
   // Redirect to home if not authenticated or not a coordinator
   useEffect(() => {
@@ -575,7 +574,7 @@ export default function CoordinatorDashboard() {
       console.error("Failed to start call:", error);
       toast({
         title: "Failed to start call",
-        description: error.message || "Please try again",
+        description: (error as any)?.message || "Please try again",
         variant: "destructive",
       });
     }
@@ -639,7 +638,7 @@ export default function CoordinatorDashboard() {
             <h1 className="text-2xl font-bold text-foreground" data-testid="title-dashboard">
               Coordinator Dashboard
             </h1>
-            <p className="text-muted-foreground">Welcome back, {currentUser.name}</p>
+            <p className="text-muted-foreground">Welcome back, {currentUser?.name}</p>
           </div>
           <div className="flex items-center space-x-4">
             <Badge variant="outline" className="text-primary">
