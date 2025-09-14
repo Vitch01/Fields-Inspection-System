@@ -91,7 +91,21 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
     const forceSecure = isMobile || window.location.protocol === "https:" || 
                        window.location.hostname !== 'localhost';
     const protocol = forceSecure ? "wss:" : "ws:";
-    return `${protocol}//${window.location.host}/ws`;
+    
+    // Use window.location.host directly (includes port if present)
+    // Only default port for localhost development when hostname is localhost AND port is missing
+    const isLocalhost = window.location.hostname === 'localhost';
+    let host: string;
+    
+    if (isLocalhost && !window.location.port) {
+      // Development environment without port specified - default to 5000
+      host = 'localhost:5000';
+    } else {
+      // Production or localhost with port - use as-is
+      host = window.location.host;
+    }
+    
+    return `${protocol}//${host}/ws`;
   }
 
   function calculateReconnectDelay(attempt: number): number {

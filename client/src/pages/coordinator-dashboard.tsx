@@ -83,18 +83,31 @@ const mockDepartments = [
 interface RequestDetailsProps {
   request: InspectionRequest;
   onAssign: (type: 'department' | 'coordinator', id: string) => void;
+  onUpdateStatus: (requestId: string, status: string) => void;
   onStartCall: (requestId: string) => void;
   onClose: () => void;
 }
 
-function RequestDetails({ request, onAssign, onStartCall, onClose }: RequestDetailsProps) {
+function RequestDetails({ request, onAssign, onUpdateStatus, onStartCall, onClose }: RequestDetailsProps) {
   const [assignmentType, setAssignmentType] = useState<'department' | 'coordinator'>('coordinator');
   const [selectedAssignee, setSelectedAssignee] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState(request.status);
+
+  // Sync selectedStatus when request changes
+  useEffect(() => {
+    setSelectedStatus(request.status);
+  }, [request.id, request.status]);
 
   const handleAssign = () => {
     if (selectedAssignee) {
       onAssign(assignmentType, selectedAssignee);
       onClose();
+    }
+  };
+
+  const handleStatusUpdate = () => {
+    if (selectedStatus && selectedStatus !== request.status) {
+      onUpdateStatus(request.id, selectedStatus);
     }
   };
 
@@ -308,6 +321,52 @@ function RequestDetails({ request, onAssign, onStartCall, onClose }: RequestDeta
         </Card>
       )}
 
+      {/* Status Update Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Clock className="w-5 h-5" />
+            <span>Update Status</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Current Status</label>
+            <Badge 
+              className={`${getStatusColor(request.status)} border w-fit`}
+              data-testid={`badge-current-status-${request.status}`}
+            >
+              {request.status?.replace('_', ' ').toUpperCase()}
+            </Badge>
+          </div>
+          
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Change Status To</label>
+            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <SelectTrigger data-testid="select-status-update">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="assigned">Assigned</SelectItem>
+                <SelectItem value="in_progress">In Progress</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button 
+            onClick={handleStatusUpdate} 
+            disabled={!selectedStatus || selectedStatus === request.status}
+            className="w-full"
+            data-testid="button-update-status"
+          >
+            <ArrowRight className="w-4 h-4 mr-2" />
+            Update Status
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Current Assignment Display */}
       {(request.assignedCoordinatorId || request.assignedDepartmentId) && (
         <Card>
@@ -408,7 +467,6 @@ export default function CoordinatorDashboard() {
         title: "Request Assigned",
         description: "Request has been assigned to department successfully",
       });
-      refetch();
       queryClient.invalidateQueries({ queryKey: ["/api/coordinator/inspection-requests"] });
     },
     onError: (error: any) => {
@@ -433,7 +491,6 @@ export default function CoordinatorDashboard() {
         title: "Request Assigned",
         description: "Request has been assigned to coordinator successfully",
       });
-      refetch();
       queryClient.invalidateQueries({ queryKey: ["/api/coordinator/inspection-requests"] });
     },
     onError: (error: any) => {
@@ -441,6 +498,31 @@ export default function CoordinatorDashboard() {
       toast({
         title: "Assignment Failed",
         description: error?.message || "Failed to assign request to coordinator",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Status update mutation
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ requestId, status }: { requestId: string, status: string }) => {
+      const response = await apiRequest("PUT", `/api/inspection-requests/${requestId}/status`, {
+        status
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Status Updated",
+        description: "Request status has been updated successfully",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/coordinator/inspection-requests"] });
+    },
+    onError: (error: any) => {
+      console.error('Status update error:', error);
+      toast({
+        title: "Status Update Failed",
+        description: error?.message || "Failed to update request status",
         variant: "destructive",
       });
     }
@@ -454,6 +536,10 @@ export default function CoordinatorDashboard() {
     } else {
       assignToCoordinatorMutation.mutate({ requestId: selectedRequest.id, coordinatorId: id });
     }
+  };
+
+  const handleStatusUpdate = (requestId: string, status: string) => {
+    updateStatusMutation.mutate({ requestId, status });
   };
 
   const handleStartCall = (requestId: string) => {
@@ -866,6 +952,7 @@ export default function CoordinatorDashboard() {
                                 <RequestDetails
                                   request={selectedRequest}
                                   onAssign={handleAssignment}
+                                  onUpdateStatus={handleStatusUpdate}
                                   onStartCall={handleStartCall}
                                   onClose={() => {
                                     setSelectedRequest(null);

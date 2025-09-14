@@ -2,6 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
+import { z } from "zod";
 import { storage } from "./storage";
 import { insertCallSchema, insertCapturedImageSchema, insertVideoRecordingSchema, signalingMessageSchema, videoRecordingSchema, allowedVideoMimeTypes, allowedVideoExtensions, clientLoginSchema, clientRegistrationSchema, inspectionRequestFormSchema, coordinatorInspectionRequestsQuerySchema, assignDepartmentSchema, assignCoordinatorSchema, updateInspectionRequestSchema, coordinatorParamsSchema, departmentParamsSchema, inspectionRequestParamsSchema, coordinatorLoginSchema, insertEmailLogSchema, insertAssetAssessmentSchema, insertWearTearAssessmentSchema, insertAppraisalReportSchema, insertInspectionReportSchema, generatePackageSchema, packageParamsSchema, updatePackageStatusSchema, packageAccessSchema } from "@shared/schema";
 import { generateToken, generateUserToken, authenticateClient, authenticateCoordinator, authenticateUser, authorizeClientResource, authorizeCoordinatorResource, authorizeInspectionRequestAccess, authorizeCallAccess, authorizeReportAccess, type AuthenticatedRequest } from "./auth";
@@ -561,17 +562,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Only allow coordinators/admin to update status - clients cannot modify their own requests after submission
-  app.put('/api/inspection-requests/:id/status', async (req, res) => {
+  app.put('/api/inspection-requests/:id/status', authenticateCoordinator, async (req: AuthenticatedRequest, res) => {
     try {
-      const { id } = req.params;
-      const { status } = req.body;
+      // Validate path parameters
+      const paramsValidation = inspectionRequestParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return res.status(400).json({ 
+          message: 'Invalid request ID', 
+          errors: paramsValidation.error.issues 
+        });
+      }
+
+      // Validate request body - only allow status updates for this endpoint
+      const statusUpdateSchema = z.object({
+        status: z.enum(["pending", "assigned", "in_progress", "completed", "cancelled"])
+      });
+      const bodyValidation = statusUpdateSchema.safeParse(req.body);
+      if (!bodyValidation.success) {
+        return res.status(400).json({ 
+          message: 'Invalid request body', 
+          errors: bodyValidation.error.issues 
+        });
+      }
+
+      const { id } = paramsValidation.data;
+      const { status } = bodyValidation.data;
       
       if (!status) {
         return res.status(400).json({ message: 'Status is required' });
       }
-      
-      // TODO: Add coordinator/admin authentication here when implementing admin features
-      // For now, this endpoint should be restricted to internal use only
       
       const updatedRequest = await storage.updateInspectionRequestStatus(id, status);
       if (!updatedRequest) {
