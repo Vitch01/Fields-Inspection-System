@@ -100,21 +100,21 @@ function RequestDetails({ request, onAssign, onStartCall, onClose }: RequestDeta
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'urgent': return 'bg-red-500';
-      case 'high': return 'bg-orange-500';
-      case 'medium': return 'bg-yellow-500';
-      case 'low': return 'bg-green-500';
-      default: return 'bg-gray-500';
+      case 'urgent': return 'bg-red-50 border-red-200 text-red-800';
+      case 'high': return 'bg-orange-50 border-orange-200 text-orange-800';
+      case 'medium': return 'bg-yellow-50 border-yellow-200 text-yellow-800';
+      case 'low': return 'bg-green-50 border-green-200 text-green-800';
+      default: return 'bg-gray-50 border-gray-200 text-gray-800';
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'bg-green-500';
-      case 'in_progress': return 'bg-blue-500';
-      case 'assigned': return 'bg-purple-500';
-      case 'pending': return 'bg-yellow-500';
-      default: return 'bg-gray-500';
+      case 'completed': return 'bg-green-50 border-green-200 text-green-800';
+      case 'in_progress': return 'bg-blue-50 border-blue-200 text-blue-800';
+      case 'assigned': return 'bg-purple-50 border-purple-200 text-purple-800';
+      case 'pending': return 'bg-yellow-50 border-yellow-200 text-yellow-800';
+      default: return 'bg-gray-50 border-gray-200 text-gray-800';
     }
   };
 
@@ -130,13 +130,13 @@ function RequestDetails({ request, onAssign, onStartCall, onClose }: RequestDeta
         </div>
         <div className="flex items-center space-x-2">
           <Badge 
-            className={`${getPriorityColor(request.priority)} text-foreground`}
+            className={`${getPriorityColor(request.priority)} border`}
             data-testid={`badge-priority-${request.priority}`}
           >
             {request.priority?.toUpperCase()}
           </Badge>
           <Badge 
-            className={`${getStatusColor(request.status)} text-foreground`}
+            className={`${getStatusColor(request.status)} border`}
             data-testid={`badge-status-${request.status}`}
           >
             {request.status?.replace('_', ' ').toUpperCase()}
