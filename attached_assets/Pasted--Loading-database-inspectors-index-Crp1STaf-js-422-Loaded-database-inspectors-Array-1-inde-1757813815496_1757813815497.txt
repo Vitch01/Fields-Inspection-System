@@ -1,0 +1,49 @@
+🔄 Loading database inspectors...
+index-Crp1STaf.js:422 📋 Loaded database inspectors: Array(1)
+index-Crp1STaf.js:422 Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+(anonymous) @ index-Crp1STaf.js:422Understand this warning
+js?key=AIzaSyDIAd5LP-H4L1fru3Jxk1nj2jBv0JNMD94&libraries=geometry:316 Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading
+bda @ js?key=AIzaSyDIAd5LP-H4L1fru3Jxk1nj2jBv0JNMD94&libraries=geometry:316Understand this warning
+index-Crp1STaf.js:422 🗺️ Initializing Google Maps for field representatives...
+index-Crp1STaf.js:422 📍 Loading field representatives from Google My Maps...
+index-Crp1STaf.js:422 🎯 Primary URL: https://www.google.com/maps/d/kml?mid=18BQR9080Tx73UGM6yWqKjZ2bHWk6UZcp&forcekml=1&lid=mkit35Kg0lY
+index-Crp1STaf.js:422 📍 Parsing KML data from Google My Maps...
+index-Crp1STaf.js:422 ✅ Found Google My Maps data - parsing field representatives...
+index-Crp1STaf.js:422 📋 Found 3 field representatives in Google My Maps
+index-Crp1STaf.js:422 🔍 Processing placemark: Vicel M. Kanonga
+index-Crp1STaf.js:422 📍 Coordinates found: No
+index-Crp1STaf.js:422 📝 Description: Address: 425e 1050s, St. george, utah, 84790<br>Phone: 435 559 5405<br>Email: Vicelkanonga@gmail.com...
+index-Crp1STaf.js:422 🏠 Address: Vicel M. Kanonga 425e 1050s, St. george, utah, 84790 435 559 5405 Vicelkanonga@gmail.com 0$ Check Av...
+index-Crp1STaf.js:422 ⚠️ No coordinates found, using default Utah location with offset: (37.097178900157424, -113.58888217976603)
+index-Crp1STaf.js:422 ✅ Adding field representative: Vicel M. Kanonga at (37.097178900157424, -113.58888217976603)
+index-Crp1STaf.js:422 📞 ExtendedData - Phone: 435 559 5405, Email: Vicelkanonga@gmail.com, Price: 0$, Note: Check Availability
+index-Crp1STaf.js:422 🔍 Trying to map field inspector "Vicel M. Kanonga" to database user...
+index-Crp1STaf.js:422 📋 Available database inspectors: Array(1)
+index-Crp1STaf.js:422 ⚠️ No database user found for field map inspector: Vicel M. Kanonga. Skipping this inspector.
+(anonymous) @ index-Crp1STaf.js:422Understand this warning
+index-Crp1STaf.js:422 🔍 Processing placemark: Eva Smith
+index-Crp1STaf.js:422 📍 Coordinates found: No
+index-Crp1STaf.js:422 📝 Description: Address: 67E St. George Blvd, St. George, Utah, 84770<br>Phone: 4324 23423 34<br>Email: terst@gfdf.c...
+index-Crp1STaf.js:422 🏠 Address: Eva Smith 67E St. George Blvd, St. George, Utah, 84770 4324 23423 34 terst@gfdf.com 250$ Available...
+index-Crp1STaf.js:422 ⚠️ No coordinates found, using default Utah location with offset: (37.102178900157426, -113.58388217976604)
+index-Crp1STaf.js:422 ✅ Adding field representative: Eva Smith at (37.102178900157426, -113.58388217976604)
+index-Crp1STaf.js:422 📞 ExtendedData - Phone: 4324 23423 34, Email: terst@gfdf.com, Price: 250$, Note: Available
+index-Crp1STaf.js:422 🔍 Trying to map field inspector "Eva Smith" to database user...
+index-Crp1STaf.js:422 📋 Available database inspectors: Array(1)
+index-Crp1STaf.js:422 ⚠️ No database user found for field map inspector: Eva Smith. Skipping this inspector.
+(anonymous) @ index-Crp1STaf.js:422Understand this warning
+index-Crp1STaf.js:422 🔍 Processing placemark: Test fro you
+index-Crp1STaf.js:422 📍 Coordinates found: No
+index-Crp1STaf.js:422 📝 Description: Address: 460e 1050s, St. george, utah, 84790<br>Phone: 435 559 5405<br>Email: <br>Price: 54<br>Note:...
+index-Crp1STaf.js:422 🏠 Address: Test fro you 460e 1050s, St. george, utah, 84790 435 559 5405 54...
+index-Crp1STaf.js:422 ⚠️ No coordinates found, using default Utah location with offset: (37.10717890015742, -113.57888217976603)
+index-Crp1STaf.js:422 ✅ Adding field representative: Test fro you at (37.10717890015742, -113.57888217976603)
+index-Crp1STaf.js:422 📞 ExtendedData - Phone: 435 559 5405, Email: , Price: 54, Note: 
+index-Crp1STaf.js:422 📝 Description fallback - Phone: 435 559 5405, Email: , Price: 54, Note: 
+index-Crp1STaf.js:422 🔍 Trying to map field inspector "Test fro you" to database user...
+index-Crp1STaf.js:422 📋 Available database inspectors: Array(1)
+index-Crp1STaf.js:422 ⚠️ No database user found for field map inspector: Test fro you. Skipping this inspector.
+(anonymous) @ index-Crp1STaf.js:422Understand this warning
+index-Crp1STaf.js:422 ⚠️ No valid field representatives found in Google My Maps
+index-Crp1STaf.js:422 ✅ Successfully loaded field representatives from primary URL
+index-Crp1STaf.js:422 🎉 Field map initialization complete!
