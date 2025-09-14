@@ -98,32 +98,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     ws.isAlive = true;
     ws.lastPing = Date.now();
     
-    // Detect mobile connections from User-Agent
+    // Comprehensive connection debugging
+    const connectionId = Math.random().toString(36).substring(7);
     const userAgent = req.headers['user-agent'] || '';
     const isMobile = /android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+    const remoteAddress = req.socket.remoteAddress;
+    const origin = req.headers.origin;
     
-    console.log(`New WebSocket connection (mobile: ${isMobile}, UA: ${userAgent.substring(0, 50)})`);
+    console.log(`🔌 NEW WebSocket connection established:`);
+    console.log(`   📊 Connection ID: ${connectionId}`);
+    console.log(`   📱 Mobile: ${isMobile}`);
+    console.log(`   🌐 Remote Address: ${remoteAddress}`);
+    console.log(`   🔗 Origin: ${origin}`);
+    console.log(`   🖥️ User-Agent: ${userAgent.substring(0, 100)}`);
+    console.log(`   🔢 Total connections: ${clients.size + 1}`);
+    console.log(`   ⚡ WebSocket readyState: ${ws.readyState} (CONNECTING=0, OPEN=1, CLOSING=2, CLOSED=3)`);
+    
+    // Add connection ID for tracking
+    (ws as any).connectionId = connectionId;
 
     ws.on('message', async (data) => {
       try {
-        const message = signalingMessageSchema.parse(JSON.parse(data.toString()));
+        console.log(`📨 Message received on connection ${connectionId}:`);
+        console.log(`   📊 Data length: ${data.length} bytes`);
+        console.log(`   ⚡ WebSocket readyState: ${ws.readyState}`);
+        
+        const rawMessage = data.toString();
+        console.log(`   📝 Raw message: ${rawMessage.substring(0, 500)}${rawMessage.length > 500 ? '...' : ''}`);
+        
+        const message = signalingMessageSchema.parse(JSON.parse(rawMessage));
+        console.log(`   ✅ Parsed message type: ${message.type}`);
         
         switch (message.type) {
           case 'join-call':
+            console.log(`🚀 Processing join-call message on connection ${connectionId}`);
             if (!message.callId || !message.userId) {
-              console.error('Missing callId or userId in join-call message');
+              console.error(`❌ Missing callId or userId in join-call message:`, message);
               return;
             }
+            
+            console.log(`   📋 CallId: ${message.callId}`);
+            console.log(`   👤 UserId: ${message.userId}`);
+            
+            // Check if user already exists
+            if (clients.has(message.userId)) {
+              console.log(`⚠️ User ${message.userId} already has a connection, replacing...`);
+              const oldWs = clients.get(message.userId);
+              if (oldWs && oldWs.readyState === ws.OPEN) {
+                oldWs.close(1000, 'Replaced by new connection');
+              }
+            }
+            
             ws.userId = message.userId;
             ws.callId = message.callId;
             clients.set(message.userId, ws);
             
+            console.log(`✅ User ${message.userId} joined call ${message.callId}`);
+            console.log(`   📊 Total active clients: ${clients.size}`);
+            
             // Broadcast to other participants in the call
-            broadcastToCall(message.callId, {
+            const joinedMessage = {
               type: 'user-joined',
               userId: message.userId,
               callId: message.callId
-            }, message.userId);
+            };
+            console.log(`📢 Broadcasting user-joined message:`, joinedMessage);
+            broadcastToCall(message.callId, joinedMessage, message.userId);
             break;
 
           case 'leave-call':
@@ -235,13 +275,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           case 'ping':
             // Respond to ping with pong for heartbeat mechanism
+            console.log(`💓 Received ping from ${ws.userId || connectionId}`);
             ws.isAlive = true;
             ws.lastPing = Date.now();
             if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({
+              const pongMessage = {
                 type: 'pong',
                 timestamp: message.timestamp || Date.now()
-              }));
+              };
+              ws.send(JSON.stringify(pongMessage));
+              console.log(`💓 Sent pong response to ${ws.userId || connectionId}`);
+            } else {
+              console.warn(`⚠️ Cannot send pong - WebSocket not open (readyState: ${ws.readyState})`);
             }
             break;
 
@@ -252,16 +297,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
             break;
         }
       } catch (error) {
-        console.error('WebSocket message error:', error);
+        console.error(`💥 WebSocket message error on connection ${connectionId}:`, error);
+        console.log(`   📊 Connection details: userId=${ws.userId}, callId=${ws.callId}, readyState=${ws.readyState}`);
+        if (error instanceof Error) {
+          console.log(`   📝 Error details: ${error.message}`);
+          console.log(`   📚 Stack trace: ${error.stack}`);
+        }
       }
     });
 
     ws.on('close', (code, reason) => {
-      console.log(`WebSocket closed (code: ${code}, reason: ${reason}, userId: ${ws.userId})`);
+      const reasonStr = reason ? reason.toString() : '';
+      console.log(`🔌❌ WebSocket connection closed:`);
+      console.log(`   📊 Connection ID: ${connectionId}`);
+      console.log(`   👤 UserId: ${ws.userId || 'undefined'}`);
+      console.log(`   📋 CallId: ${ws.callId || 'undefined'}`);
+      console.log(`   🔢 Close code: ${code}`);
+      console.log(`   📝 Close reason: '${reasonStr}'`);
+      console.log(`   ⏱️ Connection duration: ${Date.now() - ws.lastPing!}ms`);
+      
+      // Log detailed close code meanings
+      const closeCodeMeanings = {
+        1000: 'Normal Closure',
+        1001: 'Going Away',
+        1002: 'Protocol Error', 
+        1003: 'Unsupported Data',
+        1005: 'No Status Received',
+        1006: 'Abnormal Closure (network issue)',
+        1007: 'Invalid frame payload data',
+        1008: 'Policy Violation',
+        1009: 'Message too big',
+        1010: 'Missing Extension',
+        1011: 'Internal Error',
+        1012: 'Service Restart',
+        1013: 'Try Again Later',
+        1014: 'Bad Gateway',
+        1015: 'TLS Handshake'
+      };
+      
+      const meaning = closeCodeMeanings[code as keyof typeof closeCodeMeanings] || 'Unknown';
+      console.log(`   🔍 Close code meaning: ${meaning}`);
       
       if (ws.userId) {
+        console.log(`🗑️ Removing user ${ws.userId} from clients map`);
         clients.delete(ws.userId);
         if (ws.callId) {
+          console.log(`📢 Broadcasting user-left message for ${ws.userId}`);
           broadcastToCall(ws.callId, {
             type: 'user-left',
             userId: ws.userId,
@@ -269,35 +350,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }, ws.userId);
         }
       }
+      
+      console.log(`   📊 Remaining active clients: ${clients.size}`);
     });
 
     // Handle connection errors
     ws.on('error', (error) => {
-      console.error(`WebSocket error for user ${ws.userId}:`, error);
+      console.error(`💥 WebSocket error occurred:`);
+      console.log(`   📊 Connection ID: ${connectionId}`);
+      console.log(`   👤 UserId: ${ws.userId || 'undefined'}`);
+      console.log(`   📋 CallId: ${ws.callId || 'undefined'}`);
+      console.log(`   ⚡ ReadyState: ${ws.readyState}`);
+      console.error(`   🚨 Error details:`, error);
+      
+      if (error instanceof Error) {
+        console.log(`   📝 Error message: ${error.message}`);
+        console.log(`   📚 Stack trace: ${error.stack}`);
+      }
     });
 
     // Send initial ping for mobile connections
     if (isMobile) {
+      console.log(`📱 Scheduling initial ping for mobile connection ${connectionId}`);
       setTimeout(() => {
         if (ws.readyState === WebSocket.OPEN) {
+          console.log(`💓 Sending initial ping to mobile connection ${connectionId}`);
           ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+        } else {
+          console.warn(`⚠️ Cannot send initial ping - connection ${connectionId} not open (readyState: ${ws.readyState})`);
         }
       }, 5000);
     }
   });
 
   function broadcastToCall(callId: string, message: any, excludeUserId?: string) {
+    console.log(`📢 Broadcasting to call ${callId} (excluding ${excludeUserId || 'none'}):`, message);
+    
+    let sentCount = 0;
+    let eligibleCount = 0;
+    
     clients.forEach((client, userId) => {
-      if (client.callId === callId && userId !== excludeUserId && client.readyState === WebSocket.OPEN) {
-        try {
-          client.send(JSON.stringify(message));
-        } catch (error) {
-          console.error(`Failed to send message to client ${userId}:`, error);
-          // Remove dead client
-          clients.delete(userId);
+      if (client.callId === callId && userId !== excludeUserId) {
+        eligibleCount++;
+        console.log(`   🎯 Target client: ${userId} (readyState: ${client.readyState})`);
+        
+        if (client.readyState === WebSocket.OPEN) {
+          try {
+            client.send(JSON.stringify(message));
+            sentCount++;
+            console.log(`   ✅ Message sent to ${userId}`);
+          } catch (error) {
+            console.error(`   💥 Failed to send message to client ${userId}:`, error);
+            // Remove dead client
+            clients.delete(userId);
+            console.log(`   🗑️ Removed dead client ${userId}`);
+          }
+        } else {
+          console.log(`   ⚠️ Client ${userId} not ready (readyState: ${client.readyState})`);
         }
       }
     });
+    
+    console.log(`📊 Broadcast summary: ${sentCount}/${eligibleCount} messages sent successfully`);
   }
 
   // Periodic cleanup for mobile connections and message queues

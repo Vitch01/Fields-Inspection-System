@@ -90,11 +90,27 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
     // Use secure WebSocket only when page is served over HTTPS
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     
-    // Use the same host as the current page
-    const host = window.location.host || `${window.location.hostname || 'localhost'}:${window.location.port || '5000'}`;
+    // Comprehensive URL construction with debugging
+    const currentHost = window.location.host;
+    const currentHostname = window.location.hostname;
+    const currentPort = window.location.port;
+    
+    console.log(`🔍 URL Components: protocol=${window.location.protocol}, host='${currentHost}', hostname='${currentHostname}', port='${currentPort}'`);
+    
+    let host: string;
+    
+    if (currentHost && !currentHost.includes('undefined')) {
+      // Use the full host if it's valid and doesn't contain 'undefined'
+      host = currentHost;
+    } else {
+      // Construct host manually with proper port handling
+      const hostname = currentHostname || 'localhost';
+      const port = currentPort && currentPort !== '' ? currentPort : '5000';
+      host = `${hostname}:${port}`;
+    }
     
     const wsUrl = `${protocol}//${host}/ws`;
-    console.log(`🔌 WebSocket URL: ${wsUrl} (mobile: ${isMobile}, protocol: ${window.location.protocol})`);
+    console.log(`🔌 WebSocket URL: ${wsUrl} (mobile: ${isMobile}, constructed host: '${host}')`);
     
     return wsUrl;
   }
@@ -147,8 +163,11 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
       const wsUrl = getWebSocketUrl();
       console.log(`Attempting WebSocket connection (mobile: ${isMobile}, attempt: ${connectionState.reconnectAttempts + 1})`);
       
+      console.log(`🚀 Creating WebSocket connection to: ${wsUrl}`);
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
+      
+      console.log(`📡 WebSocket created, readyState: ${ws.readyState} (CONNECTING=0, OPEN=1, CLOSING=2, CLOSED=3)`);
       
       // Set connection timeout
       connectionTimeoutRef.current = setTimeout(() => {
@@ -160,7 +179,8 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
       }, CONNECTION_TIMEOUT);
 
       ws.onopen = () => {
-        console.log('WebSocket connected successfully');
+        console.log('✅ WebSocket connected successfully!');
+        console.log(`📡 Connection details: readyState=${ws.readyState}, url=${ws.url}`);
         if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
         
         setConnectionState(prev => ({
@@ -179,11 +199,13 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
         startHeartbeat();
         
         // Send join message
-        sendMessage({
+        const joinMessage = {
           type: "join-call",
           callId,
           userId: userRole,
-        });
+        };
+        console.log('📤 Sending join-call message:', joinMessage);
+        sendMessage(joinMessage);
         
         // Send any queued messages
         flushMessageQueue();
@@ -209,7 +231,31 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
       };
 
       ws.onclose = (event) => {
-        console.log(`WebSocket disconnected (code: ${event.code}, reason: ${event.reason})`);
+        console.log(`❌ WebSocket disconnected (code: ${event.code}, reason: '${event.reason}', wasClean: ${event.wasClean})`);
+        console.log(`📡 Final readyState: ${ws.readyState}, URL: ${ws.url}`);
+        
+        // Log detailed close code meanings
+        const closeCodeMeanings = {
+          1000: 'Normal Closure',
+          1001: 'Going Away',
+          1002: 'Protocol Error',
+          1003: 'Unsupported Data',
+          1005: 'No Status Received',
+          1006: 'Abnormal Closure',
+          1007: 'Invalid frame payload data',
+          1008: 'Policy Violation',
+          1009: 'Message too big',
+          1010: 'Missing Extension',
+          1011: 'Internal Error',
+          1012: 'Service Restart',
+          1013: 'Try Again Later',
+          1014: 'Bad Gateway',
+          1015: 'TLS Handshake'
+        };
+        
+        const meaning = closeCodeMeanings[event.code as keyof typeof closeCodeMeanings] || 'Unknown';
+        console.log(`🔍 Close code ${event.code} means: ${meaning}`);
+        
         if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
         
         setConnectionState(prev => ({
@@ -236,7 +282,8 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('💥 WebSocket error occurred:', error);
+        console.log(`📡 WebSocket state at error: readyState=${ws.readyState}, url=${ws.url}`);
         options.onError?.('WebSocket error', error);
         
         if (!isManualDisconnectRef.current) {
@@ -245,7 +292,12 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
       };
 
     } catch (error) {
-      console.error('Failed to create WebSocket:', error);
+      console.error('💥 Failed to create WebSocket:', error);
+      console.log(`🔍 Error details:`, {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        url: wsUrl
+      });
       handleConnectionFailure('Failed to create WebSocket');
     }
   }, [callId, userRole, connectionState.reconnectAttempts]);
@@ -323,15 +375,27 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
   }
 
   function sendMessage(message: any) {
+    console.log(`📤 Attempting to send message:`, message);
+    console.log(`📡 WebSocket state: ${wsRef.current?.readyState} (CONNECTING=0, OPEN=1, CLOSING=2, CLOSED=3)`);
+    
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(message));
+      try {
+        const messageStr = JSON.stringify(message);
+        wsRef.current.send(messageStr);
+        console.log(`✅ Message sent successfully (${messageStr.length} bytes)`);
+      } catch (error) {
+        console.error('💥 Failed to send message:', error);
+        messageQueueRef.current.push(message);
+      }
     } else if (connectionState.isFallbackActive) {
       // Send via HTTP when in fallback mode
+      console.log('🔄 Using HTTP fallback to send message');
       sendViaHTTP(message);
     } else {
       // Queue message for when connection is restored
       messageQueueRef.current.push(message);
-      console.warn('WebSocket not connected, message queued:', message);
+      console.warn('⚠️ WebSocket not connected, message queued:', message);
+      console.log(`📡 Current state: connected=${connectionState.isConnected}, readyState=${wsRef.current?.readyState}`);
     }
   }
 
