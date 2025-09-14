@@ -291,7 +291,10 @@ function RequestDetails({ request, onAssign, onStartCall, onClose }: RequestDeta
           </CardHeader>
           <CardContent className="space-y-3">
             <Button 
-              onClick={() => onStartCall(request.id)} 
+              onClick={() => {
+                onStartCall(request.id);
+                onClose();
+              }} 
               className="w-full"
               data-testid="button-start-call"
             >
