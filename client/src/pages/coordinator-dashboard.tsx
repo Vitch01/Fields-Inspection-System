@@ -678,10 +678,13 @@ export default function CoordinatorDashboard() {
       
       console.log('🚀 Redirecting to coordinator call page:', `/coordinator/call/${call.id}`);
       console.log('🚀 About to call setLocation with setTimeout to avoid dialog interference...');
+      console.log('🚀 AUTH DEBUG: Current token exists:', !!localStorage.getItem('authToken'));
+      console.log('🚀 AUTH DEBUG: Current user:', currentUser);
       
       // Use setTimeout to defer navigation after dialog close to prevent interference
       setTimeout(() => {
         console.log('⏰ setTimeout executed, calling setLocation now...');
+        console.log('⏰ NAVIGATION DEBUG: About to navigate to:', `/coordinator/call/${call.id}`);
         setLocation(`/coordinator/call/${call.id}`);
         console.log('🚀 setLocation called, navigation should trigger');
       }, 100);
@@ -759,11 +762,28 @@ export default function CoordinatorDashboard() {
             <Badge variant="outline" className="text-primary">
               {stats.total} Total Requests
             </Badge>
+            {/* Direct test navigation link */}
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => {
+                console.log('🔗 DIRECT TEST: Navigating to /coordinator/call/test-call-123');
+                setLocation("/coordinator/call/test-call-123");
+              }}
+              data-testid="button-direct-test-nav"
+            >
+              Direct Test Nav
+            </Button>
             {/* TEMPORARY TEST LINK - Remove after routing is fixed */}
             <Button 
               variant="outline" 
               size="sm"
-              onClick={() => setLocation("/coordinator/call/test-call-id")}
+              onClick={() => {
+                console.log('🧪 TEST NAVIGATION: About to navigate to /coordinator/call/test-call-id');
+                console.log('🧪 TEST NAVIGATION: Current auth token exists:', !!localStorage.getItem('authToken'));
+                setLocation("/coordinator/call/test-call-id");
+                console.log('🧪 TEST NAVIGATION: setLocation called');
+              }}
               data-testid="button-test-call-routing"
             >
               🧪 Test Call Route

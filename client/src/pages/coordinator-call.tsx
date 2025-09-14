@@ -15,6 +15,37 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 
+// Helper function to decode JWT token and get user data (same as dashboard)
+function getCurrentUserFromToken() {
+  const token = localStorage.getItem("authToken");
+  if (!token) return null;
+  
+  try {
+    // JWT tokens have three parts separated by dots
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      window.atob(base64)
+        .split('')
+        .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    
+    const payload = JSON.parse(jsonPayload);
+    return {
+      id: payload.userId,
+      name: payload.name,
+      role: payload.role,
+      username: payload.username,
+      email: payload.email,
+      departmentId: payload.departmentId
+    };
+  } catch (error) {
+    console.error('Failed to decode JWT token:', error);
+    return null;
+  }
+}
+
 export default function CoordinatorCall() {
   // IMMEDIATE DEBUG - See if component executes and what happens
   console.log('🚨 COORDINATOR CALL EXECUTING!', { 
@@ -32,53 +63,34 @@ export default function CoordinatorCall() {
   const [callDuration, setCallDuration] = useState(0);
   const [videoRotation, setVideoRotation] = useState(0);
   const { toast } = useToast();
+  const [authError, setAuthError] = useState<string | null>(null);
 
-  // Authentication validation - redirect to login if not authenticated
+  // Get authenticated user using same function as dashboard
+  const currentUser = getCurrentUserFromToken();
+  
+  // Authentication validation - show error instead of silent redirect
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
-    if (!token) {
-      console.warn('❌ No authentication token found, redirecting to login');
-      setTimeout(() => setLocation('/'), 100);
-      return;
-    }
+    console.log('🔒 COORDINATOR CALL AUTH CHECK:', {
+      hasToken: !!localStorage.getItem('authToken'),
+      currentUser: currentUser,
+      callId: callId
+    });
 
-    // Validate token format and check if it's expired
-    try {
-      const base64Url = token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const jsonPayload = decodeURIComponent(
-        window.atob(base64)
-          .split('')
-          .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-          .join('')
-      );
-      
-      const payload = JSON.parse(jsonPayload);
-      
-      // Check if token is expired
-      if (payload.exp && payload.exp * 1000 < Date.now()) {
-        console.warn('❌ Authentication token expired, redirecting to login');
-        localStorage.removeItem('authToken');
-        setTimeout(() => setLocation('/'), 100);
-        return;
-      }
-      
-      // Check if user has coordinator role
-      if (payload.role !== 'coordinator') {
-        console.warn('❌ Invalid role for coordinator access, redirecting to login');
-        localStorage.removeItem('authToken');
-        setTimeout(() => setLocation('/'), 100);
-        return;
-      }
-      
-      console.log('✅ Authentication validated for coordinator:', payload.name);
-    } catch (error) {
-      console.error('❌ Invalid authentication token format, redirecting to login:', error);
-      localStorage.removeItem('authToken');
-      setTimeout(() => setLocation('/'), 100);
+    if (!currentUser) {
+      console.log('❌ No authenticated user found in coordinator call');
+      setAuthError('Authentication required. Please log in as a coordinator.');
       return;
     }
-  }, [setLocation]);
+    
+    if (currentUser.role !== 'coordinator') {
+      console.log('❌ User role mismatch in coordinator call:', currentUser.role, 'expected: coordinator');
+      setAuthError(`Invalid role: ${currentUser.role}. Coordinator access required.`);
+      return;
+    }
+    
+    console.log('✅ Authentication validated for coordinator call:', currentUser.name);
+    setAuthError(null);
+  }, [currentUser, callId]);
 
   // Query hooks
   const { data: call, error: callError, isLoading: callLoading } = useQuery<any>({
@@ -148,6 +160,29 @@ export default function CoordinatorCall() {
     window.open(inspectorLink, '_blank');
   };
 
+  // Show auth error state - VISIBLE instead of silent redirect
+  if (authError) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-center space-y-4 max-w-md">
+          <h1 className="text-2xl font-bold text-destructive">Authentication Required</h1>
+          <p className="text-muted-foreground">{authError}</p>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">Debug info:</p>
+            <pre className="text-xs bg-muted p-2 rounded text-left">
+              Token exists: {localStorage.getItem('authToken') ? 'YES' : 'NO'}
+              Current user: {currentUser ? JSON.stringify(currentUser, null, 2) : 'NULL'}
+              Call ID: {callId || 'MISSING'}
+            </pre>
+          </div>
+          <Button onClick={() => setLocation('/')} data-testid="button-go-home">
+            Go to Home
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   // Show loading state
   if (callLoading) {
     return (
@@ -155,6 +190,7 @@ export default function CoordinatorCall() {
         <div className="text-center space-y-4">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
           <p className="text-muted-foreground">Loading call...</p>
+          <p className="text-xs text-muted-foreground">Call ID: {callId}</p>
         </div>
       </div>
     );
@@ -169,6 +205,14 @@ export default function CoordinatorCall() {
           <p className="text-muted-foreground">
             {callError ? "Failed to load call information" : "Invalid call ID"}
           </p>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">Debug info:</p>
+            <pre className="text-xs bg-muted p-2 rounded text-left">
+              Call ID: {callId || 'MISSING'}
+              Error: {callError?.message || 'No call ID provided'}
+              Auth user: {currentUser?.name || 'None'}
+            </pre>
+          </div>
           <Button onClick={() => window.history.back()} data-testid="button-back">
             Go Back to Dashboard
           </Button>
