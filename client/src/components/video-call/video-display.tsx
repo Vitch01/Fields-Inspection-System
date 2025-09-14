@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Camera, Expand, RotateCw, RotateCcw } from "lucide-react";
+import { Camera, Expand, RotateCw, RotateCcw, Volume2, VolumeX } from "lucide-react";
 
 interface VideoDisplayProps {
   localStream: MediaStream | null;
@@ -28,6 +28,8 @@ export default function VideoDisplay({
   const [manualRotation, setManualRotation] = useState(isCoordinator ? -90 : 0); // Start coordinator with -90 degrees (horizontal, opposite side), inspector with 0
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
+  const [audioEnabled, setAudioEnabled] = useState(true);
+  const [showAudioWarning, setShowAudioWarning] = useState(false);
 
   // Calculate call duration
   useEffect(() => {
@@ -128,21 +130,64 @@ export default function VideoDisplay({
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
+      const video = remoteVideoRef.current;
+      video.srcObject = remoteStream;
+      
+      // Debug audio tracks in remote stream
+      const audioTracks = remoteStream.getAudioTracks();
+      const videoTracks = remoteStream.getVideoTracks();
+      
+      console.log('🔊 Remote stream audio tracks:', audioTracks.length);
+      console.log('📹 Remote stream video tracks:', videoTracks.length);
+      
+      audioTracks.forEach((track, index) => {
+        console.log(`🔊 Audio track ${index}:`, {
+          enabled: track.enabled,
+          muted: track.muted,
+          readyState: track.readyState,
+          label: track.label
+        });
+      });
+      
+      // Ensure video element audio is properly configured
+      video.muted = false;
+      video.volume = 1.0;
       
       // Listen for video metadata to get actual dimensions
-      const video = remoteVideoRef.current;
       const handleLoadedMetadata = () => {
         if (video.videoWidth && video.videoHeight) {
           const aspectRatio = video.videoWidth / video.videoHeight;
           setVideoAspectRatio(aspectRatio);
         }
+        
+        // Ensure audio is playing after metadata loads
+        console.log('📺 Video metadata loaded - checking audio playback');
+        console.log('🔊 Video element muted:', video.muted);
+        console.log('🔊 Video element volume:', video.volume);
+        
+        // Try to play audio explicitly (this helps with autoplay policies)
+        video.play().then(() => {
+          console.log('✅ Remote video with audio started playing');
+          setShowAudioWarning(false);
+        }).catch(err => {
+          console.warn('⚠️ Remote video autoplay failed (this is normal):', err.message);
+          // Show audio warning for user interaction
+          if (audioTracks.length > 0) {
+            setShowAudioWarning(true);
+          }
+        });
+      };
+      
+      const handleCanPlay = () => {
+        console.log('✅ Remote video can play - audio should be available');
       };
       
       video.addEventListener('loadedmetadata', handleLoadedMetadata);
+      video.addEventListener('canplay', handleCanPlay);
       
       return () => {
         video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        video.removeEventListener('canplay', handleCanPlay);
       };
     }
   }, [remoteStream]);
@@ -174,6 +219,33 @@ export default function VideoDisplay({
         // Request fullscreen on the container div instead of just the video
         remoteVideoRef.current.parentElement?.requestFullscreen();
       }
+    }
+  };
+
+  const enableAudio = () => {
+    if (remoteVideoRef.current) {
+      const video = remoteVideoRef.current;
+      video.muted = false;
+      video.volume = 1.0;
+      
+      // Try to play the video to enable audio
+      video.play().then(() => {
+        console.log('✅ Audio enabled after user interaction');
+        setShowAudioWarning(false);
+        setAudioEnabled(true);
+      }).catch(err => {
+        console.error('❌ Failed to enable audio:', err);
+      });
+    }
+  };
+
+  const toggleAudio = () => {
+    if (remoteVideoRef.current) {
+      const video = remoteVideoRef.current;
+      const newMuted = !video.muted;
+      video.muted = newMuted;
+      setAudioEnabled(!newMuted);
+      console.log(`🔊 Audio ${newMuted ? 'muted' : 'unmuted'}`);
     }
   };
 
@@ -234,6 +306,7 @@ export default function VideoDisplay({
           autoPlay
           playsInline
           muted={false} // Allow audio communication between coordinator and inspector
+          controls={false}
           className={`${
             isFullscreen 
               ? getFullscreenVideoClass()
@@ -242,7 +315,38 @@ export default function VideoDisplay({
             isCoordinator ? getRotationClass(videoAspectRatio, manualRotation) : ''
           }`}
           data-testid="video-remote-stream"
+          onLoadedData={() => {
+            console.log('📺 Remote video loaded - ensuring audio is enabled');
+            if (remoteVideoRef.current) {
+              remoteVideoRef.current.muted = false;
+              remoteVideoRef.current.volume = 1.0;
+            }
+          }}
+          onVolumeChange={() => {
+            if (remoteVideoRef.current) {
+              console.log('🔊 Volume changed:', remoteVideoRef.current.volume, 'Muted:', remoteVideoRef.current.muted);
+            }
+          }}
         />
+        
+        {/* Audio Warning */}
+        {showAudioWarning && (
+          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10">
+            <div className="bg-yellow-500 text-black px-4 py-2 rounded-lg shadow-lg flex items-center space-x-2">
+              <VolumeX className="w-4 h-4" />
+              <span className="text-sm font-medium">Audio Blocked</span>
+              <Button 
+                size="sm" 
+                variant="secondary"
+                className="bg-white text-black hover:bg-gray-100 h-6 px-2 text-xs"
+                onClick={enableAudio}
+                data-testid="button-enable-audio"
+              >
+                Enable Audio
+              </Button>
+            </div>
+          </div>
+        )}
         
         {/* Video Controls Overlay */}
         <div className="absolute top-4 left-4 flex space-x-2">
@@ -283,6 +387,20 @@ export default function VideoDisplay({
               </Button>
             </>
           )}
+          
+          {/* Audio Control Button */}
+          <Button 
+            size="icon"
+            variant="secondary"
+            className={`border border-gray-300 hover:bg-gray-100 ${
+              audioEnabled ? 'bg-white text-black' : 'bg-red-600 text-white'
+            }`}
+            onClick={toggleAudio}
+            data-testid="button-toggle-audio"
+          >
+            {audioEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </Button>
+          
           <Button 
             size="icon"
             variant="secondary"
