@@ -311,9 +311,13 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
   const loadKmlDataAsMarkers = async (map: any, kmlUrl: string) => {
     console.log('📍 Parsing KML data from Google My Maps...');
+    console.log('🔍 KML URL:', kmlUrl);
     try {
       const response = await fetch(kmlUrl);
+      console.log('📡 KML response status:', response.status, response.statusText);
       const kmlText = await response.text();
+      console.log('📄 KML text length:', kmlText.length, 'characters');
+      console.log('📄 KML snippet (first 500 chars):', kmlText.substring(0, 500));
       
       if (kmlText.includes('<Placemark>')) {
         console.log('✅ Found Google My Maps data - parsing field representatives...');
@@ -461,8 +465,17 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
           setIsMapLoaded(true);
           setMapError(null);
         } else {
-          console.log('⚠️ No valid field representatives found in Google My Maps');
-          setMapError('No field representatives found in your Google My Maps layer.');
+          console.warn('⚠️ No field representatives could be placed on the map.');
+          console.warn(`Parsed ${placemarks.length} placemarks but could not create any markers`);
+          console.warn(`Database inspectors available:`, dbInspectors.length);
+          
+          if (placemarks.length === 0) {
+            setMapError('No data found in your Google My Maps layer. Please check that your map contains placemarks.');
+          } else if (dbInspectors.length === 0) {
+            setMapError('No inspector users found in database. Please ensure inspector users are created first.');
+          } else {
+            setMapError(`Found ${placemarks.length} items in Google My Maps but none match database inspector names. Please check name matching.`);
+          }
         }
         
       } else {
