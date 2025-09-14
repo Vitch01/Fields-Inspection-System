@@ -465,7 +465,32 @@ export default function CoordinatorDashboard() {
   };
 
   const handleInspectorSelection = async (inspector: any) => {
-    if (!requestForCall) return;
+    if (!requestForCall) {
+      toast({
+        title: "No request selected",
+        description: "Please select an inspection request first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!currentUser?.id) {
+      toast({
+        title: "Authentication error",
+        description: "Please log in again",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!inspector?.id) {
+      toast({
+        title: "Inspector selection error",
+        description: "Please select a valid inspector",
+        variant: "destructive",
+      });
+      return;
+    }
 
     try {
       // First create the call
@@ -531,9 +556,10 @@ export default function CoordinatorDashboard() {
       setSelectedInspector(null);
       window.location.href = `/coordinator/${call.id}`;
     } catch (error) {
+      console.error("Failed to start call:", error);
       toast({
         title: "Failed to start call",
-        description: "Please try again",
+        description: error.message || "Please try again",
         variant: "destructive",
       });
     }
