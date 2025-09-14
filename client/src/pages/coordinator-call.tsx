@@ -194,15 +194,16 @@ export default function CoordinatorCall() {
               <Copy className="w-3 h-3 mr-1" />
               Copy Inspector Link
             </Button>
-            <Button 
-              size="sm" 
-              variant="outline"
-              onClick={openInspectorLink}
+            <a 
+              href={`${window.location.origin}/join/${callId}`}
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3 py-2"
               data-testid="button-open-inspector-link"
             >
               <ExternalLink className="w-3 h-3 mr-1" />
               Open Link
-            </Button>
+            </a>
           </div>
           <div className="flex items-center space-x-1">
             <Signal className="w-4 h-4 text-green-500" />

@@ -105,14 +105,18 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
     if (heartbeatTimeoutRef.current) clearTimeout(heartbeatTimeoutRef.current);
     if (fallbackPollIntervalRef.current) clearInterval(fallbackPollIntervalRef.current);
     
-    // Close WebSocket
-    if (wsRef.current) {
-      const closeReason = isExplicitDisconnect ? 'Client disconnect' : 'Component cleanup';
-      wsRef.current.close(1000, closeReason);
+    // Only close WebSocket on explicit disconnect (e.g., "end call"), NOT on component cleanup
+    if (wsRef.current && isExplicitDisconnect) {
+      console.log('🔌 Explicitly closing WebSocket connection');
+      wsRef.current.close(1000, 'Client disconnect');
       wsRef.current = null;
+      setConnectionState(prev => ({ ...prev, isConnected: false, connectionQuality: 'disconnected' }));
     }
     
-    setConnectionState(prev => ({ ...prev, isConnected: false, connectionQuality: 'disconnected' }));
+    // Don't update connection state if this is just component cleanup
+    if (!isExplicitDisconnect) {
+      console.log('🔧 Component cleanup - preserving WebSocket connection');
+    }
   }
 
   function getWebSocketUrl(): string {

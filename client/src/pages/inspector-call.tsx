@@ -191,6 +191,11 @@ export default function InspectorCall() {
           <div className="text-sm font-medium text-white">
             Coordinator: <span className="text-white" data-testid="text-coordinator-name">Sarah Johnson</span>
           </div>
+          <div className="text-xs text-white">
+            Call ID: <span className="font-mono text-white" data-testid="text-call-id">
+              {callId}
+            </span>
+          </div>
           <div className="flex items-center space-x-1">
             <Signal className="w-4 h-4 text-white" />
             <span className="text-xs text-white">Excellent</span>
