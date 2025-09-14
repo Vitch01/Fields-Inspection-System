@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { MapPin, Phone, X } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { MapPin, Phone, X, User, Mail, DollarSign, FileText, Loader2, MapIcon } from 'lucide-react';
 
 /// <reference types="google.maps" />
 
@@ -554,35 +555,54 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-6xl h-[80vh] bg-white border border-gray-300">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 bg-white border-b border-gray-300">
-          <CardTitle className="text-xl font-semibold text-black">Field Inspector Map</CardTitle>
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+      <Card className="w-full max-w-7xl h-[85vh] bg-card border-card-border shadow-2xl">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-6 border-b border-border bg-gradient-to-r from-primary/5 to-secondary/5">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <MapIcon className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle className="text-2xl font-bold text-foreground">Field Inspector Map</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">Select an inspector to start a video call</p>
+            </div>
+          </div>
           <Button
             size="icon"
             variant="ghost"
             onClick={onClose}
-            className="h-8 w-8 text-black hover:bg-gray-100"
+            className="h-10 w-10 hover-elevate"
             data-testid="button-close-field-map"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </Button>
         </CardHeader>
         <CardContent className="p-0 h-[calc(80vh-80px)] flex">
           <div className="flex-1 relative">
             {mapError ? (
-              <div className="flex flex-col items-center justify-center h-full p-8 bg-gray-50">
-                <MapPin className="w-16 h-16 text-gray-400 mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2 text-center">Unable to Load Map</h3>
-                <p className="text-sm text-gray-600 text-center max-w-md mb-6">{mapError}</p>
-                <Button
-                  onClick={retryLoadMap}
-                  disabled={isRetrying}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                  data-testid="button-retry-map"
-                >
-                  {isRetrying ? 'Loading...' : 'Try Again'}
-                </Button>
+              <div className="h-full flex items-center justify-center bg-muted/30 rounded-l-lg">
+                <div className="text-center p-8 max-w-md">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-destructive/10 flex items-center justify-center">
+                    <MapIcon className="w-8 h-8 text-destructive" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">Map Loading Error</h3>
+                  <p className="text-muted-foreground mb-6 leading-relaxed">{mapError}</p>
+                  <Button 
+                    onClick={retryLoadMap} 
+                    disabled={isRetrying}
+                    className="w-full"
+                    data-testid="button-retry-map"
+                  >
+                    {isRetrying ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Retrying...
+                      </>
+                    ) : (
+                      'Retry Loading Map'
+                    )}
+                  </Button>
+                </div>
               </div>
             ) : (
               <div
@@ -592,95 +612,156 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
               />
             )}
             {!isMapLoaded && !mapError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                  <p className="text-sm text-gray-600">Loading map...</p>
+              <div className="absolute inset-0 bg-muted/50 backdrop-blur-sm flex items-center justify-center rounded-l-lg">
+                <div className="text-center p-8">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">Loading Field Map</h3>
+                  <p className="text-muted-foreground">Please wait while we load your Google My Maps locations</p>
                 </div>
               </div>
             )}
           </div>
           
-          <div className="w-80 border-l border-gray-300 bg-white">
-            <div className="p-4 border-b border-gray-300">
-              <h3 className="font-medium text-gray-900">Available Inspectors</h3>
+          <div className="w-84 bg-muted/30 border-l border-border overflow-y-auto">
+            <div className="p-6 bg-card border-b border-border">
+              <div className="flex items-center space-x-2 mb-3">
+                <User className="w-5 h-5 text-primary" />
+                <h3 className="text-lg font-semibold text-foreground">Available Inspectors</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">Click on an inspector card to start a video call</p>
             </div>
-            <div className="overflow-y-auto h-[calc(80vh-160px)]">
-              {inspectors.length > 0 ? (
-                <div className="p-4 space-y-3">
-                  {inspectors.map((inspector) => {
-                    const isCurrentCall = inspector.id === currentCallInspectorId;
-                    return (
-                      <div
-                        key={inspector.id}
-                        className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 cursor-pointer"
-                        onClick={() => showInspectorInfo(inspector, { lat: inspector.latitude, lng: inspector.longitude })}
-                        data-testid={`inspector-card-${inspector.id}`}
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center space-x-2">
-                            <MapPin className="w-4 h-4 text-gray-400" />
-                            <h4 className="font-medium text-gray-900 text-sm">{inspector.name}</h4>
-                          </div>
-                          <div className={`w-2 h-2 rounded-full ${getStatusDot(inspector.status, isCurrentCall)}`}></div>
-                        </div>
-                        <p className="text-xs text-gray-600 mb-1">{inspector.specialization}</p>
-                        <div className="flex items-center space-x-2">
-                          <span className={`text-xs font-medium ${getStatusColor(inspector.status, isCurrentCall)}`}>
-                            {isCurrentCall ? 'On Current Call' : inspector.status.charAt(0).toUpperCase() + inspector.status.slice(1)}
-                          </span>
-                        </div>
-                        {inspector.phone && (
-                          <div className="flex items-center space-x-1 mt-2">
-                            <Phone className="w-3 h-3 text-gray-400" />
-                            <span className="text-xs text-gray-600">{inspector.phone}</span>
-                          </div>
-                        )}
-                        {!isCurrentCall && inspector.status === 'available' && (
-                          <Button
-                            size="sm"
-                            className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectInspector(inspector);
-                              onClose();
-                            }}
-                            data-testid={`button-select-inspector-${inspector.id}`}
-                          >
-                            Call
-                          </Button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="p-4 text-center">
-                  <MapPin className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600">
-                    {isMapLoaded ? 'No inspectors found in your area' : 'Loading inspectors...'}
+            <div className="p-6 space-y-4">
+              {inspectors.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted/50 flex items-center justify-center">
+                    <User className="w-8 h-8 text-muted-foreground" />
+                  </div>
+                  <h4 className="text-lg font-semibold text-foreground mb-2">No Inspectors Found</h4>
+                  <p className="text-sm text-muted-foreground max-w-xs mx-auto leading-relaxed">
+                    Make sure your Google My Maps contains field inspector locations and they match your database users
                   </p>
                 </div>
+              ) : (
+                inspectors.map((inspector) => {
+                  const isCurrentCall = inspector.id === currentCallInspectorId;
+                  const isAvailable = inspector.status === 'available' && !isCurrentCall;
+                  
+                  return (
+                    <Card
+                      key={inspector.id}
+                      className={`p-5 transition-all duration-200 border cursor-pointer hover-elevate ${
+                        isCurrentCall 
+                          ? 'bg-primary/5 border-primary/20 ring-1 ring-primary/20' 
+                          : isAvailable
+                          ? 'bg-card border-border hover:border-primary/30'
+                          : 'bg-muted/30 border-muted cursor-not-allowed opacity-75'
+                      }`}
+                      onClick={() => {
+                        if (isAvailable) {
+                          onSelectInspector(inspector);
+                          onClose();
+                        } else {
+                          showInspectorInfo(inspector, { lat: inspector.latitude, lng: inspector.longitude });
+                        }
+                      }}
+                      data-testid={`inspector-card-${inspector.id}`}
+                    >
+                      <div className="flex items-start space-x-4">
+                        <div className="flex-shrink-0">
+                          <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                            isCurrentCall 
+                              ? 'bg-primary text-primary-foreground' 
+                              : isAvailable
+                              ? 'bg-secondary/10 text-secondary'
+                              : 'bg-muted text-muted-foreground'
+                          }`}>
+                            <User className="w-5 h-5" />
+                          </div>
+                        </div>
+                        
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <h4 className="font-semibold text-foreground truncate">{inspector.name}</h4>
+                            <Badge 
+                              variant={isCurrentCall ? 'default' : isAvailable ? 'secondary' : 'outline'}
+                              className="text-xs"
+                            >
+                              {isCurrentCall ? 'Active Call' : inspector.status}
+                            </Badge>
+                          </div>
+                          
+                          <p className="text-sm text-muted-foreground mb-3">
+                            {inspector.specialization || 'Field Representative'}
+                          </p>
+                          
+                          <div className="space-y-1">
+                            {inspector.phone && (
+                              <div className="flex items-center text-xs text-muted-foreground">
+                                <Phone className="w-3 h-3 mr-2 flex-shrink-0" />
+                                <span className="truncate">{inspector.phone}</span>
+                              </div>
+                            )}
+                            {inspector.email && (
+                              <div className="flex items-center text-xs text-muted-foreground">
+                                <Mail className="w-3 h-3 mr-2 flex-shrink-0" />
+                                <span className="truncate">{inspector.email}</span>
+                              </div>
+                            )}
+                            {inspector.price && (
+                              <div className="flex items-center text-xs text-muted-foreground">
+                                <DollarSign className="w-3 h-3 mr-2 flex-shrink-0" />
+                                <span className="truncate">{inspector.price}</span>
+                              </div>
+                            )}
+                            {inspector.note && (
+                              <div className="flex items-center text-xs text-muted-foreground">
+                                <FileText className="w-3 h-3 mr-2 flex-shrink-0" />
+                                <span className="truncate">{inspector.note}</span>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {isAvailable && (
+                            <Button 
+                              size="sm" 
+                              className="w-full mt-3"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectInspector(inspector);
+                                onClose();
+                              }}
+                            >
+                              Start Video Call
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })
               )}
             </div>
             
-            <div className="p-4 border-t border-gray-300 bg-gray-50">
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                  <span className="text-xs text-gray-600">On Current Call</span>
+            <div className="p-6 border-t border-border bg-muted/20">
+              <h4 className="font-medium text-foreground mb-4">Status Legend</h4>
+              <div className="space-y-3">
+                <div className="flex items-center space-x-3">
+                  <Badge variant="default" className="text-xs">Active Call</Badge>
+                  <span className="text-xs text-muted-foreground">Currently on a video call</span>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                  <span className="text-xs text-gray-600">Available</span>
+                <div className="flex items-center space-x-3">
+                  <Badge variant="secondary" className="text-xs">Available</Badge>
+                  <span className="text-xs text-muted-foreground">Ready to start a call</span>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                  <span className="text-xs text-gray-600">Busy</span>
+                <div className="flex items-center space-x-3">
+                  <Badge variant="outline" className="text-xs">Busy</Badge>
+                  <span className="text-xs text-muted-foreground">Currently unavailable</span>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 rounded-full bg-gray-500"></div>
-                  <span className="text-xs text-gray-600">Offline</span>
+                <div className="flex items-center space-x-3">
+                  <Badge variant="outline" className="text-xs opacity-60">Offline</Badge>
+                  <span className="text-xs text-muted-foreground">Not connected</span>
                 </div>
               </div>
             </div>
