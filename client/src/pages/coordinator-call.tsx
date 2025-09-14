@@ -16,9 +16,11 @@ import { useToast } from "@/hooks/use-toast";
 export default function CoordinatorCall() {
   console.log('🔧🔧🔧 CoordinatorCall component is starting to load...');
   
+  // Extract callId outside try-catch so it's accessible in error handler
+  const { callId } = useParams();
+  
   // FAIL-SAFE: Render fallback if anything goes wrong
   try {
-    const { callId } = useParams();
     console.log('🔧 CoordinatorCall component loaded, callId:', callId);
     console.log('🔧 Component is mounting, about to run queries...');
     
