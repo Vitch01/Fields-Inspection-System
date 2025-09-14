@@ -497,6 +497,13 @@ export default function CoordinatorDashboard() {
     }
 
     try {
+      console.log('🔍 Creating call with data:', {
+        coordinatorId: currentUser.id,
+        inspectorId: inspector.id,
+        inspectionRequestId: requestForCall.id,
+        inspector: inspector
+      });
+
       // First create the call
       const response = await apiRequest("POST", "/api/calls", {
         coordinatorId: currentUser.id,
@@ -507,7 +514,9 @@ export default function CoordinatorDashboard() {
       });
       
       if (!response.ok) {
-        throw new Error(`Failed to create call: ${response.statusText}`);
+        const errorData = await response.json();
+        console.error('❌ Call creation failed:', errorData);
+        throw new Error(`Failed to create call: ${errorData.message || response.statusText}`);
       }
       
       const call = await response.json();

@@ -54,14 +54,17 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
   useEffect(() => {
     const loadDbInspectors = async () => {
       try {
+        console.log('🔄 Loading database inspectors...');
         const response = await fetch('/api/users?role=inspector');
         if (response.ok) {
           const inspectors = await response.json();
           setDbInspectors(inspectors);
           console.log('📋 Loaded database inspectors:', inspectors);
+        } else {
+          console.error('❌ Failed to load database inspectors:', response.status, response.statusText);
         }
       } catch (error) {
-        console.error('Failed to load database inspectors:', error);
+        console.error('❌ Failed to load database inspectors:', error);
       }
     };
     
@@ -368,6 +371,9 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
             // Map to real database user by name matching
             const inspectorName = name.trim();
+            console.log(`🔍 Trying to map field inspector "${inspectorName}" to database user...`);
+            console.log(`📋 Available database inspectors:`, dbInspectors.map(i => `${i.name} (ID: ${i.id})`));
+            
             const matchingDbUser = dbInspectors.find(dbInspector => 
               dbInspector.name.toLowerCase().includes(inspectorName.toLowerCase()) ||
               inspectorName.toLowerCase().includes(dbInspector.name.toLowerCase())
@@ -375,7 +381,7 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
             
             // Use real user ID if found, otherwise skip this inspector
             if (!matchingDbUser) {
-              console.warn(`⚠️ No database user found for field map inspector: ${inspectorName}`);
+              console.warn(`⚠️ No database user found for field map inspector: ${inspectorName}. Skipping this inspector.`);
               return; // Skip this inspector if no matching database user
             }
             
