@@ -59,7 +59,7 @@ export default function Home() {
     try {
       const response = await apiRequest("POST", "/api/calls", {
         coordinatorId: user.id,
-        inspectorId: inspectorId || "inspector1-id", // For demo purposes
+        inspectorId: inspectorId || "9c870768-492e-4282-bd32-c83377774b63", // John Martinez inspector
         status: "pending",
         inspectionReference,
       });
@@ -180,8 +180,8 @@ export default function Home() {
                   <SelectValue placeholder="Select inspector" />
                 </SelectTrigger>
                 <SelectContent className="bg-white border-black">
-                  <SelectItem value="inspector1-id" className="text-black hover:bg-gray-100 focus:bg-gray-100">John Martinez</SelectItem>
-                  <SelectItem value="inspector2-id" className="text-black hover:bg-gray-100 focus:bg-gray-100">Maria Garcia</SelectItem>
+                  <SelectItem value="9c870768-492e-4282-bd32-c83377774b63" className="text-black hover:bg-gray-100 focus:bg-gray-100">John Martinez</SelectItem>
+                  <SelectItem value="e8a4765a-aa31-4eed-8c95-f6976d964a07" className="text-black hover:bg-gray-100 focus:bg-gray-100">Eva Smith</SelectItem>
                 </SelectContent>
               </Select>
             </div>
