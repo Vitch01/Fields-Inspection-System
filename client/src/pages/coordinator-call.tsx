@@ -9,48 +9,14 @@ import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import { FieldMap } from "@/components/field-map/field-map";
 import { useWebRTC } from "@/hooks/use-webrtc";
 import { useState, useEffect } from "react";
-import { Clock, Signal, Copy, ExternalLink, Map } from "lucide-react";
+import { Clock, Signal, Copy, ExternalLink, Map, User, Building, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CoordinatorCall() {
-  // IMMEDIATE DEBUG - Test if component executes at all
-  console.log('🚨 COORDINATOR CALL COMPONENT EXECUTING!', window.location.href);
-  console.log('🚨 Component render timestamp:', new Date().toISOString());
-  document.title = 'DEBUG: Coordinator Call Loading...';
-  
-  // Create simple test render to check if component executes
-  console.log('🚨 About to check callId from params...');
-  
   const { callId } = useParams();
-  console.log('🚨 CallId from useParams:', callId);
-  
-  // SIMPLIFIED RENDER FOR DEBUGGING - Remove complex dependencies
-  if (!callId) {
-    console.log('🚨 No callId found, rendering error state');
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="text-center space-y-4">
-          <h1 className="text-2xl font-bold text-red-500">DEBUG: No Call ID</h1>
-          <p className="text-lg">URL: {window.location.href}</p>
-        </div>
-      </div>
-    );
-  }
-  
-  console.log('🚨 Rendering coordinator call with ID:', callId);
-  return (
-    <div className="flex h-screen items-center justify-center bg-background">
-      <div className="text-center space-y-4">
-        <h1 className="text-2xl font-bold text-green-500">DEBUG: COORDINATOR CALL WORKING!</h1>
-        <p className="text-lg">Call ID: {callId}</p>
-        <p className="text-muted-foreground">Component is executing successfully!</p>
-        <p className="text-xs text-muted-foreground">URL: {window.location.href}</p>
-      </div>
-    </div>
-  );
-  
-  /* COMPLEX CODE TEMPORARILY DISABLED FOR DEBUGGING
   const [showSettings, setShowSettings] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showFieldMap, setShowFieldMap] = useState(false);
@@ -59,8 +25,6 @@ export default function CoordinatorCall() {
   const [videoRotation, setVideoRotation] = useState(0);
   const { toast } = useToast();
 
-
-  /* AUTHENTICATION TEMPORARILY DISABLED FOR DEBUGGING
   // Authentication validation - redirect to login if not authenticated
   useEffect(() => {
     const token = localStorage.getItem('authToken');
@@ -107,11 +71,9 @@ export default function CoordinatorCall() {
       return;
     }
   }, []);
-  */
 
-  /* QUERIES AND HOOKS TEMPORARILY DISABLED FOR DEBUGGING
   // Query hooks
-  const { data: call, error: callError, isLoading: callLoading } = useQuery({
+  const { data: call, error: callError, isLoading: callLoading } = useQuery<any>({
     queryKey: ["/api/calls", callId],
     enabled: !!callId,
   });
@@ -127,22 +89,363 @@ export default function CoordinatorCall() {
   });
 
   // WebRTC hook
-  const webRTCData = useWebRTC(callId || "", "coordinator");
-  */
+  const {
+    localStream,
+    remoteStream,
+    isConnected,
+    isMuted,
+    isVideoEnabled,
+    toggleMute,
+    toggleVideo,
+    captureImage,
+    endCall,
+    chatMessages,
+    sendChatMessage,
+    unreadCount,
+    clearUnreadCount,
+  } = useWebRTC(callId || "", "coordinator");
 
-  // Keep the debug return for now - we'll add back full functionality once routing works
-  console.log('🚨 Rendering coordinator call with ID:', callId);
-  return (
-    <div className="flex h-screen items-center justify-center bg-background">
-      <div className="text-center space-y-4">
-        <h1 className="text-2xl font-bold text-green-500">DEBUG: COORDINATOR CALL WORKING!</h1>
-        <p className="text-lg">Call ID: {callId}</p>
-        <p className="text-muted-foreground">Component is executing successfully!</p>
-        <p className="text-xs text-muted-foreground">URL: {window.location.href}</p>
-        <Button onClick={() => window.history.back()} data-testid="button-back">
-          Go Back to Dashboard
-        </Button>
+  // Call duration timer
+  useEffect(() => {
+    if (isConnected) {
+      const interval = setInterval(() => {
+        setCallDuration(prev => prev + 1);
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [isConnected]);
+
+  const formatDuration = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const copyCallLink = () => {
+    const inspectorLink = `${window.location.origin}/join/${callId}`;
+    navigator.clipboard.writeText(inspectorLink);
+    toast({
+      title: "Link Copied",
+      description: "Inspector call link copied to clipboard",
+    });
+  };
+
+  const openInspectorLink = () => {
+    const inspectorLink = `${window.location.origin}/join/${callId}`;
+    window.open(inspectorLink, '_blank');
+  };
+
+  // Show loading state
+  if (callLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="text-muted-foreground">Loading call...</p>
+        </div>
       </div>
+    );
+  }
+
+  // Show error state
+  if (callError || !callId) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <h1 className="text-2xl font-bold text-destructive">Call Not Found</h1>
+          <p className="text-muted-foreground">
+            {callError ? "Failed to load call information" : "Invalid call ID"}
+          </p>
+          <Button onClick={() => window.history.back()} data-testid="button-back">
+            Go Back to Dashboard
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-screen bg-background">
+      {/* Main Video Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <header className="bg-card border-b px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
+              <span className="text-sm font-medium">
+                {isConnected ? 'Connected' : 'Connecting...'}
+              </span>
+            </div>
+            
+            {isConnected && (
+              <div className="flex items-center space-x-2">
+                <Clock className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm font-medium" data-testid="text-call-duration">
+                  {formatDuration(callDuration)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={copyCallLink}
+              data-testid="button-copy-link"
+            >
+              <Copy className="w-4 h-4 mr-2" />
+              Copy Inspector Link
+            </Button>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={openInspectorLink}
+              data-testid="button-open-inspector-link"
+            >
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Open Inspector Link
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowFieldMap(!showFieldMap)}
+              data-testid="button-toggle-map"
+            >
+              <Map className="w-4 h-4 mr-2" />
+              {showFieldMap ? 'Hide Map' : 'Show Map'}
+            </Button>
+          </div>
+        </header>
+
+        {/* Video Content Area */}
+        <div className="flex-1 flex">
+          {/* Video Display */}
+          <div className="flex-1 bg-black relative">
+            <VideoDisplay
+              localStream={localStream}
+              remoteStream={remoteStream}
+              isCoordinator={true}
+              onCaptureImage={captureImage}
+              onRotationChange={(rotation) => setVideoRotation(rotation)}
+              inspectorName={call?.inspector?.name}
+              callStartTime={call?.startTime}
+            />
+          </div>
+
+          {/* Field Map Panel */}
+          {showFieldMap && (
+            <div className="w-80 bg-card border-l">
+              <div className="h-full flex flex-col">
+                <div className="p-4 border-b">
+                  <h3 className="font-semibold">Field Map & Inspector Location</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Track inspector location and view site details
+                  </p>
+                </div>
+                <div className="flex-1">
+                  <FieldMap 
+                    isOpen={true}
+                    onClose={() => setShowFieldMap(false)}
+                    onSelectInspector={(inspector) => console.log('Selected inspector:', inspector)}
+                    currentCallInspectorId={call?.inspectorId}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Call Controls */}
+        <div className="bg-card border-t">
+          <CallControls
+            isMuted={isMuted}
+            isVideoEnabled={isVideoEnabled}
+            capturedImages={capturedImages}
+            onToggleMute={toggleMute}
+            onToggleVideo={toggleVideo}
+            onCaptureImage={captureImage}
+            onOpenSettings={() => setShowSettings(true)}
+            onOpenChat={() => {
+              clearUnreadCount();
+              setShowChat(true);
+            }}
+            onEndCall={endCall}
+            onImageClick={setSelectedImage}
+            isCoordinator={true}
+            unreadCount={unreadCount}
+          />
+        </div>
+      </div>
+
+      {/* Right Sidebar - Call Information */}
+      <div className="w-80 bg-card border-l flex flex-col">
+        <div className="p-4 border-b">
+          <h2 className="font-semibold text-lg" data-testid="text-call-title">
+            Inspection Call
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Call ID: {callId}
+          </p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Call Information */}
+          {call && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Building className="w-5 h-5" />
+                  <span>Call Details</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Status</label>
+                  <div className="mt-1">
+                    <Badge variant={call.status === 'active' ? 'default' : 'secondary'} data-testid="badge-call-status">
+                      {call.status || 'Active'}
+                    </Badge>
+                  </div>
+                </div>
+                
+                {call.inspectionRequest && (
+                  <>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Inspection Request</label>
+                      <p className="text-sm mt-1" data-testid="text-request-title">
+                        {call.inspectionRequest.title}
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Asset Type</label>
+                      <p className="text-sm mt-1" data-testid="text-asset-type">
+                        {call.inspectionRequest.assetType}
+                      </p>
+                    </div>
+                    
+                    {call.inspectionRequest.location && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Location</label>
+                        <p className="text-sm mt-1" data-testid="text-location">
+                          {call.inspectionRequest.location.address}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Inspector Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <User className="w-5 h-5" />
+                <span>Inspector</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {call?.inspector ? (
+                <div className="space-y-2">
+                  <p className="font-medium" data-testid="text-inspector-name">
+                    {call.inspector.name}
+                  </p>
+                  {call.inspector.email && (
+                    <p className="text-sm text-muted-foreground" data-testid="text-inspector-email">
+                      {call.inspector.email}
+                    </p>
+                  )}
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span className="text-xs text-muted-foreground">Connected</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Waiting for inspector to join...
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Captured Media */}
+          {capturedImages.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Captured Images ({capturedImages.length})</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-2">
+                  {capturedImages.slice(0, 4).map((image, index) => (
+                    <div
+                      key={index}
+                      className="aspect-square bg-muted rounded-md cursor-pointer overflow-hidden"
+                      onClick={() => setSelectedImage(image)}
+                      data-testid={`image-thumbnail-${index}`}
+                    >
+                      <img
+                        src={image.url || image.dataUrl}
+                        alt={`Captured ${index + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ))}
+                </div>
+                {capturedImages.length > 4 && (
+                  <p className="text-xs text-center text-muted-foreground mt-2">
+                    +{capturedImages.length - 4} more images
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Inspector Location */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Map className="w-5 h-5" />
+                <span>Inspector Location</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <InspectorLocation location={call?.inspectorLocation || null} />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Chat Panel */}
+      <ChatPanel
+        isOpen={showChat}
+        onClose={() => setShowChat(false)}
+        isCoordinator={true}
+        messages={chatMessages}
+        onSendMessage={sendChatMessage}
+      />
+
+      {/* Modals */}
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
+
+      <ImageViewerModal
+        images={capturedImages}
+        selectedImage={selectedImage}
+        onClose={() => setSelectedImage(null)}
+      />
     </div>
   );
 }
