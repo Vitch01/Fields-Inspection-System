@@ -2,6 +2,20 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
+    // Handle authentication errors by clearing token and redirecting
+    if (res.status === 401 || res.status === 403) {
+      console.warn(`Authentication error (${res.status}), clearing token and redirecting to login`);
+      localStorage.removeItem('authToken');
+      
+      // Prevent infinite redirects by checking current location
+      if (window.location.pathname !== '/') {
+        window.location.href = '/';
+      }
+      
+      const text = (await res.text()) || res.statusText;
+      throw new Error(`${res.status}: Authentication failed - ${text}`);
+    }
+    
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);
   }

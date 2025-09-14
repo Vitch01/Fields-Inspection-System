@@ -14,10 +14,6 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CoordinatorCall() {
-  // FORCE IMMEDIATE ALERT TO TEST IF COMPONENT EXECUTES
-  alert('🟦 COORDINATOR CALL COMPONENT IS EXECUTING! URL: ' + window.location.pathname);
-  console.log('🟦 COORDINATOR CALL COMPONENT EXECUTING!', window.location.pathname);
-  
   // ALL HOOKS AT TOP LEVEL - FOLLOW RULES OF HOOKS
   const { callId } = useParams();
   const [showSettings, setShowSettings] = useState(false);
@@ -27,6 +23,54 @@ export default function CoordinatorCall() {
   const [callDuration, setCallDuration] = useState(0);
   const [videoRotation, setVideoRotation] = useState(0);
   const { toast } = useToast();
+
+
+  // Authentication validation - redirect to login if not authenticated
+  useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      console.warn('No authentication token found, redirecting to login');
+      window.location.href = '/';
+      return;
+    }
+
+    // Validate token format and check if it's expired
+    try {
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(
+        window.atob(base64)
+          .split('')
+          .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+          .join('')
+      );
+      
+      const payload = JSON.parse(jsonPayload);
+      
+      // Check if token is expired
+      if (payload.exp && payload.exp * 1000 < Date.now()) {
+        console.warn('Authentication token expired, redirecting to login');
+        localStorage.removeItem('authToken');
+        window.location.href = '/';
+        return;
+      }
+      
+      // Check if user has coordinator role
+      if (payload.role !== 'coordinator') {
+        console.warn('Invalid role for coordinator access, redirecting to login');
+        localStorage.removeItem('authToken');
+        window.location.href = '/';
+        return;
+      }
+      
+      console.log('Authentication validated for coordinator:', payload.name);
+    } catch (error) {
+      console.error('Invalid authentication token format, redirecting to login:', error);
+      localStorage.removeItem('authToken');
+      window.location.href = '/';
+      return;
+    }
+  }, []);
 
   // Query hooks
   const { data: call, error: callError, isLoading: callLoading } = useQuery({
@@ -63,29 +107,12 @@ export default function CoordinatorCall() {
 
 
   // Guard against undefined webRTCData before destructuring
-  console.log('🔍 GUARD CHECK:', { callId: !!callId, webRTCData: !!webRTCData });
   if (!callId || !webRTCData) {
-    console.log('🚨 GUARD: Missing callId or webRTCData, showing connecting state');
-    alert('🔵 GUARD TRIGGERED - Showing connecting screen');
     return (
-      <div style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        backgroundColor: 'blue',
-        color: 'white',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '24px',
-        zIndex: 9999
-      }}>
-        <div style={{ textAlign: 'center', padding: '20px' }}>
-          <h1>🔵 CONNECTING TO CALL...</h1>
-          <p>Call ID: {callId || 'MISSING'}</p>
-          <p>WebRTC Status: {webRTCData ? 'Ready' : 'Initializing'}</p>
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto"></div>
+          <p className="text-muted-foreground">Connecting to call...</p>
         </div>
       </div>
     );
@@ -122,87 +149,42 @@ export default function CoordinatorCall() {
   } = webRTCData;
 
   // Loading state
-  console.log('🔍 LOADING CHECK:', { callLoading });
   if (callLoading) {
-    console.log('🚨 RENDERING LOADING STATE...');
-    alert('🟢 LOADING STATE - Call data is loading');
     return (
-      <div style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        backgroundColor: 'green',
-        color: 'white',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '24px',
-        zIndex: 9999
-      }}>
-        <div style={{ textAlign: 'center', padding: '20px' }}>
-          <h1>🟢 LOADING CALL...</h1>
-          <p>Call ID: {callId}</p>
-          <p>Loading call data...</p>
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto"></div>
+          <p className="text-muted-foreground">Loading call data...</p>
         </div>
       </div>
     );
   }
 
-  // Error state  
-  console.log('🔍 ERROR CHECK:', { callError });
+  // Error state
   if (callError) {
-    console.log('🚨 RENDERING ERROR STATE...', callError);
-    alert('🔴 ERROR STATE - Call has error: ' + (callError?.message || 'Unknown'));
     return (
-      <div style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        backgroundColor: 'red',
-        color: 'white',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '24px',
-        zIndex: 9999
-      }}>
-        <div style={{ textAlign: 'center', padding: '20px' }}>
-          <h1>🔴 CALL ERROR</h1>
-          <p>Call ID: {callId}</p>
-          <p>Error: {callError?.message || 'Unknown error'}</p>
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <div className="text-destructive mb-4">
+            <h2 className="text-xl font-semibold">Call Error</h2>
+            <p className="text-sm text-muted-foreground mt-2">
+              {callError?.message || 'Failed to load call data'}
+            </p>
+          </div>
+          <Button onClick={() => window.location.reload()}>Retry</Button>
         </div>
       </div>
     );
   }
 
   // No call data state
-  console.log('🔍 CALL DATA CHECK:', { call: !!call });
   if (!call) {
-    console.log('🚨 RENDERING NO CALL STATE...');
-    alert('🟡 NO CALL DATA - Call not found in database');
     return (
-      <div style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        backgroundColor: 'yellow',
-        color: 'black',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '24px',
-        zIndex: 9999
-      }}>
-        <div style={{ textAlign: 'center', padding: '20px' }}>
-          <h1>🟡 CALL NOT FOUND</h1>
-          <p>Call ID: {callId}</p>
-          <p>No call data found</p>
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <h2 className="text-xl font-semibold">Call Not Found</h2>
+          <p className="text-muted-foreground">The requested call could not be found.</p>
+          <Button onClick={() => window.history.back()}>Go Back</Button>
         </div>
       </div>
     );
@@ -261,9 +243,6 @@ export default function CoordinatorCall() {
     });
   };
 
-
-  console.log('🚨 RENDERING MAIN COORDINATOR CALL INTERFACE...');
-  alert('🟣 MAIN INTERFACE - Video call interface loading');
 
   // Main render - SUCCESS STATE
   return (
