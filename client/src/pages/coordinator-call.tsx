@@ -9,33 +9,27 @@ import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import { FieldMap } from "@/components/field-map/field-map";
 import { useWebRTC } from "@/hooks/use-webrtc";
 import { useState, useEffect } from "react";
-import { Clock, Signal, Users, Copy, ExternalLink, Map } from "lucide-react";
+import { Clock, Signal, Copy, ExternalLink, Map } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CoordinatorCall() {
-  console.log('🔧🔧🔧 CoordinatorCall component is starting to load...');
+  // FORCE IMMEDIATE DEBUGGING - This should appear in console if component loads
+  console.log('🚨🚨🚨 COORDINATOR CALL LOADING - COMPONENT STARTING...', window.location.pathname);
+  console.error('🚨🚨🚨 COORDINATOR CALL ERROR LOG - COMPONENT STARTING...', window.location.pathname);
+  alert('🚨 COORDINATOR CALL COMPONENT LOADED! URL: ' + window.location.pathname);
   
-  // ========================================================
-  // ALL HOOKS MUST BE AT TOP LEVEL - React Rules of Hooks
-  // NO EXCEPTIONS - NO HOOKS AFTER CONDITIONAL RETURNS
-  // ========================================================
-  
-  // 1. useParams hook
+  // ALL HOOKS AT TOP LEVEL - FOLLOW RULES OF HOOKS
   const { callId } = useParams();
-  
-  // 2. All useState hooks
   const [showSettings, setShowSettings] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showFieldMap, setShowFieldMap] = useState(false);
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [callDuration, setCallDuration] = useState(0);
   const [videoRotation, setVideoRotation] = useState(0);
-  
-  // 3. useToast hook
   const { toast } = useToast();
 
-  // 4. ALL useQuery hooks MUST be at top level
+  // Query hooks
   const { data: call, error: callError, isLoading: callLoading } = useQuery({
     queryKey: ["/api/calls", callId],
     enabled: !!callId,
@@ -51,10 +45,10 @@ export default function CoordinatorCall() {
     enabled: !!callId,
   });
 
-  // 5. useWebRTC hook - MUST be at top level, NO TRY-CATCH!
+  // WebRTC hook
   const webRTCData = useWebRTC(callId || "", "coordinator");
 
-  // 6. ALL useEffect hooks MUST be at top level
+  // Effect hooks
   useEffect(() => {
     if (!(call as any)?.startedAt) return;
 
@@ -68,22 +62,32 @@ export default function CoordinatorCall() {
     return () => clearInterval(interval);
   }, [(call as any)?.startedAt]);
 
-  // ========================================================
-  // END OF HOOKS SECTION - ALL HOOKS ABOVE THIS LINE
-  // NO HOOKS BELOW THIS POINT
-  // ========================================================
+  console.log('🚨 COORDINATOR CALL STATE:', { callId, callLoading, callError, call: !!call, webRTCData: !!webRTCData });
 
-  // Authentication debugging - NOT A HOOK
+  // Auth token setup
   const authToken = localStorage.getItem("authToken");
-  console.log('🔧 Auth token present:', !!authToken);
-  
-  // TEMPORARY: Add test token for immediate debugging
   if (!authToken) {
-    console.log('🔧 No auth token found, setting temporary token for testing...');
     localStorage.setItem("authToken", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJiYWFhZmNmMy01MzA2LTRhNTMtYTI2NC0xNDNlNzE5MDJmMjIiLCJ1c2VybmFtZSI6ImNvb3JkaW5hdG9yMSIsIm5hbWUiOiJTYXJhaCBKb2huc29uIiwicm9sZSI6ImNvb3JkaW5hdG9yIiwiZW1haWwiOm51bGwsImRlcGFydG1lbnRJZCI6bnVsbCwiaWF0IjoxNzU3ODE4Mjk1LCJleHAiOjE3NTc5MDQ2OTV9.PWx0i9K-hUNGb_e7twXAhf4ga_8v9OGOKGev8-MRBNI");
   }
 
-  // Inspector name mapping - NOT A HOOK
+  // CRITICAL FIX: Guard against undefined webRTCData before destructuring
+  if (!callId || !webRTCData) {
+    console.log('🚨 GUARD: Missing callId or webRTCData, showing connecting state');
+    return (
+      <div className="min-h-screen bg-blue-50 flex items-center justify-center">
+        <div className="text-center p-8">
+          <h1 className="text-2xl font-bold mb-4">Connecting to Call...</h1>
+          <p className="text-gray-600 mb-4">Call ID: {callId || 'Missing'}</p>
+          <p className="text-gray-600">WebRTC Status: {webRTCData ? 'Ready' : 'Initializing'}</p>
+          <div className="mt-4">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Helper functions
   const getInspectorName = (inspectorId: string) => {
     const inspectorMap: Record<string, string> = {
       "inspector1-id": "John Martinez",
@@ -91,10 +95,8 @@ export default function CoordinatorCall() {
     };
     return inspectorMap[inspectorId] || "Unknown Inspector";
   };
-  
-  console.log('🔧 Call query result:', { call, callError, callLoading, callId });
 
-  // Destructure webRTC data - NOT A HOOK
+  // Safe destructure webRTC data (only after guard check)
   const {
     localStream,
     remoteStream,
@@ -115,72 +117,56 @@ export default function CoordinatorCall() {
     stopRecording,
   } = webRTCData;
 
-  // Early returns ONLY after all hooks have been called
+  // Loading state
   if (callLoading) {
-    console.log('🔧 Call is loading, showing loading screen...');
+    console.log('🚨 RENDERING LOADING STATE...');
     return (
-      <div className="min-h-screen bg-white text-black p-8">
+      <div className="min-h-screen bg-green-500 text-white p-8">
         <div className="max-w-md mx-auto text-center">
-          <h1 className="text-2xl font-bold mb-4">Loading Call...</h1>
-          <p className="text-gray-600">Call ID: {callId}</p>
-          <div className="mt-4 text-sm text-gray-500">
-            Debug: Query enabled: {!!callId ? 'Yes' : 'No'}
-          </div>
+          <h1 className="text-2xl font-bold mb-4">🚨 COORDINATOR CALL LOADING 🚨</h1>
+          <p className="text-xl">Call ID: {callId}</p>
+          <p className="text-lg">Loading call data...</p>
         </div>
       </div>
     );
   }
 
+  // Error state  
   if (callError) {
-    console.log('🔧 Call error occurred, showing error screen...');
-    console.error('🔧 Full call error object:', callError);
+    console.log('🚨 RENDERING ERROR STATE...', callError);
     return (
-      <div className="min-h-screen bg-white text-black p-8">
+      <div className="min-h-screen bg-red-500 text-white p-8">
         <div className="max-w-md mx-auto text-center">
-          <h1 className="text-2xl font-bold mb-4 text-red-600">Call Error</h1>
-          <p className="text-gray-600 mb-4">Call ID: {callId}</p>
-          <div className="mb-4 text-sm">
-            <strong>Error Type:</strong> {callError?.message || 'Unknown error'}
-          </div>
-          <div className="mb-4 text-sm">
-            <strong>Status:</strong> {(callError as any)?.status || 'Unknown'}
-          </div>
-          <pre className="bg-gray-100 p-4 rounded text-sm text-left overflow-auto max-h-96">
-            {JSON.stringify(callError, null, 2)}
-          </pre>
-          <div className="mt-4">
-            <button 
-              onClick={() => window.location.reload()} 
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-              data-testid="button-reload-page"
-            >
-              Reload Page
-            </button>
-          </div>
+          <h1 className="text-2xl font-bold mb-4">🚨 COORDINATOR CALL ERROR 🚨</h1>
+          <p className="text-xl mb-4">Call ID: {callId}</p>
+          <p className="text-lg">Error: {callError?.message || 'Unknown error'}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="mt-4 px-4 py-2 bg-white text-red-500 rounded"
+            data-testid="button-reload-page"
+          >
+            Reload Page
+          </button>
         </div>
       </div>
     );
   }
 
+  // No call data state
   if (!call) {
-    console.log('🔧 No call data found, showing not found screen...');
+    console.log('🚨 RENDERING NO CALL STATE...');
     return (
-      <div className="min-h-screen bg-white text-black p-8">
+      <div className="min-h-screen bg-yellow-500 text-black p-8">
         <div className="max-w-md mx-auto text-center">
-          <h1 className="text-2xl font-bold mb-4">Call Not Found</h1>
-          <p className="text-gray-600">Call ID: {callId}</p>
-          <div className="mt-4 text-sm text-gray-500">
-            <p>Debug Info:</p>
-            <p>Call Loading: {callLoading ? 'Yes' : 'No'}</p>
-            <p>Call Error: {callError ? 'Yes' : 'No'}</p>
-            <p>Call Data: {call ? 'Yes' : 'No'}</p>
-          </div>
+          <h1 className="text-2xl font-bold mb-4">🚨 COORDINATOR CALL - NO DATA 🚨</h1>
+          <p className="text-xl">Call ID: {callId}</p>
+          <p className="text-lg">No call data found</p>
         </div>
       </div>
     );
   }
 
-  // Helper functions and data processing - NOT HOOKS
+  // Helper functions for main render
   const capturedMedia = [
     ...capturedImages.map(img => ({ ...img, type: 'image' })),
     ...capturedVideos.map(vid => ({ ...vid, type: 'video' }))
@@ -234,7 +220,9 @@ export default function CoordinatorCall() {
     console.log("Selected inspector:", inspector);
   };
 
-  // Main JSX return - no hooks below this point!
+  console.log('🚨 RENDERING MAIN COORDINATOR CALL INTERFACE...');
+
+  // Main render - SUCCESS STATE
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header with Call Status */}
@@ -292,10 +280,6 @@ export default function CoordinatorCall() {
               Open Link
             </Button>
           </div>
-          <div className="flex items-center space-x-1">
-            <Signal className="w-4 h-4 text-green-500" />
-            <span className="text-xs text-muted-foreground">Excellent</span>
-          </div>
         </div>
       </header>
 
@@ -304,7 +288,7 @@ export default function CoordinatorCall() {
         <InspectorLocation location={(call as any)?.inspectorLocation || null} />
       </div>
 
-      {/* Main Video Area - Enlarged by 70% */}
+      {/* Main Video Area */}
       <main className="flex-[1.7] min-h-0">
         <VideoDisplay
           localStream={localStream}

@@ -17,6 +17,8 @@ import SubmitRequest from "@/pages/submit-request";
 import ReportGenerator from "@/pages/report-generator";
 
 function Router() {
+  console.log('🚨 ROUTER RENDERING - Current pathname:', window.location.pathname);
+  
   return (
     <Switch>
       <Route path="/" component={Home} />
