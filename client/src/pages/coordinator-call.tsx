@@ -15,6 +15,8 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function CoordinatorCall() {
   const { callId } = useParams();
+  console.log('🔧 CoordinatorCall component loaded, callId:', callId);
+  
   const [showSettings, setShowSettings] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showFieldMap, setShowFieldMap] = useState(false);
@@ -32,10 +34,49 @@ export default function CoordinatorCall() {
     return inspectorMap[inspectorId] || "Unknown Inspector";
   };
 
-  const { data: call } = useQuery({
+  const { data: call, error: callError, isLoading: callLoading } = useQuery({
     queryKey: ["/api/calls", callId],
     enabled: !!callId,
   });
+  
+  console.log('🔧 Call query:', { call, callError, callLoading, callId });
+
+  // Early return for debugging
+  if (callLoading) {
+    return (
+      <div className="min-h-screen bg-white text-black p-8">
+        <div className="max-w-md mx-auto text-center">
+          <h1 className="text-2xl font-bold mb-4">Loading Call...</h1>
+          <p className="text-gray-600">Call ID: {callId}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (callError) {
+    return (
+      <div className="min-h-screen bg-white text-black p-8">
+        <div className="max-w-md mx-auto text-center">
+          <h1 className="text-2xl font-bold mb-4 text-red-600">Call Error</h1>
+          <p className="text-gray-600 mb-4">Call ID: {callId}</p>
+          <pre className="bg-gray-100 p-4 rounded text-sm text-left overflow-auto">
+            {JSON.stringify(callError, null, 2)}
+          </pre>
+        </div>
+      </div>
+    );
+  }
+
+  if (!call) {
+    return (
+      <div className="min-h-screen bg-white text-black p-8">
+        <div className="max-w-md mx-auto text-center">
+          <h1 className="text-2xl font-bold mb-4">Call Not Found</h1>
+          <p className="text-gray-600">Call ID: {callId}</p>
+        </div>
+      </div>
+    );
+  }
 
   const {
     localStream,

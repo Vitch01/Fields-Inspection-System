@@ -356,6 +356,7 @@ export default function CoordinatorDashboard() {
 
   // Get authenticated user from JWT token
   const currentUser = getCurrentUserFromToken();
+  const [location, setLocation] = useLocation();
   
   // Redirect to home if not authenticated or not a coordinator
   useEffect(() => {
@@ -567,7 +568,9 @@ export default function CoordinatorDashboard() {
       setShowFieldMap(false);
       setRequestForCall(null);
       setSelectedInspector(null);
-      window.location.href = `/coordinator/${call.id}`;
+      
+      console.log('🚀 Redirecting to coordinator call page:', `/coordinator/${call.id}`);
+      setLocation(`/coordinator/${call.id}`);
     } catch (error) {
       console.error("Failed to start call:", error);
       toast({
