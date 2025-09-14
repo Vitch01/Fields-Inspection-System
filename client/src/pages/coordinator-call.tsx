@@ -63,16 +63,29 @@ export default function CoordinatorCall() {
 
 
   // Guard against undefined webRTCData before destructuring
+  console.log('🔍 GUARD CHECK:', { callId: !!callId, webRTCData: !!webRTCData });
   if (!callId || !webRTCData) {
+    console.log('🚨 GUARD: Missing callId or webRTCData, showing connecting state');
+    alert('🔵 GUARD TRIGGERED - Showing connecting screen');
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center p-8">
-          <h1 className="text-2xl font-bold mb-4 text-foreground">Connecting to Call...</h1>
-          <p className="text-muted-foreground mb-4">Call ID: {callId || 'Missing'}</p>
-          <p className="text-muted-foreground">WebRTC Status: {webRTCData ? 'Ready' : 'Initializing'}</p>
-          <div className="mt-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-          </div>
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: 'blue',
+        color: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '24px',
+        zIndex: 9999
+      }}>
+        <div style={{ textAlign: 'center', padding: '20px' }}>
+          <h1>🔵 CONNECTING TO CALL...</h1>
+          <p>Call ID: {callId || 'MISSING'}</p>
+          <p>WebRTC Status: {webRTCData ? 'Ready' : 'Initializing'}</p>
         </div>
       </div>
     );
@@ -109,47 +122,87 @@ export default function CoordinatorCall() {
   } = webRTCData;
 
   // Loading state
+  console.log('🔍 LOADING CHECK:', { callLoading });
   if (callLoading) {
+    console.log('🚨 RENDERING LOADING STATE...');
+    alert('🟢 LOADING STATE - Call data is loading');
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="max-w-md mx-auto text-center p-8">
-          <h1 className="text-2xl font-bold mb-4 text-foreground">Loading Call...</h1>
-          <p className="text-muted-foreground mb-4">Call ID: {callId}</p>
-          <p className="text-muted-foreground mb-6">Loading call data...</p>
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: 'green',
+        color: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '24px',
+        zIndex: 9999
+      }}>
+        <div style={{ textAlign: 'center', padding: '20px' }}>
+          <h1>🟢 LOADING CALL...</h1>
+          <p>Call ID: {callId}</p>
+          <p>Loading call data...</p>
         </div>
       </div>
     );
   }
 
   // Error state  
+  console.log('🔍 ERROR CHECK:', { callError });
   if (callError) {
+    console.log('🚨 RENDERING ERROR STATE...', callError);
+    alert('🔴 ERROR STATE - Call has error: ' + (callError?.message || 'Unknown'));
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="max-w-md mx-auto text-center p-8">
-          <h1 className="text-2xl font-bold mb-4 text-destructive">Call Connection Error</h1>
-          <p className="text-muted-foreground mb-4">Call ID: {callId}</p>
-          <p className="text-sm text-muted-foreground mb-6">Error: {callError?.message || 'Unable to connect to call'}</p>
-          <Button 
-            onClick={() => window.location.reload()} 
-            variant="outline"
-            data-testid="button-reload-page"
-          >
-            Retry Connection
-          </Button>
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: 'red',
+        color: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '24px',
+        zIndex: 9999
+      }}>
+        <div style={{ textAlign: 'center', padding: '20px' }}>
+          <h1>🔴 CALL ERROR</h1>
+          <p>Call ID: {callId}</p>
+          <p>Error: {callError?.message || 'Unknown error'}</p>
         </div>
       </div>
     );
   }
 
   // No call data state
+  console.log('🔍 CALL DATA CHECK:', { call: !!call });
   if (!call) {
+    console.log('🚨 RENDERING NO CALL STATE...');
+    alert('🟡 NO CALL DATA - Call not found in database');
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="max-w-md mx-auto text-center p-8">
-          <h1 className="text-2xl font-bold mb-4 text-foreground">Call Not Found</h1>
-          <p className="text-muted-foreground mb-4">Call ID: {callId}</p>
-          <p className="text-sm text-muted-foreground">The requested call could not be found or is no longer available.</p>
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: 'yellow',
+        color: 'black',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '24px',
+        zIndex: 9999
+      }}>
+        <div style={{ textAlign: 'center', padding: '20px' }}>
+          <h1>🟡 CALL NOT FOUND</h1>
+          <p>Call ID: {callId}</p>
+          <p>No call data found</p>
         </div>
       </div>
     );
@@ -208,6 +261,9 @@ export default function CoordinatorCall() {
     });
   };
 
+
+  console.log('🚨 RENDERING MAIN COORDINATOR CALL INTERFACE...');
+  alert('🟣 MAIN INTERFACE - Video call interface loading');
 
   // Main render - SUCCESS STATE
   return (
