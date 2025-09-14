@@ -508,19 +508,19 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
                 data-testid="google-map-container"
               />
               {!isMapLoaded && !mapError && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+                <div className="absolute inset-0 flex items-center justify-center bg-white">
                   <div className="text-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                    <p className="text-gray-600">Loading field map...</p>
+                    <p className="text-black">Loading field map...</p>
                   </div>
                 </div>
               )}
               {mapError && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+                <div className="absolute inset-0 flex items-center justify-center bg-white">
                   <div className="text-center">
                     <div className="text-red-600 mb-4">
                       <p className="font-medium">Map Loading Error</p>
-                      <p className="text-sm text-gray-600 mt-1">{mapError}</p>
+                      <p className="text-sm text-black mt-1">{mapError}</p>
                     </div>
                     <Button 
                       onClick={retryLoadMap} 
@@ -530,7 +530,7 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
                       {isRetrying ? "Retrying..." : "Retry"}
                     </Button>
                     {!import.meta.env.VITE_GOOGLE_MAPS_API_KEY && (
-                      <p className="text-xs text-gray-500 mt-2">
+                      <p className="text-xs text-black mt-2">
                         Contact administrator to configure Google Maps API key
                       </p>
                     )}
@@ -540,7 +540,7 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
             </div>
 
             {/* Inspector List */}
-            <div className="border-l border-gray-200 bg-gray-50 p-4 overflow-y-auto">
+            <div className="border-l border-border bg-background p-4 overflow-y-auto">
               <h3 className="text-lg font-semibold text-foreground mb-4">Available Inspectors</h3>
               <div className="space-y-3">
                 {inspectors.map((inspector: Inspector) => {
@@ -590,24 +590,24 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
               </div>
 
               {/* Map Legend */}
-              <div className="mt-6 pt-4 border-t border-gray-300">
+              <div className="mt-6 pt-4 border-t border-border">
                 <h4 className="font-medium text-foreground mb-3">Legend</h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                    <span className="text-gray-700">On Current Call</span>
+                    <span className="text-foreground">On Current Call</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                    <span className="text-gray-700">Available</span>
+                    <span className="text-foreground">Available</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                    <span className="text-gray-700">Busy</span>
+                    <span className="text-foreground">Busy</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 rounded-full bg-gray-500"></div>
-                    <span className="text-gray-700">Offline</span>
+                    <span className="text-foreground">Offline</span>
                   </div>
                 </div>
               </div>
