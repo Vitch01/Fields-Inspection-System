@@ -460,6 +460,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get all inspectors for field map
+  app.get('/api/inspectors', async (req, res) => {
+    try {
+      const inspectors = await storage.getInspectorUsers();
+      
+      // Add location data for field map display
+      const inspectorsWithLocation = inspectors.map((inspector: any, index: number) => ({
+        id: inspector.id,
+        name: inspector.name,
+        username: inspector.username,
+        status: 'available', // Default status, could be enhanced based on active calls
+        specialization: 'Field Representative',
+        // Distribute inspectors around the field center location
+        latitude: 37.097178900157424 + (index * 0.001) - 0.001,
+        longitude: -113.58888217976603 + (index * 0.001) - 0.001
+      }));
+      
+      res.json(inspectorsWithLocation);
+    } catch (error) {
+      console.error('Failed to get inspectors:', error);
+      res.status(500).json({ message: 'Failed to get inspectors' });
+    }
+  });
+
   // Location tracking routes
   app.post('/api/calls/:callId/location', async (req, res) => {
     try {

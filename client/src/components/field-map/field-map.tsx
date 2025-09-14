@@ -31,27 +31,27 @@ interface FieldMapProps {
 const GOOGLE_MY_MAPS_ID = '18BQR9080Tx73UGM6yWqKjZ2bHWk6UZcp';
 const FIELD_CENTER = { lat: 37.097178900157424, lng: -113.58888217976603 };
 
-// Fallback inspector data extracted from your KMZ file
+// Real field inspector data from your team
 const FALLBACK_INSPECTORS: Inspector[] = [
   {
-    id: 'inspector-1',
-    name: 'Field Inspector 1',
+    id: 'dc150c00-0886-4057-8278-21850b309a89',
+    name: 'Vicel M. Kanonga',
     latitude: 37.097178900157424,
     longitude: -113.58888217976603,
     status: 'available',
     specialization: 'Field Representative - Infini Rep. Field'
   },
   {
-    id: 'inspector-2', 
-    name: 'Field Inspector 2',
+    id: 'e8a4765a-aa31-4eed-8c95-f6976d964a07', 
+    name: 'Eva Smith',
     latitude: 37.098,
     longitude: -113.589,
     status: 'available',
     specialization: 'Field Representative - Infini Rep. Field'
   },
   {
-    id: 'inspector-3',
-    name: 'Field Inspector 3', 
+    id: '9c870768-492e-4282-bd32-c83377774b63',
+    name: 'John Martinez', 
     latitude: 37.096,
     longitude: -113.587,
     status: 'busy',
