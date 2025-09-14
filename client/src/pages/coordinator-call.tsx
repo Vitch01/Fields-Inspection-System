@@ -14,8 +14,6 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CoordinatorCall() {
-  console.log('Coordinator call component loading for:', window.location.pathname);
-  
   // ALL HOOKS AT TOP LEVEL - FOLLOW RULES OF HOOKS
   const { callId } = useParams();
   const [showSettings, setShowSettings] = useState(false);
@@ -59,25 +57,17 @@ export default function CoordinatorCall() {
     return () => clearInterval(interval);
   }, [(call as any)?.startedAt]);
 
-  console.log('🚨 COORDINATOR CALL STATE:', { callId, callLoading, callError, call: !!call, webRTCData: !!webRTCData });
 
-  // Auth token setup
-  const authToken = localStorage.getItem("authToken");
-  if (!authToken) {
-    localStorage.setItem("authToken", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJiYWFhZmNmMy01MzA2LTRhNTMtYTI2NC0xNDNlNzE5MDJmMjIiLCJ1c2VybmFtZSI6ImNvb3JkaW5hdG9yMSIsIm5hbWUiOiJTYXJhaCBKb2huc29uIiwicm9sZSI6ImNvb3JkaW5hdG9yIiwiZW1haWwiOm51bGwsImRlcGFydG1lbnRJZCI6bnVsbCwiaWF0IjoxNzU3ODE4Mjk1LCJleHAiOjE3NTc5MDQ2OTV9.PWx0i9K-hUNGb_e7twXAhf4ga_8v9OGOKGev8-MRBNI");
-  }
-
-  // CRITICAL FIX: Guard against undefined webRTCData before destructuring
+  // Guard against undefined webRTCData before destructuring
   if (!callId || !webRTCData) {
-    console.log('🚨 GUARD: Missing callId or webRTCData, showing connecting state');
     return (
-      <div className="min-h-screen bg-blue-50 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center p-8">
-          <h1 className="text-2xl font-bold mb-4">Connecting to Call...</h1>
-          <p className="text-gray-600 mb-4">Call ID: {callId || 'Missing'}</p>
-          <p className="text-gray-600">WebRTC Status: {webRTCData ? 'Ready' : 'Initializing'}</p>
+          <h1 className="text-2xl font-bold mb-4 text-foreground">Connecting to Call...</h1>
+          <p className="text-muted-foreground mb-4">Call ID: {callId || 'Missing'}</p>
+          <p className="text-muted-foreground">WebRTC Status: {webRTCData ? 'Ready' : 'Initializing'}</p>
           <div className="mt-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
           </div>
         </div>
       </div>
@@ -116,13 +106,13 @@ export default function CoordinatorCall() {
 
   // Loading state
   if (callLoading) {
-    console.log('🚨 RENDERING LOADING STATE...');
     return (
-      <div className="min-h-screen bg-green-500 text-white p-8">
-        <div className="max-w-md mx-auto text-center">
-          <h1 className="text-2xl font-bold mb-4">🚨 COORDINATOR CALL LOADING 🚨</h1>
-          <p className="text-xl">Call ID: {callId}</p>
-          <p className="text-lg">Loading call data...</p>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="max-w-md mx-auto text-center p-8">
+          <h1 className="text-2xl font-bold mb-4 text-foreground">Loading Call...</h1>
+          <p className="text-muted-foreground mb-4">Call ID: {callId}</p>
+          <p className="text-muted-foreground mb-6">Loading call data...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
         </div>
       </div>
     );
@@ -130,20 +120,19 @@ export default function CoordinatorCall() {
 
   // Error state  
   if (callError) {
-    console.log('🚨 RENDERING ERROR STATE...', callError);
     return (
-      <div className="min-h-screen bg-red-500 text-white p-8">
-        <div className="max-w-md mx-auto text-center">
-          <h1 className="text-2xl font-bold mb-4">🚨 COORDINATOR CALL ERROR 🚨</h1>
-          <p className="text-xl mb-4">Call ID: {callId}</p>
-          <p className="text-lg">Error: {callError?.message || 'Unknown error'}</p>
-          <button 
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="max-w-md mx-auto text-center p-8">
+          <h1 className="text-2xl font-bold mb-4 text-destructive">Call Connection Error</h1>
+          <p className="text-muted-foreground mb-4">Call ID: {callId}</p>
+          <p className="text-sm text-muted-foreground mb-6">Error: {callError?.message || 'Unable to connect to call'}</p>
+          <Button 
             onClick={() => window.location.reload()} 
-            className="mt-4 px-4 py-2 bg-white text-red-500 rounded"
+            variant="outline"
             data-testid="button-reload-page"
           >
-            Reload Page
-          </button>
+            Retry Connection
+          </Button>
         </div>
       </div>
     );
@@ -151,13 +140,12 @@ export default function CoordinatorCall() {
 
   // No call data state
   if (!call) {
-    console.log('🚨 RENDERING NO CALL STATE...');
     return (
-      <div className="min-h-screen bg-yellow-500 text-black p-8">
-        <div className="max-w-md mx-auto text-center">
-          <h1 className="text-2xl font-bold mb-4">🚨 COORDINATOR CALL - NO DATA 🚨</h1>
-          <p className="text-xl">Call ID: {callId}</p>
-          <p className="text-lg">No call data found</p>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="max-w-md mx-auto text-center p-8">
+          <h1 className="text-2xl font-bold mb-4 text-foreground">Call Not Found</h1>
+          <p className="text-muted-foreground mb-4">Call ID: {callId}</p>
+          <p className="text-sm text-muted-foreground">The requested call could not be found or is no longer available.</p>
         </div>
       </div>
     );
@@ -175,7 +163,7 @@ export default function CoordinatorCall() {
 
   const captureImage = async (rotation = 0) => {
     try {
-      await originalCaptureImage(rotation);
+      await originalCaptureImage();
       await refetchImages();
     } catch (error) {
       console.error("Failed to capture and refresh:", error);
@@ -214,10 +202,8 @@ export default function CoordinatorCall() {
       title: "Inspector Selected",
       description: `Selected ${inspector.name} for inspection. Create a new call to connect.`,
     });
-    console.log("Selected inspector:", inspector);
   };
 
-  console.log('🚨 RENDERING MAIN COORDINATOR CALL INTERFACE...');
 
   // Main render - SUCCESS STATE
   return (
@@ -318,7 +304,7 @@ export default function CoordinatorCall() {
         unreadCount={unreadCount}
         isRecording={isRecording}
         isCapturing={isCapturing}
-        onStartRecording={() => startRecording(videoRotation)}
+        onStartRecording={() => startRecording()}
         onStopRecording={handleStopRecording}
         hasStreamToRecord={!!(remoteStream || localStream)}
       />

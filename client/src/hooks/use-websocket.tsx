@@ -92,9 +92,17 @@ export function useWebSocket(callId: string, userRole: string, options: UseWebSo
                        window.location.hostname !== 'localhost';
     const protocol = forceSecure ? "wss:" : "ws:";
     
-    // Use localhost:5000 for development, production host for production
+    // Construct host properly for different environments
     const isLocalhost = window.location.hostname === 'localhost';
-    const host = isLocalhost && !window.location.port ? 'localhost:5000' : window.location.host;
+    let host: string;
+    
+    if (isLocalhost) {
+      // For localhost, always use port 5000 for the backend WebSocket
+      host = 'localhost:5000';
+    } else {
+      // For production, use the current host (which includes port if present)
+      host = window.location.host;
+    }
     
     return `${protocol}//${host}/ws`;
   }
