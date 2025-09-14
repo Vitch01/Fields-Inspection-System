@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import CapturedImagesGallery from "./captured-images-gallery";
-import MediaCaptureDialog from "./media-capture-dialog";
 import { 
   Mic, 
   MicOff, 
@@ -12,8 +11,7 @@ import {
   PhoneOff,
   Camera,
   Circle,
-  Square,
-  Plus
+  Square
 } from "lucide-react";
 
 interface CallControlsProps {
@@ -27,14 +25,6 @@ interface CallControlsProps {
   onEndCall: () => void;
   onImageClick: (image: any) => void;
   onCaptureImage?: (rotation?: number) => void;
-  // Enhanced capture methods
-  showImageCaptureDialog?: () => void;
-  showVideoCaptureDialog?: () => void;
-  captureImageWithCategory?: (categoryId: string, notes?: string, tags?: string[]) => Promise<void>;
-  // Dialog state
-  showCaptureDialog?: boolean;
-  setShowCaptureDialog?: (show: boolean) => void;
-  captureType?: 'image' | 'video';
   isCoordinator: boolean;
   videoRotation?: number;
   unreadCount?: number;
@@ -56,14 +46,6 @@ export default function CallControls({
   onEndCall,
   onImageClick,
   onCaptureImage,
-  // Enhanced capture methods
-  showImageCaptureDialog,
-  showVideoCaptureDialog,
-  captureImageWithCategory,
-  // Dialog state
-  showCaptureDialog = false,
-  setShowCaptureDialog,
-  captureType = 'image',
   isCoordinator,
   videoRotation = 0,
   unreadCount = 0,
@@ -131,48 +113,17 @@ export default function CallControls({
 
         {/* Right Controls */}
         <div className="flex items-center space-x-3">
-          {/* Enhanced capture buttons for coordinators */}
-          {isCoordinator && (
-            <div className="flex items-center space-x-2">
-              {/* Enhanced capture with category selection */}
-              {showImageCaptureDialog && (
-                <Button 
-                  variant="default"
-                  onClick={showImageCaptureDialog}
-                  disabled={isCapturing}
-                  data-testid="button-capture-image-enhanced"
-                >
-                  <Camera className="w-4 h-4 mr-2" />
-                  {isCapturing ? "Capturing..." : "Capture Photo"}
-                </Button>
-              )}
-              
-              {/* Video capture with category selection */}
-              {showVideoCaptureDialog && (
-                <Button 
-                  variant="outline"
-                  onClick={showVideoCaptureDialog}
-                  disabled={isCapturing}
-                  data-testid="button-capture-video-enhanced"
-                >
-                  <Circle className="w-4 h-4 mr-2" />
-                  {isCapturing ? "Capturing..." : "Record Video"}
-                </Button>
-              )}
-              
-              {/* Fallback to basic capture if enhanced methods not available */}
-              {!showImageCaptureDialog && onCaptureImage && (
-                <Button 
-                  variant="default"
-                  onClick={() => onCaptureImage?.(videoRotation)}
-                  disabled={isCapturing}
-                  data-testid="button-capture-image-basic"
-                >
-                  <Camera className="w-4 h-4 mr-2" />
-                  {isCapturing ? "Capturing..." : "Capture Photo"}
-                </Button>
-              )}
-            </div>
+          {/* Show capture button only for coordinators */}
+          {onCaptureImage && isCoordinator && (
+            <Button 
+              variant="default"
+              onClick={() => onCaptureImage?.(videoRotation)}
+              disabled={isCapturing}
+              data-testid="button-capture-image"
+            >
+              <Camera className="w-4 h-4 mr-2" />
+              {isCapturing ? "Capturing..." : "Capture Photo"}
+            </Button>
           )}
 
           {isCoordinator && (
@@ -236,25 +187,6 @@ export default function CallControls({
         <CapturedImagesGallery
           images={capturedImages}
           onImageClick={onImageClick}
-        />
-      )}
-
-      {/* Enhanced Media Capture Dialog */}
-      {isCoordinator && showCaptureDialog && setShowCaptureDialog && captureImageWithCategory && (
-        <MediaCaptureDialog
-          isOpen={showCaptureDialog}
-          onClose={() => setShowCaptureDialog(false)}
-          captureType={captureType}
-          onCapture={async (categoryId, notes, tags) => {
-            try {
-              await captureImageWithCategory(categoryId, notes, tags);
-              setShowCaptureDialog(false);
-            } catch (error) {
-              console.error('Enhanced capture failed:', error);
-              // Dialog stays open on error so user can retry
-            }
-          }}
-          isCapturing={isCapturing}
         />
       )}
     </div>

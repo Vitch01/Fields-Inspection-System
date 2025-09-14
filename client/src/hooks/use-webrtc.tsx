@@ -11,18 +11,6 @@ interface ChatMessage {
   timestamp: Date;
 }
 
-interface EnhancedCaptureMetadata {
-  categoryId: string;
-  notes?: string;
-  tags?: string[];
-  inspectorLocation?: {
-    latitude: number;
-    longitude: number;
-    accuracy?: number;
-    timestamp: number;
-  };
-}
-
 export function useWebRTC(callId: string, userRole: "coordinator" | "inspector") {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -36,8 +24,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingSupported, setIsRecordingSupported] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
-  const [showCaptureDialog, setShowCaptureDialog] = useState(false);
-  const [captureType, setCaptureType] = useState<'image' | 'video'>('image');
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -47,7 +33,6 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const captureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const captureRequestIdRef = useRef<string | null>(null);
   const iceRestartInProgressRef = useRef<boolean>(false);
-  const isManualDisconnectRef = useRef<boolean>(false);
   const { toast } = useToast();
 
   // Helper function to get supported mimeType
@@ -130,280 +115,9 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, []);
 
-  // Core WebRTC functions that don't depend on sendMessage
-
-  const toggleMute = useCallback(() => {
-    if (localStreamRef.current) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsMuted(!audioTrack.enabled);
-      }
-    }
-  }, []);
-
-  const toggleVideo = useCallback(() => {
-    if (localStreamRef.current) {
-      const videoTrack = localStreamRef.current.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        setIsVideoEnabled(videoTrack.enabled);
-      }
-    }
-  }, []);
-
-  const captureImage = useCallback(async () => {
-    if (!remoteStream && !localStream) {
-      toast({
-        title: "No video stream",
-        description: "Cannot capture image without active video stream",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setIsCapturing(true);
-    captureRequestIdRef.current = Date.now().toString();
-
-    try {
-      const stream = remoteStream || localStream;
-      if (!stream) return;
-
-      const imageBlob = await captureImageFromStream(stream);
-      
-      // Upload the captured image
-      const formData = new FormData();
-      formData.append('image', imageBlob, `capture-${Date.now()}.png`);
-      formData.append('callId', callId);
-      formData.append('capturedBy', userRole);
-      formData.append('rotation', '0');
-
-      const response = await fetch(`/api/calls/${callId}/capture-image`, {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-        },
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to upload image: ${response.statusText}`);
-      }
-
-      toast({
-        title: "Image captured",
-        description: "Image has been saved successfully",
-      });
-    } catch (error) {
-      console.error("Failed to capture image:", error);
-      toast({
-        title: "Capture failed",
-        description: "Failed to capture and save image",
-        variant: "destructive"
-      });
-    } finally {
-      setIsCapturing(false);
-      captureRequestIdRef.current = null;
-    }
-  }, [remoteStream, localStream, callId, userRole, toast]);
-
-  const startRecording = useCallback(async () => {
-    if (isRecording || !isRecordingSupported) {
-      return;
-    }
-
-    const stream = remoteStream || localStream;
-    if (!stream) {
-      toast({
-        title: "No stream available",
-        description: "Cannot start recording without active video stream",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    try {
-      const mimeType = getSupportedMimeType();
-      if (!mimeType) {
-        throw new Error('No supported MIME type found');
-      }
-
-      recordedChunksRef.current = [];
-      
-      const recorder = new MediaRecorder(stream, {
-        mimeType,
-        videoBitsPerSecond: 2500000, // 2.5 Mbps
-      });
-
-      recorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-          recordedChunksRef.current.push(event.data);
-        }
-      };
-
-      recorder.onstop = async () => {
-        try {
-          const videoBlob = new Blob(recordedChunksRef.current, { type: mimeType });
-          
-          // Upload the recorded video
-          const formData = new FormData();
-          formData.append('video', videoBlob, `recording-${Date.now()}.webm`);
-          formData.append('callId', callId);
-          formData.append('recordedBy', userRole);
-
-          const response = await fetch(`/api/calls/${callId}/save-recording`, {
-            method: 'POST',
-            body: formData,
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-            },
-          });
-          if (!response.ok) {
-            throw new Error(`Failed to upload video: ${response.statusText}`);
-          }
-
-          toast({
-            title: "Recording saved",
-            description: "Video recording has been saved successfully",
-          });
-        } catch (error) {
-          console.error("Failed to save recording:", error);
-          toast({
-            title: "Save failed", 
-            description: "Failed to save video recording",
-            variant: "destructive"
-          });
-        }
-      };
-
-      mediaRecorderRef.current = recorder;
-      recorder.start(1000); // Record in 1-second chunks
-      setIsRecording(true);
-
-      toast({
-        title: "Recording started",
-        description: "Video recording is now active",
-      });
-    } catch (error) {
-      console.error("Failed to start recording:", error);
-      toast({
-        title: "Recording failed",
-        description: "Could not start video recording",
-        variant: "destructive"
-      });
-    }
-  }, [isRecording, isRecordingSupported, remoteStream, localStream, getSupportedMimeType, callId, userRole, toast]);
-
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      
-      toast({
-        title: "Recording stopped",
-        description: "Processing and saving video...",
-      });
-    }
-  }, [isRecording, toast]);
-
-
-  const clearUnreadCount = useCallback(() => {
-    setUnreadCount(0);
-  }, []);
-
-  // Define handleSignalingMessage function before using it
-  async function handleSignalingMessage(message: any) {
-    const pc = peerConnectionRef.current;
-
-    try {
-      switch (message.type) {
-        case "offer":
-          if (!pc) return;
-          if (userRole === "inspector") {
-            await createAnswer(message.data);
-          }
-          break;
-        case "answer":
-          if (!pc) return;
-          if (userRole === "coordinator") {
-            await pc.setRemoteDescription(new RTCSessionDescription(message.data));
-          }
-          break;
-        case "ice-candidate":
-          if (!pc) return;
-          await pc.addIceCandidate(new RTCIceCandidate(message.data));
-          break;
-        case "chat-message":
-          setChatMessages(prev => [...prev, {
-            id: Date.now().toString(),
-            text: message.data.text,
-            sender: message.data.sender,
-            timestamp: new Date()
-          }]);
-          setUnreadCount(prev => prev + 1);
-          playNotificationSound();
-          break;
-        case "peer-joined":
-          setHasPeerJoined(true);
-          if (userRole === "coordinator") {
-            setTimeout(() => createOffer(), 1000);
-          }
-          break;
-        case "call-ended":
-          endCall();
-          break;
-      }
-    } catch (error) {
-      console.error("Error handling signaling message:", error);
-    }
-  }
-
   const { sendMessage, isConnected: wsConnected } = useWebSocket(callId, userRole, {
     onMessage: handleSignalingMessage,
   });
-
-  // Functions that depend on sendMessage - must come after useWebSocket
-  const endCall = useCallback(() => {
-    console.log("Ending call...");
-    isManualDisconnectRef.current = true;
-    
-    // Send call ended message to the other peer
-    sendMessage({
-      type: "call-ended",
-      callId,
-      userId: userRole,
-      data: { timestamp: Date.now() },
-    });
-    
-    // Cleanup and navigate based on user role
-    cleanup();
-    
-    // Navigate to appropriate page
-    if (userRole === "coordinator") {
-      window.location.href = "/coordinator/dashboard";
-    } else {
-      window.location.href = "/inspector/thank-you";
-    }
-  }, [callId, userRole, sendMessage]);
-
-  const sendChatMessage = useCallback((text: string) => {
-    if (!text.trim()) return;
-
-    const message = {
-      id: Date.now().toString(),
-      text: text.trim(),
-      sender: userRole,
-      timestamp: new Date()
-    };
-
-    setChatMessages(prev => [...prev, message]);
-    
-    sendMessage({
-      type: "chat-message",
-      callId,
-      userId: userRole,
-      data: message,
-    });
-  }, [userRole, callId, sendMessage]);
 
   // Initialize local media stream
   useEffect(() => {
@@ -681,33 +395,754 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }
 
-  // Continue with the helper functions that were originally after handleSignalingMessage
-  function cleanup() {
-    isManualDisconnectRef.current = true;
+  async function handleSignalingMessage(message: any) {
+    const pc = peerConnectionRef.current;
+
+    try {
+      switch (message.type) {
+        case "offer":
+          if (!pc) return;
+          if (userRole === "inspector") {
+            await createAnswer(message.data);
+          }
+          break;
+
+        case "answer":
+          if (!pc) return;
+          if (userRole === "coordinator") {
+            await pc.setRemoteDescription(message.data);
+          }
+          break;
+
+        case "ice-candidate":
+          if (!pc) return;
+          // Only add ICE candidate if we have remote description set
+          if (pc.remoteDescription) {
+            await pc.addIceCandidate(message.data);
+          }
+          break;
+
+        case "user-joined":
+          console.log("User joined:", message.userId);
+          // Track that a peer has joined (only if it's not our own join message)
+          if (message.userId !== userRole) {
+            setHasPeerJoined(true);
+          }
+          // Initiate offer when someone joins (for coordinator)
+          if (userRole === "coordinator" && message.userId !== userRole) {
+            setTimeout(() => createOffer(), 1000);
+          }
+          break;
+
+        case "user-left":
+          console.log("User left:", message.userId);
+          // Only handle if it's not our own leave message and we had a peer connection
+          if (message.userId !== userRole && (hasPeerJoined || isConnectionEstablished)) {
+            toast({
+              title: "Call Ended",
+              description: "The other participant has left the call",
+              variant: "default"
+            });
+            
+            // Clean up for both roles and redirect both to appropriate pages
+            setTimeout(() => {
+              cleanup();
+              setHasPeerJoined(false);
+              setIsConnectionEstablished(false);
+              
+              // Different redirect behavior for inspectors vs coordinators
+              if (userRole === "coordinator") {
+                window.location.href = "/";
+              } else {
+                // Inspector goes back to join page when call ends
+                window.location.href = `/join/${callId}`;
+              }
+            }, 1500);
+          }
+          break;
+
+        case "image-captured":
+          toast({
+            title: "Image Captured",
+            description: "A new inspection image has been captured",
+          });
+          break;
+
+        case "chat-message":
+          if (message.data && message.data.text && message.userId !== userRole) {
+            const newMessage: ChatMessage = {
+              id: message.data.id,
+              text: message.data.text,
+              sender: message.userId === 'coordinator' ? 'coordinator' : 'inspector',
+              timestamp: new Date(message.data.timestamp)
+            };
+            setChatMessages(prev => [...prev, newMessage]);
+            
+            // Increment unread count for incoming messages
+            setUnreadCount(prev => prev + 1);
+            
+            // Play notification sound for incoming messages
+            playNotificationSound();
+            
+            // Show toast notification
+            toast({
+              title: "New Message",
+              description: `Message from ${message.userId === 'coordinator' ? 'Coordinator' : 'Inspector'}`,
+              variant: "default"
+            });
+          }
+          break;
+
+        case "capture-request":
+          // Only handle if we're the inspector
+          if (userRole === "inspector" && message.userId === "coordinator") {
+            const requestId = message.data?.requestId;
+            console.log("Received remote capture request from coordinator with ID:", requestId);
+            toast({
+              title: "Capturing Photo",
+              description: "Coordinator has requested a photo capture",
+            });
+            
+            // Trigger capture on inspector's device with request ID
+            handleRemoteCapture(message.data?.videoRotation || 0, requestId);
+          }
+          break;
+
+        case "capture-complete":
+          // Only handle if we're the coordinator and request ID matches
+          if (userRole === "coordinator" && message.userId === "inspector") {
+            const responseId = message.data?.requestId;
+            console.log("Capture completed by inspector, request ID:", responseId);
+            
+            // Only process if this is for our current request
+            if (responseId === captureRequestIdRef.current) {
+              // Clear the capture timeout
+              if (captureTimeoutRef.current) {
+                clearTimeout(captureTimeoutRef.current);
+                captureTimeoutRef.current = null;
+              }
+              
+              // Clear loading state and request ID
+              setIsCapturing(false);
+              captureRequestIdRef.current = null;
+            } else {
+              console.log("Ignoring capture complete for different request ID");
+            }
+            
+            // Invalidate the images query to refresh the gallery
+            queryClient.invalidateQueries({ queryKey: ['/api/calls', callId, 'images'] });
+            
+            toast({
+              title: "Photo Captured",
+              description: "Inspector's device has captured a high-quality photo",
+            });
+          }
+          break;
+
+        case "capture-error":
+          // Only handle if we're the coordinator and request ID matches
+          if (userRole === "coordinator" && message.userId === "inspector") {
+            const responseId = message.data?.requestId;
+            console.error("Capture failed on inspector, request ID:", responseId, message.data);
+            
+            // Only process if this is for our current request
+            if (responseId === captureRequestIdRef.current) {
+              // Clear the capture timeout
+              if (captureTimeoutRef.current) {
+                clearTimeout(captureTimeoutRef.current);
+                captureTimeoutRef.current = null;
+              }
+              
+              // Clear loading state and request ID
+              setIsCapturing(false);
+              captureRequestIdRef.current = null;
+            } else {
+              console.log("Ignoring capture error for different request ID");
+            }
+            
+            // Still try to refresh in case there were partial captures
+            queryClient.invalidateQueries({ queryKey: ['/api/calls', callId, 'images'] });
+            
+            toast({
+              title: "Capture Failed",
+              description: message.data?.error || "Failed to capture photo from inspector's device",
+              variant: "destructive",
+            });
+          }
+          break;
+          
+        case "ice-restart-request":
+          // Handle ICE restart request from inspector
+          if (userRole === "coordinator" && message.userId === "inspector") {
+            console.log("Received ICE restart request from inspector");
+            handleIceRestart();
+          }
+          break;
+      }
+    } catch (error) {
+      console.error("Error handling signaling message:", error);
+    }
+  }
+
+  const toggleMute = useCallback(() => {
+    if (localStreamRef.current) {
+      const audioTrack = localStreamRef.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        setIsMuted(!audioTrack.enabled);
+      }
+    }
+  }, []);
+
+  const toggleVideo = useCallback(() => {
+    if (localStreamRef.current) {
+      const videoTrack = localStreamRef.current.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !videoTrack.enabled;
+        setIsVideoEnabled(videoTrack.enabled);
+      }
+    }
+  }, []);
+
+  // Handle remote capture request from coordinator (for inspector only)
+  const handleRemoteCapture = useCallback(async (videoRotation = 0, requestId?: string) => {
+    if (userRole !== "inspector") return;
     
-    // Clear all timeouts and intervals
+    try {
+      console.log("Starting remote capture on inspector device...");
+      
+      // Try to use existing stream first if available, otherwise use new camera
+      let imageBlob: Blob;
+      
+      if (localStreamRef.current && localStreamRef.current.getVideoTracks().length > 0) {
+        // Use existing stream from call for faster capture
+        console.log("Using existing video stream for capture");
+        imageBlob = await captureImageFromStream(localStreamRef.current);
+      } else {
+        // Fall back to using device camera directly
+        console.log("Using device camera for high-quality capture");
+        imageBlob = await capturePhotoFromCamera();
+      }
+      
+      // Ensure we have a valid blob
+      if (!imageBlob || imageBlob.size === 0) {
+        throw new Error('Failed to create image blob');
+      }
+      
+      console.log(`Captured image blob: size=${imageBlob.size}, type=${imageBlob.type}`);
+      
+      // Create a proper File object from the blob for better multer compatibility
+      const timestamp = Date.now();
+      const filename = `inspection-${timestamp}.jpg`;
+      const imageFile = new File([imageBlob], filename, { 
+        type: 'image/jpeg',
+        lastModified: timestamp 
+      });
+      
+      console.log(`Created File object: name=${imageFile.name}, size=${imageFile.size}, type=${imageFile.type}`);
+      
+      // Upload image to server using proper FormData
+      const formData = new FormData();
+      formData.append('image', imageFile);  // Use the File object
+      formData.append('filename', filename);
+      formData.append('videoRotation', videoRotation.toString());
+      
+      console.log('Uploading image to server...');
+      
+      // Make request without manually setting Content-Type (let FormData handle it)
+      const response = await fetch(`/api/calls/${callId}/images`, {
+        method: 'POST',
+        body: formData,
+        // Important: Do not set Content-Type header - FormData sets boundary automatically
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      
+      // Send success message back to coordinator with request ID
+      sendMessage({
+        type: "capture-complete",
+        callId,
+        userId: userRole,
+        data: { 
+          timestamp: Date.now(), 
+          imageId: result.id,
+          filename: filename,
+          requestId: requestId
+        },
+      });
+
+      toast({
+        title: "Photo Captured",
+        description: "High-quality inspection photo captured and uploaded",
+      });
+
+    } catch (error) {
+      console.error("Failed to capture image remotely:", error);
+      
+      // Send error message back to coordinator with request ID
+      sendMessage({
+        type: "capture-error",
+        callId,
+        userId: userRole,
+        data: { 
+          error: error instanceof Error ? error.message : "Failed to capture photo",
+          requestId: requestId
+        },
+      });
+      
+      toast({
+        title: "Capture Failed",
+        description: "Failed to capture photo with camera",
+        variant: "destructive",
+      });
+    }
+  }, [callId, userRole, sendMessage, toast]);
+
+  const captureImage = useCallback(async (videoRotation = 0, retryCount = 0) => {
+    const MAX_RETRIES = 2;
+    const CAPTURE_TIMEOUT = 10000; // 10 seconds timeout for mobile networks
+    
+    try {
+      if (userRole === "coordinator") {
+        // For coordinator: Send request to inspector to capture
+        if (!isConnected || !remoteStream) {
+          toast({
+            title: "Capture Failed",
+            description: "Inspector is not connected",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Don't allow multiple captures at once
+        if (isCapturing) {
+          toast({
+            title: "Please Wait",
+            description: "A photo capture is already in progress",
+          });
+          return;
+        }
+
+        // Set loading state and generate unique request ID
+        setIsCapturing(true);
+        const requestId = `capture-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        captureRequestIdRef.current = requestId;
+
+        // Send capture request to inspector with unique ID
+        sendMessage({
+          type: "capture-request",
+          callId,
+          userId: userRole,
+          data: { 
+            videoRotation: videoRotation,
+            timestamp: Date.now(),
+            retryCount: retryCount,
+            requestId: requestId
+          },
+        });
+
+        // Set up timeout (10 seconds for mobile networks)
+        captureTimeoutRef.current = setTimeout(() => {
+          // Only timeout if this is still the active request
+          if (captureRequestIdRef.current === requestId) {
+            setIsCapturing(false);
+            captureTimeoutRef.current = null;
+            captureRequestIdRef.current = null;
+            
+            // Retry logic
+            if (retryCount < MAX_RETRIES) {
+              toast({
+                title: "Retrying Capture",
+                description: `Attempt ${retryCount + 2} of ${MAX_RETRIES + 1}...`,
+              });
+              // Retry after a short delay
+              setTimeout(() => {
+                captureImage(videoRotation, retryCount + 1);
+              }, 1000);
+            } else {
+              toast({
+                title: "Capture Failed",
+                description: "Unable to capture photo after multiple attempts. Please check the connection and try again.",
+                variant: "destructive",
+              });
+            }
+          }
+        }, CAPTURE_TIMEOUT);
+
+        if (retryCount === 0) {
+          toast({
+            title: "Requesting Photo",
+            description: "Triggering inspector's camera to capture photo...",
+          });
+        }
+
+        // Return early - success/failure will be handled by message handlers
+        return;
+      } else {
+        // For inspector: This function should not be called directly anymore
+        // Remote capture is handled by handleRemoteCapture
+        console.warn("Direct capture not allowed for inspector - use remote capture");
+        return;
+      }
+    } catch (error) {
+      console.error("Failed to initiate capture:", error);
+      setIsCapturing(false);
+      
+      // Retry on error if we haven't exceeded retry count
+      if (retryCount < MAX_RETRIES) {
+        setTimeout(() => {
+          captureImage(videoRotation, retryCount + 1);
+        }, 1000);
+      } else {
+        toast({
+          title: "Capture Failed",
+          description: "Failed to initiate photo capture after multiple attempts",
+          variant: "destructive",
+        });
+      }
+    }
+  }, [callId, userRole, remoteStream, sendMessage, toast, isConnected, isCapturing]);
+
+  const sendChatMessage = useCallback((text: string) => {
+    const messageData = {
+      id: Date.now().toString(),
+      text: text,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Send the message via WebSocket
+    sendMessage({
+      type: "chat-message",
+      callId,
+      userId: userRole,
+      data: messageData
+    });
+
+    // Add to local state immediately
+    const newMessage: ChatMessage = {
+      id: messageData.id,
+      text: messageData.text,
+      sender: userRole,
+      timestamp: new Date()
+    };
+    setChatMessages(prev => [...prev, newMessage]);
+  }, [callId, userRole, sendMessage]);
+
+  const clearUnreadCount = useCallback(() => {
+    setUnreadCount(0);
+  }, []);
+
+  const startRecording = useCallback(async (videoRotation = 0) => {
+    if (userRole !== "coordinator") {
+      toast({
+        title: "Recording Error",
+        description: "Only coordinators can record inspections",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Use remote stream if available, otherwise use local stream for testing
+    const streamToRecord = remoteStream || localStream;
+    if (!streamToRecord) {
+      toast({
+        title: "Recording Error",
+        description: "No video stream available for recording",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!isRecordingSupported) {
+      toast({
+        title: "Recording Not Supported",
+        description: "Your browser doesn't support video recording",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (isRecording) {
+      toast({
+        title: "Already Recording",
+        description: "Recording is already in progress",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      // Use direct recording to preserve original video orientation
+      // Rotation will be applied via CSS during playback
+      const recordingStream = streamToRecord;
+      canvasCleanupRef.current = null;
+
+      const supportedMimeType = getSupportedMimeType();
+      if (!supportedMimeType) {
+        throw new Error('No supported video format found');
+      }
+
+      const mediaRecorder = new MediaRecorder(recordingStream, {
+        mimeType: supportedMimeType
+      });
+      
+      recordedChunksRef.current = [];
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+      
+      mediaRecorder.onstop = async () => {
+        const supportedMimeType = getSupportedMimeType();
+        const mimeTypeForBlob = supportedMimeType || 'video/webm';
+        
+        // Strip codec information for the blob and file type
+        const baseMimeType = mimeTypeForBlob.split(';')[0]; // Remove codec info
+        
+        const blob = new Blob(recordedChunksRef.current, { type: baseMimeType });
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const extension = baseMimeType.includes('mp4') ? 'mp4' : 'webm';
+        const filename = `inspection-${callId}-${timestamp}.${extension}`;
+        
+        // Save recording to server
+        try {
+          // Create a File object from the blob with the base MIME type
+          const videoFile = new File([blob], filename, { 
+            type: baseMimeType 
+          });
+          
+          const formData = new FormData();
+          formData.append('video', videoFile);
+          formData.append('callId', callId);
+          formData.append('timestamp', new Date().toISOString());
+          formData.append('videoRotation', videoRotation.toString());
+          
+          const response = await fetch('/api/recordings', {
+            method: 'POST',
+            body: formData,
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => 'Unknown server error');
+            throw new Error(`Upload failed: ${response.status} ${response.statusText}. ${errorText}`);
+          }
+          
+          // Try to parse response, but don't fail if it's not JSON
+          let responseData;
+          try {
+            responseData = await response.json();
+          } catch {
+            responseData = { success: true };
+          }
+          
+          toast({
+            title: "Recording Saved",
+            description: "Inspection video has been saved successfully",
+            variant: "default"
+          });
+        } catch (error) {
+          console.error('Failed to save recording:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+          toast({
+            title: "Save Failed",
+            description: `Failed to save recording: ${errorMessage}`,
+            variant: "destructive"
+          });
+        }
+      };
+      
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start(1000); // Collect data every second
+      setIsRecording(true);
+      
+      toast({
+        title: "Recording Started",
+        description: "Inspection recording has begun",
+        variant: "default"
+      });
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      
+      // Clean up canvas elements if they were created
+      if (canvasCleanupRef.current) {
+        try {
+          canvasCleanupRef.current();
+          canvasCleanupRef.current = null;
+        } catch (cleanupError) {
+          console.error('Error cleaning up canvas after recording failure:', cleanupError);
+        }
+      }
+      
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      toast({
+        title: "Recording Error",
+        description: `Failed to start recording: ${errorMessage}`,
+        variant: "destructive"
+      });
+      // Reset recording state if it was set
+      setIsRecording(false);
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current = null;
+      }
+    }
+  }, [remoteStream, localStreamRef, userRole, callId, toast, isRecordingSupported, isRecording, getSupportedMimeType]);
+
+  const stopRecording = useCallback(() => {
+    // Clean up canvas recording elements first
+    if (canvasCleanupRef.current) {
+      try {
+        canvasCleanupRef.current();
+        canvasCleanupRef.current = null;
+      } catch (error) {
+        console.error('Error cleaning up canvas recording:', error);
+      }
+    }
+    
+    if (mediaRecorderRef.current) {
+      try {
+        // Only stop if not already stopping/stopped
+        if (mediaRecorderRef.current.state === 'recording') {
+          mediaRecorderRef.current.stop();
+        }
+      } catch (error) {
+        console.error('Error stopping recording:', error);
+      }
+      mediaRecorderRef.current = null;
+    }
+    
+    if (isRecording) {
+      setIsRecording(false);
+      toast({
+        title: "Recording Stopped",
+        description: "Recording has been stopped and will be saved",
+        variant: "default"
+      });
+    }
+  }, [isRecording, toast]);
+
+  const endCall = useCallback(async () => {
+    try {
+      // Stop recording first if it's active
+      if (isRecording) {
+        stopRecording();
+      }
+      
+      console.log(`${userRole} ending call ${callId}`);
+      
+      // Update call status to completely end the call
+      await apiRequest("PATCH", `/api/calls/${callId}/status`, { status: "ended" });
+      console.log("Call status updated to ended");
+      
+      // Notify other participants that call is ending
+      sendMessage({
+        type: "leave-call",
+        callId,
+        userId: userRole,
+      });
+      console.log("Leave call message sent");
+
+      // Show confirmation that call is ending
+      toast({
+        title: "Call Ended",
+        description: "The inspection call has been terminated",
+        variant: "default"
+      });
+
+      // Cleanup all resources
+      cleanup();
+      
+      // Different redirect behavior for inspectors vs coordinators
+      setTimeout(() => {
+        if (userRole === "inspector") {
+          // Redirect inspector to thank you page
+          window.location.href = "/inspector-thank-you";
+        } else {
+          window.location.href = "/";
+        }
+      }, 1000); // Small delay to ensure cleanup completes
+      
+    } catch (error) {
+      console.error("Failed to end call:", error);
+      // Force cleanup and redirect even if API call fails
+      cleanup();
+      toast({
+        title: "Call Ended",
+        description: "Connection terminated (some errors occurred)",
+        variant: "destructive"
+      });
+      setTimeout(() => {
+        if (userRole === "inspector") {
+          // Redirect inspector to thank you page
+          window.location.href = "/inspector-thank-you";
+        } else {
+          window.location.href = "/";
+        }
+      }, 1000);
+    }
+  }, [callId, userRole, sendMessage, isRecording, stopRecording, toast]);
+
+  function cleanup() {
+    // Clean up capture timeout
     if (captureTimeoutRef.current) {
       clearTimeout(captureTimeoutRef.current);
       captureTimeoutRef.current = null;
     }
     
-    // Clear canvas cleanup function
+    // Clean up canvas recording elements first
     if (canvasCleanupRef.current) {
-      canvasCleanupRef.current();
-      canvasCleanupRef.current = null;
+      try {
+        canvasCleanupRef.current();
+        canvasCleanupRef.current = null;
+      } catch (error) {
+        console.error('Error cleaning up canvas recording during cleanup:', error);
+      }
     }
     
-    // Stop media recorder if recording
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
+    // Always stop recording if MediaRecorder exists, regardless of isRecording state
+    if (mediaRecorderRef.current) {
+      try {
+        if (mediaRecorderRef.current.state === 'recording') {
+          mediaRecorderRef.current.stop();
+        }
+      } catch (error) {
+        console.error('Error stopping MediaRecorder during cleanup:', error);
+      }
+      mediaRecorderRef.current = null;
     }
     
-    // Clean up media streams
-    [localStreamRef.current, localStream, remoteStream].forEach(stream => {
-      if (stream) {
-        stream.getTracks().forEach(track => {
-          track.stop();
-        });
+    // Always reset recording state
+    if (isRecording) {
+      setIsRecording(false);
+    }
+    
+    // Stop all media tracks to revoke camera and microphone permissions
+    if (localStreamRef.current) {
+      console.log('Stopping media tracks and revoking camera/microphone permissions');
+      const tracks = localStreamRef.current.getTracks();
+      tracks.forEach(track => {
+        console.log(`Stopping ${track.kind} track (${track.label})`);
+        track.stop();
+        // Force release track reference
+        track.enabled = false;
+      });
+      
+      // Clear the stream reference completely
+      localStreamRef.current = null;
+      console.log('All media tracks stopped and permissions revoked');
+    }
+    
+    // Also ensure local video elements are cleared
+    const localVideoElements = document.querySelectorAll('video[data-testid="video-local-stream"], video[data-testid="video-local-fullscreen"]');
+    localVideoElements.forEach(video => {
+      if (video instanceof HTMLVideoElement) {
+        video.srcObject = null;
+        video.load(); // Force video element to release resources
       }
     });
     
@@ -716,18 +1151,13 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
-    
-    // Reset states
     setLocalStream(null);
     setRemoteStream(null);
     setIsConnected(false);
-    setIsConnectionEstablished(false);
     setHasPeerJoined(false);
-    setIsRecording(false);
-    setIsCapturing(false);
+    setIsConnectionEstablished(false);
   }
 
-  // Return all the functions and state that components need
   return {
     localStream,
     remoteStream,
@@ -743,6 +1173,7 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     unreadCount,
     clearUnreadCount,
     isRecording,
+    isRecordingSupported,
     isCapturing,
     startRecording,
     stopRecording,

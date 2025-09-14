@@ -1,4 +1,4 @@
-import { useParams, useLocation } from "wouter";
+import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import VideoDisplay from "@/components/video-call/video-display";
 import CallControls from "@/components/video-call/call-controls";
@@ -9,94 +9,53 @@ import ImageViewerModal from "@/components/video-call/image-viewer-modal";
 import { FieldMap } from "@/components/field-map/field-map";
 import { useWebRTC } from "@/hooks/use-webrtc";
 import { useState, useEffect } from "react";
-import { Clock, Signal, Copy, ExternalLink, Map, User, Building, ChevronRight } from "lucide-react";
+import { Clock, Signal, Users, Copy, ExternalLink, Map } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 
-// Helper function to decode JWT token and get user data (same as dashboard)
-function getCurrentUserFromToken() {
-  const token = localStorage.getItem("authToken");
-  if (!token) return null;
-  
-  try {
-    // JWT tokens have three parts separated by dots
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(
-      window.atob(base64)
-        .split('')
-        .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
-    );
-    
-    const payload = JSON.parse(jsonPayload);
-    return {
-      id: payload.userId,
-      name: payload.name,
-      role: payload.role,
-      username: payload.username,
-      email: payload.email,
-      departmentId: payload.departmentId
-    };
-  } catch (error) {
-    console.error('Failed to decode JWT token:', error);
-    return null;
-  }
-}
-
 export default function CoordinatorCall() {
-  // IMMEDIATE DEBUG - See if component executes and what happens
-  console.log('🚨 COORDINATOR CALL EXECUTING!', { 
-    url: window.location.href, 
-    token: !!localStorage.getItem('authToken'),
-    timestamp: new Date().toISOString()
-  });
-  
   const { callId } = useParams();
-  const [, setLocation] = useLocation();
   const [showSettings, setShowSettings] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showFieldMap, setShowFieldMap] = useState(false);
   const [selectedImage, setSelectedImage] = useState<any>(null);
-  const [callDuration, setCallDuration] = useState(0);
-  const [videoRotation, setVideoRotation] = useState(0);
+  const [callDuration, setCallDuration] = useState(0); // seconds
+  const [videoRotation, setVideoRotation] = useState(0); // Track video rotation state
   const { toast } = useToast();
-  const [authError, setAuthError] = useState<string | null>(null);
 
-  // Get authenticated user using same function as dashboard
-  const currentUser = getCurrentUserFromToken();
-  
-  // Authentication validation - show error instead of silent redirect
-  useEffect(() => {
-    console.log('🔒 COORDINATOR CALL AUTH CHECK:', {
-      hasToken: !!localStorage.getItem('authToken'),
-      currentUser: currentUser,
-      callId: callId
-    });
+  // Inspector name mapping
+  const getInspectorName = (inspectorId: string) => {
+    const inspectorMap: Record<string, string> = {
+      "inspector1-id": "John Martinez",
+      "inspector2-id": "Maria Garcia"
+    };
+    return inspectorMap[inspectorId] || "Unknown Inspector";
+  };
 
-    if (!currentUser) {
-      console.log('❌ No authenticated user found in coordinator call');
-      setAuthError('Authentication required. Please log in as a coordinator.');
-      return;
-    }
-    
-    if (currentUser.role !== 'coordinator') {
-      console.log('❌ User role mismatch in coordinator call:', currentUser.role, 'expected: coordinator');
-      setAuthError(`Invalid role: ${currentUser.role}. Coordinator access required.`);
-      return;
-    }
-    
-    console.log('✅ Authentication validated for coordinator call:', currentUser.name);
-    setAuthError(null);
-  }, [currentUser, callId]);
-
-  // Query hooks
-  const { data: call, error: callError, isLoading: callLoading } = useQuery<any>({
+  const { data: call } = useQuery({
     queryKey: ["/api/calls", callId],
     enabled: !!callId,
   });
+
+  const {
+    localStream,
+    remoteStream,
+    isConnected,
+    isMuted,
+    isVideoEnabled,
+    toggleMute,
+    toggleVideo,
+    captureImage: originalCaptureImage,
+    endCall,
+    chatMessages,
+    sendChatMessage,
+    unreadCount,
+    clearUnreadCount,
+    isRecording,
+    isCapturing,
+    startRecording,
+    stopRecording,
+  } = useWebRTC(callId!, "coordinator");
 
   const { data: capturedImages = [], refetch: refetchImages } = useQuery<any[]>({
     queryKey: ["/api/calls", callId, "images"],
@@ -108,375 +67,185 @@ export default function CoordinatorCall() {
     enabled: !!callId,
   });
 
-  // WebRTC hook
-  const {
-    localStream,
-    remoteStream,
-    isConnected,
-    isMuted,
-    isVideoEnabled,
-    toggleMute,
-    toggleVideo,
-    captureImage,
-    endCall,
-    chatMessages,
-    sendChatMessage,
-    unreadCount,
-    clearUnreadCount,
-  } = useWebRTC(callId || "", "coordinator");
+  // Combine images and videos into a single media array
+  const capturedMedia = [
+    ...capturedImages.map(img => ({ ...img, type: 'image' })),
+    ...capturedVideos.map(vid => ({ ...vid, type: 'video' }))
+  ].sort((a, b) => {
+    const dateA = new Date(a.capturedAt || a.recordedAt || 0).getTime();
+    const dateB = new Date(b.capturedAt || b.recordedAt || 0).getTime();
+    return dateB - dateA; // Sort by most recent first
+  });
 
-  // Call duration timer
-  useEffect(() => {
-    if (isConnected) {
-      const interval = setInterval(() => {
-        setCallDuration(prev => prev + 1);
-      }, 1000);
-      return () => clearInterval(interval);
+  // Enhanced capture function that refreshes images immediately
+  const captureImage = async (rotation = 0) => {
+    try {
+      await originalCaptureImage(rotation);
+      // Immediately refresh the images to show the new capture
+      await refetchImages();
+    } catch (error) {
+      console.error("Failed to capture and refresh:", error);
     }
-  }, [isConnected]);
+  };
+
+  // Enhanced stop recording function that refreshes videos immediately
+  const handleStopRecording = async () => {
+    await stopRecording();
+    // Wait a bit for server to process the video
+    setTimeout(() => {
+      refetchVideos();
+    }, 1000);
+  };
+
+  // Call duration timer based on call start time
+  useEffect(() => {
+    if (!(call as any)?.startedAt) return;
+
+    const interval = setInterval(() => {
+      const startTime = new Date((call as any).startedAt).getTime();
+      const now = new Date().getTime();
+      const durationSeconds = Math.floor((now - startTime) / 1000);
+      setCallDuration(durationSeconds);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [(call as any)?.startedAt]);
 
   const formatDuration = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
+    const minutes = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const copyCallLink = () => {
-    const inspectorLink = `${window.location.origin}/join/${callId}`;
-    navigator.clipboard.writeText(inspectorLink);
+  const generateInspectorLink = () => {
+    const inspectorUrl = `${window.location.origin}/join/${callId}`;
+    navigator.clipboard.writeText(inspectorUrl);
     toast({
-      title: "Link Copied",
-      description: "Inspector call link copied to clipboard",
+      title: "Inspector Link Copied",
+      description: "Share this link with the inspector to join the call",
     });
   };
 
   const openInspectorLink = () => {
-    const inspectorLink = `${window.location.origin}/join/${callId}`;
-    window.open(inspectorLink, '_blank');
+    const inspectorUrl = `${window.location.origin}/join/${callId}`;
+    window.open(inspectorUrl, '_blank');
   };
 
-  // Show auth error state - VISIBLE instead of silent redirect
-  if (authError) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="text-center space-y-4 max-w-md">
-          <h1 className="text-2xl font-bold text-destructive">Authentication Required</h1>
-          <p className="text-muted-foreground">{authError}</p>
-          <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">Debug info:</p>
-            <pre className="text-xs bg-muted p-2 rounded text-left">
-              Token exists: {localStorage.getItem('authToken') ? 'YES' : 'NO'}
-              Current user: {currentUser ? JSON.stringify(currentUser, null, 2) : 'NULL'}
-              Call ID: {callId || 'MISSING'}
-            </pre>
-          </div>
-          <Button onClick={() => setLocation('/')} data-testid="button-go-home">
-            Go to Home
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // Show loading state
-  if (callLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="text-center space-y-4">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-          <p className="text-muted-foreground">Loading call...</p>
-          <p className="text-xs text-muted-foreground">Call ID: {callId}</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Show error state
-  if (callError || !callId) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="text-center space-y-4">
-          <h1 className="text-2xl font-bold text-destructive">Call Not Found</h1>
-          <p className="text-muted-foreground">
-            {callError ? "Failed to load call information" : "Invalid call ID"}
-          </p>
-          <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">Debug info:</p>
-            <pre className="text-xs bg-muted p-2 rounded text-left">
-              Call ID: {callId || 'MISSING'}
-              Error: {callError?.message || 'No call ID provided'}
-              Auth user: {currentUser?.name || 'None'}
-            </pre>
-          </div>
-          <Button onClick={() => window.history.back()} data-testid="button-back">
-            Go Back to Dashboard
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  const handleSelectInspector = (inspector: any) => {
+    toast({
+      title: "Inspector Selected",
+      description: `Selected ${inspector.name} for inspection. Create a new call to connect.`,
+    });
+    console.log("Selected inspector:", inspector);
+    // In a real app, you would navigate to create a new call with this inspector
+  };
 
   return (
-    <div className="flex h-screen bg-background">
-      {/* Main Video Area */}
-      <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <header className="bg-card border-b px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-              <span className="text-sm font-medium">
-                {isConnected ? 'Connected' : 'Connecting...'}
-              </span>
-            </div>
-            
-            {isConnected && (
-              <div className="flex items-center space-x-2">
-                <Clock className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm font-medium" data-testid="text-call-duration">
-                  {formatDuration(callDuration)}
-                </span>
-              </div>
-            )}
-          </div>
-
+    <div className="flex flex-col h-screen bg-background">
+      {/* Header with Call Status */}
+      <header className="bg-card border-b border-border px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2">
-            <Button
+            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 connection-indicator' : 'bg-red-500'}`}></div>
+            <span className="text-sm font-medium text-muted-foreground">
+              {isConnected ? 'Connected' : 'Connecting...'}
+            </span>
+          </div>
+          <div className="text-sm text-muted-foreground">
+            <Clock className="w-4 h-4 inline mr-1" />
+            <span data-testid="text-call-duration">{formatDuration(callDuration)}</span>
+          </div>
+        </div>
+        
+        <div className="flex items-center space-x-4">
+          <div className="text-sm font-medium">
+            Inspector: <span className="text-primary" data-testid="text-inspector-name">
+              {(call as any)?.inspectorId ? getInspectorName((call as any).inspectorId) : "Loading..."}
+            </span>
+          </div>
+          <div className="text-sm font-medium">
+            Reference: <span className="text-primary" data-testid="text-inspection-reference">
+              {(call as any)?.inspectionReference || "N/A"}
+            </span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button 
+              size="sm" 
               variant="outline"
-              size="sm"
-              onClick={copyCallLink}
-              data-testid="button-copy-link"
+              onClick={() => setShowFieldMap(true)}
+              data-testid="button-open-field-map"
             >
-              <Copy className="w-4 h-4 mr-2" />
+              <Map className="w-3 h-3 mr-1" />
+              Field Map
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={generateInspectorLink}
+              data-testid="button-copy-inspector-link"
+            >
+              <Copy className="w-3 h-3 mr-1" />
               Copy Inspector Link
             </Button>
-            
-            <Button
+            <Button 
+              size="sm" 
               variant="outline"
-              size="sm"
               onClick={openInspectorLink}
               data-testid="button-open-inspector-link"
             >
-              <ExternalLink className="w-4 h-4 mr-2" />
-              Open Inspector Link
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowFieldMap(!showFieldMap)}
-              data-testid="button-toggle-map"
-            >
-              <Map className="w-4 h-4 mr-2" />
-              {showFieldMap ? 'Hide Map' : 'Show Map'}
+              <ExternalLink className="w-3 h-3 mr-1" />
+              Open Link
             </Button>
           </div>
-        </header>
-
-        {/* Video Content Area */}
-        <div className="flex-1 flex">
-          {/* Video Display */}
-          <div className="flex-1 bg-black relative">
-            <VideoDisplay
-              localStream={localStream}
-              remoteStream={remoteStream}
-              isCoordinator={true}
-              onCaptureImage={captureImage}
-              onRotationChange={(rotation) => setVideoRotation(rotation)}
-              inspectorName={call?.inspector?.name}
-              callStartTime={call?.startTime}
-            />
+          <div className="flex items-center space-x-1">
+            <Signal className="w-4 h-4 text-green-500" />
+            <span className="text-xs text-muted-foreground">Excellent</span>
           </div>
-
-          {/* Field Map Panel */}
-          {showFieldMap && (
-            <div className="w-80 bg-card border-l">
-              <div className="h-full flex flex-col">
-                <div className="p-4 border-b">
-                  <h3 className="font-semibold">Field Map & Inspector Location</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Track inspector location and view site details
-                  </p>
-                </div>
-                <div className="flex-1">
-                  <FieldMap 
-                    isOpen={true}
-                    onClose={() => setShowFieldMap(false)}
-                    onSelectInspector={(inspector) => console.log('Selected inspector:', inspector)}
-                    currentCallInspectorId={call?.inspectorId}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
         </div>
+      </header>
 
-        {/* Call Controls */}
-        <div className="bg-card border-t">
-          <CallControls
-            isMuted={isMuted}
-            isVideoEnabled={isVideoEnabled}
-            capturedImages={capturedImages}
-            onToggleMute={toggleMute}
-            onToggleVideo={toggleVideo}
-            onCaptureImage={captureImage}
-            onOpenSettings={() => setShowSettings(true)}
-            onOpenChat={() => {
-              clearUnreadCount();
-              setShowChat(true);
-            }}
-            onEndCall={endCall}
-            onImageClick={setSelectedImage}
-            isCoordinator={true}
-            unreadCount={unreadCount}
-          />
-        </div>
+      {/* Inspector Location Info */}
+      <div className="bg-card border-b border-border px-4 py-2">
+        <InspectorLocation location={(call as any)?.inspectorLocation || null} />
       </div>
 
-      {/* Right Sidebar - Call Information */}
-      <div className="w-80 bg-card border-l flex flex-col">
-        <div className="p-4 border-b">
-          <h2 className="font-semibold text-lg" data-testid="text-call-title">
-            Inspection Call
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Call ID: {callId}
-          </p>
-        </div>
+      {/* Main Video Area - Enlarged by 70% */}
+      <main className="flex-[1.7] min-h-0">
+        <VideoDisplay
+          localStream={localStream}
+          remoteStream={remoteStream}
+          isCoordinator={true}
+          onCaptureImage={(rotation = 0) => captureImage(rotation)}
+          onRotationChange={setVideoRotation}
+          inspectorName={(call as any)?.inspectorId ? getInspectorName((call as any).inspectorId) : undefined}
+          callStartTime={(call as any)?.startedAt}
+        />
+      </main>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Call Information */}
-          {call && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Building className="w-5 h-5" />
-                  <span>Call Details</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Status</label>
-                  <div className="mt-1">
-                    <Badge variant={call.status === 'active' ? 'default' : 'secondary'} data-testid="badge-call-status">
-                      {call.status || 'Active'}
-                    </Badge>
-                  </div>
-                </div>
-                
-                {call.inspectionRequest && (
-                  <>
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Inspection Request</label>
-                      <p className="text-sm mt-1" data-testid="text-request-title">
-                        {call.inspectionRequest.title}
-                      </p>
-                    </div>
-                    
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Asset Type</label>
-                      <p className="text-sm mt-1" data-testid="text-asset-type">
-                        {call.inspectionRequest.assetType}
-                      </p>
-                    </div>
-                    
-                    {call.inspectionRequest.location && (
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">Location</label>
-                        <p className="text-sm mt-1" data-testid="text-location">
-                          {call.inspectionRequest.location.address}
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Inspector Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <User className="w-5 h-5" />
-                <span>Inspector</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {call?.inspector ? (
-                <div className="space-y-2">
-                  <p className="font-medium" data-testid="text-inspector-name">
-                    {call.inspector.name}
-                  </p>
-                  {call.inspector.email && (
-                    <p className="text-sm text-muted-foreground" data-testid="text-inspector-email">
-                      {call.inspector.email}
-                    </p>
-                  )}
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span className="text-xs text-muted-foreground">Connected</span>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Waiting for inspector to join...
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Captured Media */}
-          {capturedImages.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Captured Images ({capturedImages.length})</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-2">
-                  {capturedImages.slice(0, 4).map((image, index) => (
-                    <div
-                      key={index}
-                      className="aspect-square bg-muted rounded-md cursor-pointer overflow-hidden"
-                      onClick={() => setSelectedImage(image)}
-                      data-testid={`image-thumbnail-${index}`}
-                    >
-                      <img
-                        src={image.url || image.dataUrl}
-                        alt={`Captured ${index + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  ))}
-                </div>
-                {capturedImages.length > 4 && (
-                  <p className="text-xs text-center text-muted-foreground mt-2">
-                    +{capturedImages.length - 4} more images
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Inspector Location */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Map className="w-5 h-5" />
-                <span>Inspector Location</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <InspectorLocation location={call?.inspectorLocation || null} />
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      {/* Bottom Control Bar */}
+      <CallControls
+        isMuted={isMuted}
+        isVideoEnabled={isVideoEnabled}
+        capturedImages={capturedMedia}
+        onToggleMute={toggleMute}
+        onToggleVideo={toggleVideo}
+        onOpenSettings={() => setShowSettings(true)}
+        onOpenChat={() => {
+          clearUnreadCount();
+          setShowChat(true);
+        }}
+        onEndCall={endCall}
+        onImageClick={setSelectedImage}
+        onCaptureImage={(rotation = 0) => captureImage(rotation)}
+        isCoordinator={true}
+        videoRotation={videoRotation}
+        unreadCount={unreadCount}
+        isRecording={isRecording}
+        isCapturing={isCapturing}
+        onStartRecording={() => startRecording(videoRotation)}
+        onStopRecording={handleStopRecording}
+        hasStreamToRecord={!!(remoteStream || localStream)}
+      />
 
       {/* Chat Panel */}
       <ChatPanel
@@ -494,9 +263,17 @@ export default function CoordinatorCall() {
       />
 
       <ImageViewerModal
-        images={capturedImages}
+        images={capturedMedia}
         selectedImage={selectedImage}
         onClose={() => setSelectedImage(null)}
+      />
+
+      {/* Field Map */}
+      <FieldMap
+        isOpen={showFieldMap}
+        onClose={() => setShowFieldMap(false)}
+        onSelectInspector={handleSelectInspector}
+        currentCallInspectorId={(call as any)?.inspectorId}
       />
     </div>
   );

@@ -2,34 +2,9 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    // Handle authentication errors by clearing token and redirecting
-    if (res.status === 401 || res.status === 403) {
-      console.warn(`Authentication error (${res.status}), clearing token and redirecting to login`);
-      localStorage.removeItem('authToken');
-      
-      // Prevent infinite redirects by checking current location
-      if (window.location.pathname !== '/') {
-        window.location.href = '/';
-      }
-      
-      const text = (await res.text()) || res.statusText;
-      throw new Error(`${res.status}: Authentication failed - ${text}`);
-    }
-    
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);
   }
-}
-
-function getAuthHeaders() {
-  const token = localStorage.getItem("authToken");
-  const headers: Record<string, string> = {};
-  
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-  
-  return headers;
 }
 
 export async function apiRequest(
@@ -37,12 +12,9 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const authHeaders = getAuthHeaders();
-  const contentHeaders: Record<string, string> = data ? { "Content-Type": "application/json" } : {};
-  
   const res = await fetch(url, {
     method,
-    headers: { ...authHeaders, ...contentHeaders },
+    headers: data ? { "Content-Type": "application/json" } : {},
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -57,10 +29,7 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const authHeaders = getAuthHeaders();
-    
     const res = await fetch(queryKey.join("/") as string, {
-      headers: authHeaders,
       credentials: "include",
     });
 
