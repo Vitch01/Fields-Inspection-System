@@ -418,14 +418,31 @@ export default function CoordinatorDashboard() {
   
   // Redirect to home if not authenticated or not a coordinator
   useEffect(() => {
-    if (!currentUser || currentUser.role !== 'coordinator') {
+    if (!currentUser) {
+      console.log('❌ No authenticated user found, redirecting to home');
       toast({
         title: "Authentication Required",
         description: "Please log in as a coordinator to access this page",
         variant: "destructive",
       });
-      setLocation("/");
+      // Use wouter navigation instead of window.location to prevent hard reloads
+      setTimeout(() => setLocation("/"), 100);
+      return;
     }
+    
+    if (currentUser.role !== 'coordinator') {
+      console.log('❌ User role mismatch:', currentUser.role, 'expected: coordinator');
+      toast({
+        title: "Authentication Required",
+        description: "Please log in as a coordinator to access this page",
+        variant: "destructive",
+      });
+      // Use wouter navigation instead of window.location to prevent hard reloads
+      setTimeout(() => setLocation("/"), 100);
+      return;
+    }
+    
+    console.log('✅ Authentication validated for coordinator:', currentUser.name);
   }, [currentUser, setLocation, toast]);
 
   // Fetch inspection requests with filters
@@ -543,10 +560,15 @@ export default function CoordinatorDashboard() {
   };
 
   const handleStartCall = (requestId: string) => {
+    console.log('🚀 handleStartCall called with requestId:', requestId);
     const request = filteredRequests.find(r => r.id === requestId);
     if (request) {
+      console.log('📋 Request found:', request.title);
       setRequestForCall(request);
       setShowFieldMap(true);
+      console.log('🗺️ Field map should now be visible');
+    } else {
+      console.error('❌ Request not found for ID:', requestId);
     }
   };
 
@@ -655,9 +677,14 @@ export default function CoordinatorDashboard() {
       setSelectedInspector(null);
       
       console.log('🚀 Redirecting to coordinator call page:', `/coordinator/call/${call.id}`);
-      console.log('🚀 About to call setLocation...');
-      setLocation(`/coordinator/call/${call.id}`);
-      console.log('🚀 setLocation called, should trigger navigation');
+      console.log('🚀 About to call setLocation with setTimeout to avoid dialog interference...');
+      
+      // Use setTimeout to defer navigation after dialog close to prevent interference
+      setTimeout(() => {
+        console.log('⏰ setTimeout executed, calling setLocation now...');
+        setLocation(`/coordinator/call/${call.id}`);
+        console.log('🚀 setLocation called, navigation should trigger');
+      }, 100);
     } catch (error) {
       console.error("Failed to start call:", error);
       toast({
@@ -964,8 +991,18 @@ export default function CoordinatorDashboard() {
                                   request={selectedRequest}
                                   onAssign={handleAssignment}
                                   onUpdateStatus={handleStatusUpdate}
-                                  onStartCall={handleStartCall}
+                                  onStartCall={(requestId) => {
+                                    console.log('🔴 Start Call clicked from RequestDetails dialog');
+                                    // Close dialog first, then defer start call to avoid interference
+                                    setDialogOpen(false);
+                                    setSelectedRequest(null);
+                                    setTimeout(() => {
+                                      console.log('⏰ Deferred start call execution');
+                                      handleStartCall(requestId);
+                                    }, 100);
+                                  }}
                                   onClose={() => {
+                                    console.log('🔴 Closing RequestDetails dialog');
                                     setSelectedRequest(null);
                                     setDialogOpen(false);
                                   }}

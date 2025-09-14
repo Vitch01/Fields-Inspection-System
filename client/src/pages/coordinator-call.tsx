@@ -1,4 +1,4 @@
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import VideoDisplay from "@/components/video-call/video-display";
 import CallControls from "@/components/video-call/call-controls";
@@ -16,7 +16,12 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CoordinatorCall() {
+  // IMMEDIATE DEBUG - Test if component executes at all
+  console.log('🚨 COORDINATOR CALL COMPONENT EXECUTING!', window.location.href);
+  alert('🔵 COMPONENT EXECUTING - URL: ' + window.location.href);
+  
   const { callId } = useParams();
+  const [, setLocation] = useLocation();
   const [showSettings, setShowSettings] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showFieldMap, setShowFieldMap] = useState(false);
@@ -29,8 +34,8 @@ export default function CoordinatorCall() {
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     if (!token) {
-      console.warn('No authentication token found, redirecting to login');
-      window.location.href = '/';
+      console.warn('❌ No authentication token found, redirecting to login');
+      setTimeout(() => setLocation('/'), 100);
       return;
     }
 
@@ -49,28 +54,28 @@ export default function CoordinatorCall() {
       
       // Check if token is expired
       if (payload.exp && payload.exp * 1000 < Date.now()) {
-        console.warn('Authentication token expired, redirecting to login');
+        console.warn('❌ Authentication token expired, redirecting to login');
         localStorage.removeItem('authToken');
-        window.location.href = '/';
+        setTimeout(() => setLocation('/'), 100);
         return;
       }
       
       // Check if user has coordinator role
       if (payload.role !== 'coordinator') {
-        console.warn('Invalid role for coordinator access, redirecting to login');
+        console.warn('❌ Invalid role for coordinator access, redirecting to login');
         localStorage.removeItem('authToken');
-        window.location.href = '/';
+        setTimeout(() => setLocation('/'), 100);
         return;
       }
       
-      console.log('Authentication validated for coordinator:', payload.name);
+      console.log('✅ Authentication validated for coordinator:', payload.name);
     } catch (error) {
-      console.error('Invalid authentication token format, redirecting to login:', error);
+      console.error('❌ Invalid authentication token format, redirecting to login:', error);
       localStorage.removeItem('authToken');
-      window.location.href = '/';
+      setTimeout(() => setLocation('/'), 100);
       return;
     }
-  }, []);
+  }, [setLocation]);
 
   // Query hooks
   const { data: call, error: callError, isLoading: callLoading } = useQuery<any>({
