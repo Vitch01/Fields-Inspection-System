@@ -31,7 +31,7 @@ interface FieldMapProps {
 const GOOGLE_MY_MAPS_ID = '18BQR9080Tx73UGM6yWqKjZ2bHWk6UZcp';
 const FIELD_CENTER = { lat: 37.097178900157424, lng: -113.58888217976603 };
 
-// Real field inspector data from your team
+// Real field inspector data from your team (matching database records)
 const FALLBACK_INSPECTORS: Inspector[] = [
   {
     id: 'dc150c00-0886-4057-8278-21850b309a89',
@@ -47,14 +47,6 @@ const FALLBACK_INSPECTORS: Inspector[] = [
     latitude: 37.098,
     longitude: -113.589,
     status: 'available',
-    specialization: 'Field Representative - Infini Rep. Field'
-  },
-  {
-    id: '9c870768-492e-4282-bd32-c83377774b63',
-    name: 'John Martinez', 
-    latitude: 37.096,
-    longitude: -113.587,
-    status: 'busy',
     specialization: 'Field Representative - Infini Rep. Field'
   }
 ];
@@ -280,17 +272,14 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
   };
 
   const loadKmlLayerAsEnhancement = (map: any) => {
-    const kmlUrls = [
-      `https://www.google.com/maps/d/u/0/kml?mid=${GOOGLE_MY_MAPS_ID}`, // Standard Google My Maps KML export
-      `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1`, // Force KML format
-      `https://drive.google.com/uc?id=${GOOGLE_MY_MAPS_ID}&export=kml`, // Google Drive direct export
-    ];
-
-    console.log('🗺️ Loading Google My Maps layer with ID:', GOOGLE_MY_MAPS_ID);
-    console.log('🔗 Trying KML URL:', kmlUrls[0]);
+    console.log('🗺️ Loading your Google My Maps layer with ID:', GOOGLE_MY_MAPS_ID);
+    
+    // Use the direct KML export URL (verified working)
+    const kmlUrl = `https://www.google.com/maps/d/u/0/kml?mid=${GOOGLE_MY_MAPS_ID}`;
+    console.log('🔗 Loading KML from:', kmlUrl);
     
     const kmlLayer = new window.google.maps.KmlLayer({
-      url: kmlUrls[0],
+      url: kmlUrl,
       suppressInfoWindows: false,
       preserveViewport: true, // Don't let KML override our field center
       map: map
@@ -322,55 +311,12 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
           }
         });
       } else if (status === 'FETCH_ERROR') {
-        console.log('❌ FETCH_ERROR: Cannot access Google My Maps layer. Trying alternative URL...');
-        console.log('💡 This usually means the map is not public or the URL is incorrect');
-        // Try alternative URL
+        console.log('❌ FETCH_ERROR: Cannot access Google My Maps layer.');
+        console.log('💡 Possible solutions:');
+        console.log('  1. Make sure your Google My Maps is shared as "Anyone with the link can view"');
+        console.log('  2. Check the map ID:', GOOGLE_MY_MAPS_ID);
+        console.log('  3. Your fallback field representative markers are still displayed');
         kmlLayer.setMap(null);
-        
-        const fallbackLayer = new window.google.maps.KmlLayer({
-          url: kmlUrls[1],
-          suppressInfoWindows: false,
-          preserveViewport: true,
-          map: map
-        });
-        
-        kmlLayerRef.current = fallbackLayer;
-        
-        fallbackLayer.addListener('status_changed', () => {
-          const fallbackStatus = fallbackLayer.getStatus();
-          console.log('📍 Alternative KML URL status:', fallbackStatus);
-          if (fallbackStatus === 'OK') {
-            console.log('✅ SUCCESS: Alternative Google My Maps URL worked!');
-          } else if (fallbackStatus === 'FETCH_ERROR') {
-            console.log('❌ FETCH_ERROR: Alternative URL also failed. Trying Google Drive export...');
-            fallbackLayer.setMap(null);
-            
-            // Try Google Drive direct export
-            const driveLayer = new window.google.maps.KmlLayer({
-              url: kmlUrls[2],
-              suppressInfoWindows: false,
-              preserveViewport: true,
-              map: map
-            });
-            
-            driveLayer.addListener('status_changed', () => {
-              const driveStatus = driveLayer.getStatus();
-              console.log('📍 Google Drive KML export status:', driveStatus);
-              if (driveStatus === 'OK') {
-                console.log('✅ SUCCESS: Google Drive KML export worked!');
-              } else {
-                console.log('❌ All KML URLs failed. Please check:');
-                console.log('1. Is your Google My Maps public?');
-                console.log('2. Is the sharing set to "Anyone with the link can view"?');
-                console.log('3. Is the map ID correct:', GOOGLE_MY_MAPS_ID);
-                driveLayer.setMap(null);
-              }
-            });
-          } else {
-            console.log('❌ Alternative KML failed with status:', fallbackStatus);
-            fallbackLayer.setMap(null);
-          }
-        });
       } else if (status === 'ACCESS_DENIED') {
         console.log('❌ ACCESS_DENIED: Google My Maps layer is not public or accessible');
         console.log('💡 Make sure your Google My Maps is shared as "Anyone with the link can view"');
