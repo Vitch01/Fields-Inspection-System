@@ -137,50 +137,185 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   }, [wsConnected, localStream]);
 
   async function initializeLocalStream() {
-    try {
-      // Use rear camera for inspector, front camera for coordinator
-      const videoConstraints = userRole === "inspector" 
-        ? { 
-            width: { ideal: 1920 }, 
-            height: { ideal: 1080 },
-            facingMode: { exact: "environment" } // Rear camera
-          }
-        : { 
-            width: 1280, 
-            height: 720,
-            facingMode: "user" // Front camera
-          };
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: videoConstraints,
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
-      
-      setLocalStream(stream);
-      localStreamRef.current = stream;
-    } catch (error) {
-      console.error("Failed to get local stream:", error);
-      
-      // Fallback for inspector if rear camera fails
+    console.log(`🎥 ${userRole}: Starting media stream initialization`);
+    
+    // Progressive fallback constraints for better compatibility
+    const getConstraintsFallbacks = () => {
       if (userRole === "inspector") {
-        try {
-          const fallbackStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
-            audio: { echoCancellation: true, noiseSuppression: true },
-          });
-          setLocalStream(fallbackStream);
-          localStreamRef.current = fallbackStream;
-          return;
-        } catch (fallbackError) {
-          console.error("Fallback camera failed:", fallbackError);
-        }
+        return [
+          // First try: High quality with preferred rear camera
+          {
+            video: { 
+              width: { ideal: 1920 }, 
+              height: { ideal: 1080 },
+              facingMode: { ideal: "environment" } // Changed from "exact" to "ideal"
+            },
+            audio: { echoCancellation: true, noiseSuppression: true }
+          },
+          // Second try: Medium quality with preferred rear camera
+          {
+            video: { 
+              width: { ideal: 1280 }, 
+              height: { ideal: 720 },
+              facingMode: { ideal: "environment" }
+            },
+            audio: { echoCancellation: true, noiseSuppression: true }
+          },
+          // Third try: Any camera with basic quality
+          {
+            video: { 
+              width: { ideal: 640 }, 
+              height: { ideal: 480 }
+            },
+            audio: { echoCancellation: true, noiseSuppression: true }
+          },
+          // Fourth try: Basic video constraints
+          {
+            video: true,
+            audio: { echoCancellation: true, noiseSuppression: true }
+          },
+          // Final fallback: Audio only
+          {
+            audio: { echoCancellation: true, noiseSuppression: true }
+          }
+        ];
+      } else {
+        // Coordinator constraints (generally more permissive)
+        return [
+          // First try: Good quality front camera
+          {
+            video: { 
+              width: { ideal: 1280 }, 
+              height: { ideal: 720 },
+              facingMode: { ideal: "user" }
+            },
+            audio: { echoCancellation: true, noiseSuppression: true }
+          },
+          // Second try: Basic quality
+          {
+            video: { 
+              width: { ideal: 640 }, 
+              height: { ideal: 480 }
+            },
+            audio: { echoCancellation: true, noiseSuppression: true }
+          },
+          // Third try: Any video
+          {
+            video: true,
+            audio: { echoCancellation: true, noiseSuppression: true }
+          },
+          // Final fallback: Audio only
+          {
+            audio: { echoCancellation: true, noiseSuppression: true }
+          }
+        ];
       }
+    };
+
+    const constraintsFallbacks = getConstraintsFallbacks();
+    
+    for (let i = 0; i < constraintsFallbacks.length; i++) {
+      const constraints = constraintsFallbacks[i];
+      const isAudioOnly = !constraints.video;
       
-      toast({
-        title: "Camera/Microphone Access Denied",
-        description: "Please allow camera and microphone access to join the call",
-        variant: "destructive",
-      });
+      try {
+        console.log(`🎥 ${userRole}: Attempting getUserMedia with constraints (attempt ${i + 1}/${constraintsFallbacks.length}):`, constraints);
+        
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        console.log(`✅ ${userRole}: Successfully got media stream:`, {
+          videoTracks: stream.getVideoTracks().length,
+          audioTracks: stream.getAudioTracks().length,
+          isAudioOnly
+        });
+        
+        // Log track details for debugging
+        stream.getVideoTracks().forEach((track, index) => {
+          console.log(`📹 Video track ${index}:`, {
+            label: track.label,
+            enabled: track.enabled,
+            readyState: track.readyState,
+            settings: track.getSettings()
+          });
+        });
+        
+        stream.getAudioTracks().forEach((track, index) => {
+          console.log(`🎤 Audio track ${index}:`, {
+            label: track.label,
+            enabled: track.enabled,
+            readyState: track.readyState,
+            settings: track.getSettings()
+          });
+        });
+        
+        setLocalStream(stream);
+        localStreamRef.current = stream;
+        
+        if (isAudioOnly) {
+          toast({
+            title: "Audio-Only Mode",
+            description: "Video not available, but audio communication is active",
+            variant: "default",
+          });
+        }
+        
+        return; // Success - exit the function
+      } catch (error) {
+        const err = error as Error;
+        console.error(`❌ ${userRole}: getUserMedia attempt ${i + 1} failed:`, {
+          name: err.name,
+          message: err.message,
+          constraints,
+          isLastAttempt: i === constraintsFallbacks.length - 1
+        });
+        
+        // If this is the last attempt, show error
+        if (i === constraintsFallbacks.length - 1) {
+          const errorMessage = getErrorMessage(error);
+          toast({
+            title: errorMessage.title,
+            description: errorMessage.description,
+            variant: "destructive",
+          });
+        }
+        // Otherwise, continue to next fallback
+      }
+    }
+  }
+
+  // Helper function to provide better error messages based on error type
+  function getErrorMessage(error: any) {
+    switch (error.name) {
+      case 'NotFoundError':
+        return {
+          title: "No Camera/Microphone Found",
+          description: "No camera or microphone devices were found. Please check your device connections."
+        };
+      case 'NotAllowedError':
+        return {
+          title: "Permission Denied",
+          description: "Camera and microphone access was denied. Please allow access in your browser settings."
+        };
+      case 'OverconstrainedError':
+        return {
+          title: "Device Constraints Not Met",
+          description: "Your camera/microphone doesn't meet the requirements. Trying with lower quality settings."
+        };
+      case 'NotReadableError':
+        return {
+          title: "Device In Use",
+          description: "Camera or microphone is already in use by another application."
+        };
+      case 'AbortError':
+        return {
+          title: "Operation Aborted",
+          description: "Media access was aborted. Please try again."
+        };
+      default:
+        return {
+          title: "Media Access Failed",
+          description: `Unable to access camera/microphone: ${error.message || 'Unknown error'}`
+        };
     }
   }
 
