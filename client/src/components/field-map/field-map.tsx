@@ -462,12 +462,12 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
   };
 
   const getStatusColor = (status: string, isCurrentCall: boolean) => {
-    if (isCurrentCall) return 'text-green-600';
+    if (isCurrentCall) return 'text-green-800';
     switch (status) {
-      case 'available': return 'text-blue-600';
-      case 'busy': return 'text-red-600';
-      case 'offline': return 'text-gray-600';
-      default: return 'text-gray-600';
+      case 'available': return 'text-blue-800';
+      case 'busy': return 'text-red-800';
+      case 'offline': return 'text-muted-foreground';
+      default: return 'text-muted-foreground';
     }
   };
 
@@ -485,14 +485,14 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-6xl h-[80vh] bg-background">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <CardTitle className="text-xl font-semibold text-foreground">Field Inspector Map</CardTitle>
+      <Card className="w-full max-w-6xl h-[80vh] bg-white border border-gray-300">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 bg-white border-b border-gray-300">
+          <CardTitle className="text-xl font-semibold text-black">Field Inspector Map</CardTitle>
           <Button
             size="icon"
             variant="ghost"
             onClick={onClose}
-            className="h-8 w-8 text-foreground hover:bg-accent"
+            className="h-8 w-8 text-black hover:bg-gray-100"
             data-testid="button-close-field-map"
           >
             <X className="w-4 h-4" />
@@ -540,15 +540,15 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
             </div>
 
             {/* Inspector List */}
-            <div className="border-l border-border bg-background p-4 overflow-y-auto">
-              <h3 className="text-lg font-semibold text-foreground mb-4">Available Inspectors</h3>
+            <div className="border-l border-gray-300 bg-white p-4 overflow-y-auto">
+              <h3 className="text-lg font-semibold text-black mb-4">Available Inspectors</h3>
               <div className="space-y-3">
                 {inspectors.map((inspector: Inspector) => {
                   const isCurrentCall = inspector.id === currentCallInspectorId;
                   return (
                     <Card 
                       key={inspector.id} 
-                      className={`p-3 cursor-pointer transition-colors hover:bg-accent ${
+                      className={`p-3 cursor-pointer transition-colors bg-white hover:bg-gray-50 border border-gray-200 ${
                         selectedInspector?.id === inspector.id ? 'ring-2 ring-blue-500' : ''
                       }`}
                       onClick={() => setSelectedInspector(inspector)}
@@ -557,10 +557,10 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center space-x-2 mb-1">
-                            <MapPin className="w-4 h-4 text-gray-500" />
-                            <span className="font-medium text-foreground">{inspector.name}</span>
+                            <MapPin className="w-4 h-4 text-muted-foreground" />
+                            <span className="font-medium text-black">{inspector.name}</span>
                           </div>
-                          <p className="text-sm text-gray-600 mb-2">{inspector.specialization}</p>
+                          <p className="text-sm text-muted-foreground mb-2">{inspector.specialization}</p>
                           <div className="flex items-center space-x-2">
                             <div className={`w-2 h-2 rounded-full ${getStatusDot(inspector.status, isCurrentCall)}`}></div>
                             <span className={`text-sm font-medium ${getStatusColor(inspector.status, isCurrentCall)}`}>
@@ -591,23 +591,23 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
               {/* Map Legend */}
               <div className="mt-6 pt-4 border-t border-border">
-                <h4 className="font-medium text-foreground mb-3">Legend</h4>
+                <h4 className="font-medium text-black mb-3">Legend</h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                    <span className="text-foreground">On Current Call</span>
+                    <span className="text-black">On Current Call</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                    <span className="text-foreground">Available</span>
+                    <span className="text-black">Available</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                    <span className="text-foreground">Busy</span>
+                    <span className="text-black">Busy</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 rounded-full bg-gray-500"></div>
-                    <span className="text-foreground">Offline</span>
+                    <span className="text-black">Offline</span>
                   </div>
                 </div>
               </div>
