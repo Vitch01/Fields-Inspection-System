@@ -16,6 +16,13 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CoordinatorCall() {
+  // IMMEDIATE DEBUG - See if component executes and what happens
+  console.log('🚨 COORDINATOR CALL EXECUTING!', { 
+    url: window.location.href, 
+    token: !!localStorage.getItem('authToken'),
+    timestamp: new Date().toISOString()
+  });
+  
   const { callId } = useParams();
   const [, setLocation] = useLocation();
   const [showSettings, setShowSettings] = useState(false);
