@@ -248,7 +248,7 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
       // Initialize map centered on the field location
       const map = new window.google.maps.Map(mapRef.current, {
         center: FIELD_CENTER,
-        zoom: 14,
+        zoom: 15, // Increased zoom for better field view
         mapTypeId: window.google.maps.MapTypeId.SATELLITE,
         styles: [
           {
@@ -261,170 +261,90 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
       googleMapRef.current = map;
 
-      // Load KML data from Google My Maps with your specific layer ID
-      const kmlUrls = [
-        `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1&lid=mkit35Kg0lY`, // Your "Infini Rep. Field" layer
-        `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1`, // Fallback without layer ID
-        `https://www.google.com/maps/d/u/0/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1&lid=mkit35Kg0lY`, // Try with user path
-      ];
-      
-      // Test KML URLs directly first
-      console.log('Testing KML URLs for your Google My Maps layer...');
-      console.log('Primary URL with layer ID:', kmlUrls[0]);
-      console.log('Fallback URL without layer ID:', kmlUrls[1]);
-      
-      // Load your actual Google My Maps KML layer
-      console.log('Loading your Google My Maps layer...');
-      
-      const kmlLayer = new window.google.maps.KmlLayer({
-        url: kmlUrls[0], // Your specific layer URL
-        suppressInfoWindows: false,
-        preserveViewport: false, // Let your KML data determine the zoom/view
-        map: map
-      });
-      
-      kmlLayerRef.current = kmlLayer;
-      
-      // Handle KML layer loading status
-      kmlLayer.addListener('status_changed', () => {
-        const status = kmlLayer.getStatus();
-        console.log('Your Google My Maps KML status:', status);
-        
-        if (status === 'OK') {
-          console.log('✓ Successfully loaded your Google My Maps layer!');
-          setIsMapLoaded(true);
-          setMapError(null);
-        } else if (status === 'FETCH_ERROR' || status === 'ACCESS_DENIED') {
-          console.log('× Failed to load Google My Maps - trying KML parsing fallback...');
-          // Try to parse KML manually as fallback
-          loadKmlDataAsMarkers(map, kmlUrls[0]);
-        }
-      });
-      
-      // Set initial loading state  
+      // IMMEDIATELY show fallback markers - don't wait for KML
+      console.log('Displaying field inspectors immediately...');
+      addFallbackMarkers(map);
       setIsMapLoaded(true);
       setMapError(null);
-      
 
-      // Extract inspector data from KML features when clicked
-      kmlLayer.addListener('click', function(event: any) {
-        if (event.featureData) {
-          const featureData = event.featureData;
-          
-          // Extract inspector information from KML data
-          const inspector: Inspector = {
-            id: featureData.name || `inspector-${Date.now()}`,
-            name: featureData.name || 'Unknown Inspector',
-            latitude: event.latLng.lat(),
-            longitude: event.latLng.lng(),
-            status: 'available' as const, // Default status - could be enhanced
-            specialization: featureData.description || 'Field Representative'
-          };
-
-          // Show custom info window
-          showInspectorInfo(inspector, event.latLng);
-        }
-      });
-
-      // Monitor KML loading status
-      if (kmlLayer) {
-        kmlLayer.addListener('status_changed', function() {
-          const status = kmlLayer.getStatus();
-          console.log('KML Layer status:', status);
-          
-          if (status === 'OK') {
-            console.log('KML successfully loaded from your Google My Maps');
-            setIsMapLoaded(true);
-            setMapError(null);
-            extractInspectorsFromKML(kmlLayer);
-            
-            // Check if data is actually visible by examining the default viewport
-            setTimeout(() => {
-              try {
-                const viewport = kmlLayer.getDefaultViewport();
-                console.log('KML viewport:', viewport);
-                
-                // Get detailed KML layer information
-                console.log('KML Layer details:', {
-                  url: kmlLayer.getUrl(),
-                  status: kmlLayer.getStatus(),
-                  map: kmlLayer.getMap(),
-                  metadata: kmlLayer.getMetadata()
-                });
-                
-                if (!viewport || (!viewport.getNorthEast() && !viewport.getSouthWest())) {
-                  console.warn('KML loaded but no visible features found.');
-                  
-                  // Try alternative URLs as fallback
-                  console.log('Trying fallback KML URLs...');
-                  kmlLayer.setMap(null); // Remove current layer
-                  
-                  // Try the second URL (without layer ID)
-                  const fallbackUrl = kmlUrls[1];
-                  console.log('Attempting fallback URL:', fallbackUrl);
-                  
-                  const fallbackLayer = new window.google.maps.KmlLayer({
-                    url: fallbackUrl,
-                    suppressInfoWindows: false,
-                    preserveViewport: true,
-                    map: map
-                  });
-                  
-                  kmlLayerRef.current = fallbackLayer;
-                  
-                  // Check fallback layer after delay
-                  setTimeout(() => {
-                    const fallbackViewport = fallbackLayer.getDefaultViewport();
-                    console.log('Fallback viewport:', fallbackViewport);
-                    if (!fallbackViewport || (!fallbackViewport.getNorthEast() && !fallbackViewport.getSouthWest())) {
-                      console.log('Google My Maps failed to load. Using local fallback data from your Infini Rep. Field...');
-                      // Remove failed KML layer and use fallback markers
-                      fallbackLayer.setMap(null);
-                      addFallbackMarkers(map);
-                      setMapError(null);
-                      setIsMapLoaded(true);
-                    } else {
-                      console.log('Fallback KML features found!', fallbackViewport.toJSON());
-                      setMapError(null);
-                    }
-                  }, 2000);
-                } else {
-                  console.log('KML features found! Viewport bounds:', viewport.toJSON());
-                  setMapError(null);
-                }
-              } catch (e) {
-                console.error('Error checking KML viewport:', e);
-                setMapError(`Error loading map data: ${e instanceof Error ? e.message : 'Unknown error'}`);
-              }
-            }, 2000); // Wait longer for KML to fully render
-          } else if (status === 'DOCUMENT_NOT_FOUND') {
-            setMapError("Google My Maps data not found. Please check if the map is publicly accessible.");
-            setIsMapLoaded(false);
-          } else if (status === 'FETCH_ERROR') {
-            setMapError("Failed to load field data. Please check your internet connection.");
-            setIsMapLoaded(false);
-          } else if (status === 'INVALID_DOCUMENT') {
-            setMapError("Invalid map data format. Please check your Google My Maps setup.");
-            setIsMapLoaded(false);
-          } else if (status === 'ACCESS_DENIED') {
-            setMapError("Access denied to Google My Maps data. Please make sure your map is shared as 'Anyone with the link - Viewer'.");
-            setIsMapLoaded(false);
-          } else if (status === 'DOCUMENT_TOO_LARGE') {
-            setMapError("Google My Maps data is too large to load. Please reduce the number of markers or split into multiple maps.");
-            setIsMapLoaded(false);
-          } else if (status === 'LIMITS_EXCEEDED') {
-            setMapError("Google Maps usage limits exceeded. Please try again later.");
-            setIsMapLoaded(false);
-          }
-        });
-      }
-
-      // No timeout needed - field representatives are loaded immediately above!
+      // OPTIONALLY try to load KML data as background enhancement
+      setTimeout(() => {
+        console.log('Attempting to load additional KML data as enhancement...');
+        loadKmlLayerAsEnhancement(map);
+      }, 500); // Small delay to ensure markers show first
     } catch (error) {
       console.error('Error initializing Google Maps:', error);
       setMapError("Failed to initialize map. This may be due to an invalid API key or quota exceeded.");
       setIsMapLoaded(false);
     }
+  };
+
+  const loadKmlLayerAsEnhancement = (map: any) => {
+    const kmlUrls = [
+      `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1&lid=mkit35Kg0lY`, // Your "Infini Rep. Field" layer
+      `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1`, // Fallback without layer ID
+    ];
+
+    console.log('Loading KML as optional enhancement...');
+    
+    const kmlLayer = new window.google.maps.KmlLayer({
+      url: kmlUrls[0],
+      suppressInfoWindows: false,
+      preserveViewport: true, // Don't let KML override our field center
+      map: map
+    });
+    
+    kmlLayerRef.current = kmlLayer;
+    
+    // Handle KML layer loading
+    kmlLayer.addListener('status_changed', () => {
+      const status = kmlLayer.getStatus();
+      console.log('KML enhancement status:', status);
+      
+      if (status === 'OK') {
+        console.log('✓ KML enhancement loaded successfully!');
+        // Add click listener for KML features
+        kmlLayer.addListener('click', function(event: any) {
+          if (event.featureData) {
+            const featureData = event.featureData;
+            const inspector: Inspector = {
+              id: featureData.name || `kml-inspector-${Date.now()}`,
+              name: featureData.name || 'KML Inspector',
+              latitude: event.latLng.lat(),
+              longitude: event.latLng.lng(),
+              status: 'available' as const,
+              specialization: featureData.description || 'Field Representative'
+            };
+            showInspectorInfo(inspector, event.latLng);
+          }
+        });
+      } else if (status === 'FETCH_ERROR' || status === 'ACCESS_DENIED') {
+        console.log('KML enhancement failed, trying alternative URL...');
+        // Try alternative URL
+        kmlLayer.setMap(null);
+        
+        const fallbackLayer = new window.google.maps.KmlLayer({
+          url: kmlUrls[1],
+          suppressInfoWindows: false,
+          preserveViewport: true,
+          map: map
+        });
+        
+        kmlLayerRef.current = fallbackLayer;
+        
+        fallbackLayer.addListener('status_changed', () => {
+          const fallbackStatus = fallbackLayer.getStatus();
+          if (fallbackStatus === 'OK') {
+            console.log('✓ KML fallback URL loaded successfully!');
+          } else {
+            console.log('× KML enhancement failed, but fallback markers are already displayed');
+            fallbackLayer.setMap(null);
+          }
+        });
+      } else {
+        console.log(`KML enhancement failed with status: ${status}, but fallback markers are already displayed`);
+      }
+    });
   };
 
   const loadKmlDataAsMarkers = async (map: any, kmlUrl: string) => {
