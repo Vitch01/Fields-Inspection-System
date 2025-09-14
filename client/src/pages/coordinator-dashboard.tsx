@@ -130,13 +130,13 @@ function RequestDetails({ request, onAssign, onStartCall, onClose }: RequestDeta
         </div>
         <div className="flex items-center space-x-2">
           <Badge 
-            className={`${getPriorityColor(request.priority)} text-white`}
+            className={`${getPriorityColor(request.priority)} text-foreground`}
             data-testid={`badge-priority-${request.priority}`}
           >
             {request.priority?.toUpperCase()}
           </Badge>
           <Badge 
-            className={`${getStatusColor(request.status)} text-white`}
+            className={`${getStatusColor(request.status)} text-foreground`}
             data-testid={`badge-status-${request.status}`}
           >
             {request.status?.replace('_', ' ').toUpperCase()}

@@ -159,10 +159,10 @@ export default function CoordinatorPackageDetails() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-800 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <Package2 className="w-8 h-8 animate-spin text-white mx-auto mb-4" />
-          <div className="text-white">Loading package details...</div>
+          <Package2 className="w-8 h-8 animate-spin text-foreground mx-auto mb-4" />
+          <div className="text-foreground">Loading package details...</div>
         </div>
       </div>
     );
@@ -170,12 +170,12 @@ export default function CoordinatorPackageDetails() {
 
   if (error || !packageDetails) {
     return (
-      <div className="min-h-screen bg-slate-800 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-4" />
-          <div className="text-white mb-4">Failed to load package details</div>
+          <div className="text-foreground mb-4">Failed to load package details</div>
           <Link href="/coordinator/dashboard">
-            <Button variant="outline" className="border-white text-white hover:bg-white hover:text-slate-800">
+            <Button variant="outline" className="border-border text-foreground hover:bg-accent hover:text-accent-foreground">
               Back to Dashboard
             </Button>
           </Link>
@@ -193,7 +193,7 @@ export default function CoordinatorPackageDetails() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-800">
+    <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <Card className="bg-white border border-white mb-6">

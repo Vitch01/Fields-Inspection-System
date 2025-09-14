@@ -484,15 +484,15 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-6xl h-[80vh] bg-white">
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <Card className="w-full max-w-6xl h-[80vh] bg-background">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <CardTitle className="text-xl font-semibold text-black">Field Inspector Map</CardTitle>
+          <CardTitle className="text-xl font-semibold text-foreground">Field Inspector Map</CardTitle>
           <Button
             size="icon"
             variant="ghost"
             onClick={onClose}
-            className="h-8 w-8 text-black hover:bg-gray-100"
+            className="h-8 w-8 text-foreground hover:bg-accent"
             data-testid="button-close-field-map"
           >
             <X className="w-4 h-4" />
@@ -541,14 +541,14 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
             {/* Inspector List */}
             <div className="border-l border-gray-200 bg-gray-50 p-4 overflow-y-auto">
-              <h3 className="text-lg font-semibold text-black mb-4">Available Inspectors</h3>
+              <h3 className="text-lg font-semibold text-foreground mb-4">Available Inspectors</h3>
               <div className="space-y-3">
                 {inspectors.map((inspector: Inspector) => {
                   const isCurrentCall = inspector.id === currentCallInspectorId;
                   return (
                     <Card 
                       key={inspector.id} 
-                      className={`p-3 cursor-pointer transition-colors hover:bg-white ${
+                      className={`p-3 cursor-pointer transition-colors hover:bg-accent ${
                         selectedInspector?.id === inspector.id ? 'ring-2 ring-blue-500' : ''
                       }`}
                       onClick={() => setSelectedInspector(inspector)}
@@ -558,7 +558,7 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
                         <div className="flex-1">
                           <div className="flex items-center space-x-2 mb-1">
                             <MapPin className="w-4 h-4 text-gray-500" />
-                            <span className="font-medium text-black">{inspector.name}</span>
+                            <span className="font-medium text-foreground">{inspector.name}</span>
                           </div>
                           <p className="text-sm text-gray-600 mb-2">{inspector.specialization}</p>
                           <div className="flex items-center space-x-2">
@@ -591,7 +591,7 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
               {/* Map Legend */}
               <div className="mt-6 pt-4 border-t border-gray-300">
-                <h4 className="font-medium text-black mb-3">Legend</h4>
+                <h4 className="font-medium text-foreground mb-3">Legend</h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 rounded-full bg-green-500"></div>
