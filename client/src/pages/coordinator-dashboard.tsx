@@ -654,8 +654,10 @@ export default function CoordinatorDashboard() {
       setRequestForCall(null);
       setSelectedInspector(null);
       
-      console.log('🚀 Redirecting to coordinator call page:', `/coordinator/${call.id}`);
-      setLocation(`/coordinator/${call.id}`);
+      console.log('🚀 Redirecting to coordinator call page:', `/coordinator/call/${call.id}`);
+      console.log('🚀 About to call setLocation...');
+      setLocation(`/coordinator/call/${call.id}`);
+      console.log('🚀 setLocation called, should trigger navigation');
     } catch (error) {
       console.error("Failed to start call:", error);
       toast({
@@ -730,6 +732,15 @@ export default function CoordinatorDashboard() {
             <Badge variant="outline" className="text-primary">
               {stats.total} Total Requests
             </Badge>
+            {/* TEMPORARY TEST LINK - Remove after routing is fixed */}
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setLocation("/coordinator/call/test-call-id")}
+              data-testid="button-test-call-routing"
+            >
+              🧪 Test Call Route
+            </Button>
           </div>
         </div>
       </header>

@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import CoordinatorCall from "@/pages/coordinator-call";
+import TestSimpleCall from "@/pages/test-simple-call";
 import CoordinatorDashboard from "@/pages/coordinator-dashboard";
 import PackageDelivery from "@/pages/package-delivery";
 import CoordinatorPackageDetails from "@/pages/coordinator-package-details";
@@ -23,9 +24,15 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/coordinator/dashboard" component={CoordinatorDashboard} />
-      <Route path="/coordinator/:callId" component={() => {
+      <Route path="/coordinator/call/:callId" component={() => {
         console.log('🔵 COORDINATOR CALL ROUTE MATCHED! URL:', window.location.pathname);
+        console.log('🔵 Route params available:', { callId: window.location.pathname.split('/').pop() });
+        console.log('🔵 About to render CoordinatorCall component...');
         return <CoordinatorCall />;
+      }} />
+      <Route path="/test-call/:callId" component={() => {
+        console.log('🔥 TEST CALL ROUTE MATCHED! URL:', window.location.pathname);
+        return <TestSimpleCall />;
       }} />
       <Route path="/coordinator/packages/prepare/:id" component={PackageDelivery} />
       <Route path="/coordinator/packages/:id" component={CoordinatorPackageDetails} />
