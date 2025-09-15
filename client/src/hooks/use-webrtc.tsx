@@ -139,83 +139,199 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     }
   }, [wsConnected, localStream]);
 
-  async function initializeLocalStream() {
-    console.log(`🎥 ${userRole}: Starting media stream initialization`);
+  // Mobile-specific media acquisition - separate audio/video calls
+  async function getMobileMediaSeparately(): Promise<MediaStream> {
+    console.log(`📱 ${userRole}: Attempting separate audio/video for mobile`);
     
-    // Progressive fallback constraints for better compatibility
-    const getConstraintsFallbacks = () => {
+    // Get mobile-optimized constraints
+    const getVideoConstraints = () => {
       if (userRole === "inspector") {
-        return [
-          // First try: High quality with preferred rear camera
-          {
-            video: { 
-              width: { ideal: 1920 }, 
-              height: { ideal: 1080 },
-              facingMode: { ideal: "environment" } // Changed from "exact" to "ideal"
-            },
-            audio: { echoCancellation: true, noiseSuppression: true }
-          },
-          // Second try: Medium quality with preferred rear camera
-          {
-            video: { 
-              width: { ideal: 1280 }, 
-              height: { ideal: 720 },
-              facingMode: { ideal: "environment" }
-            },
-            audio: { echoCancellation: true, noiseSuppression: true }
-          },
-          // Third try: Any camera with basic quality
-          {
-            video: { 
-              width: { ideal: 640 }, 
-              height: { ideal: 480 }
-            },
-            audio: { echoCancellation: true, noiseSuppression: true }
-          },
-          // Fourth try: Basic video constraints
-          {
-            video: true,
-            audio: { echoCancellation: true, noiseSuppression: true }
-          },
-          // Final fallback: Audio only
-          {
-            audio: { echoCancellation: true, noiseSuppression: true }
-          }
-        ];
+        return {
+          facingMode: { ideal: "environment" }, // Rear camera for inspections
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 15, max: 24 }
+        };
       } else {
-        // Coordinator constraints (generally more permissive)
-        return [
-          // First try: Good quality front camera
-          {
-            video: { 
-              width: { ideal: 1280 }, 
-              height: { ideal: 720 },
-              facingMode: { ideal: "user" }
-            },
-            audio: { echoCancellation: true, noiseSuppression: true }
-          },
-          // Second try: Basic quality
-          {
-            video: { 
-              width: { ideal: 640 }, 
-              height: { ideal: 480 }
-            },
-            audio: { echoCancellation: true, noiseSuppression: true }
-          },
-          // Third try: Any video
-          {
-            video: true,
-            audio: { echoCancellation: true, noiseSuppression: true }
-          },
-          // Final fallback: Audio only
-          {
-            audio: { echoCancellation: true, noiseSuppression: true }
-          }
-        ];
+        return {
+          facingMode: { ideal: "user" }, // Front camera for coordinator
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 15, max: 24 }
+        };
       }
     };
 
-    const constraintsFallbacks = getConstraintsFallbacks();
+    const audioConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      channelCount: 1,
+      sampleRate: 16000 // Optimize for voice
+    };
+
+    let videoStream: MediaStream | null = null;
+    let audioStream: MediaStream | null = null;
+
+    try {
+      // Try to get video first
+      console.log(`📹 ${userRole}: Getting video stream separately`);
+      videoStream = await navigator.mediaDevices.getUserMedia({
+        video: getVideoConstraints(),
+        audio: false
+      });
+      console.log(`✅ ${userRole}: Video stream acquired`);
+    } catch (videoError) {
+      console.warn(`⚠️ ${userRole}: Video failed, continuing with audio:`, videoError);
+    }
+
+    try {
+      // Get audio separately
+      console.log(`🎤 ${userRole}: Getting audio stream separately`);
+      audioStream = await navigator.mediaDevices.getUserMedia({
+        video: false,
+        audio: audioConstraints
+      });
+      console.log(`✅ ${userRole}: Audio stream acquired`);
+    } catch (audioError) {
+      console.error(`❌ ${userRole}: Audio failed:`, audioError);
+      
+      // If audio fails but we have video, return video-only
+      if (videoStream) {
+        console.log(`📹 ${userRole}: Returning video-only stream`);
+        return videoStream;
+      }
+      
+      throw audioError;
+    }
+
+    // Combine audio and video tracks into single stream
+    const combinedStream = new MediaStream();
+    
+    if (videoStream) {
+      videoStream.getVideoTracks().forEach(track => {
+        combinedStream.addTrack(track);
+      });
+    }
+    
+    if (audioStream) {
+      audioStream.getAudioTracks().forEach(track => {
+        combinedStream.addTrack(track);
+      });
+    }
+
+    console.log(`🔄 ${userRole}: Combined mobile stream created:`, {
+      videoTracks: combinedStream.getVideoTracks().length,
+      audioTracks: combinedStream.getAudioTracks().length
+    });
+
+    return combinedStream;
+  }
+
+  // Standard constraints for desktop browsers
+  function getStandardConstraintsFallbacks() {
+    if (userRole === "inspector") {
+      return [
+        // First try: High quality with preferred rear camera
+        {
+          video: { 
+            width: { ideal: 1920 }, 
+            height: { ideal: 1080 },
+            facingMode: { ideal: "environment" }
+          },
+          audio: { echoCancellation: true, noiseSuppression: true }
+        },
+        // Second try: Medium quality with preferred rear camera
+        {
+          video: { 
+            width: { ideal: 1280 }, 
+            height: { ideal: 720 },
+            facingMode: { ideal: "environment" }
+          },
+          audio: { echoCancellation: true, noiseSuppression: true }
+        },
+        // Third try: Any camera with basic quality
+        {
+          video: { 
+            width: { ideal: 640 }, 
+            height: { ideal: 480 }
+          },
+          audio: { echoCancellation: true, noiseSuppression: true }
+        },
+        // Fourth try: Basic video constraints
+        {
+          video: true,
+          audio: { echoCancellation: true, noiseSuppression: true }
+        },
+        // Final fallback: Audio only
+        {
+          audio: { echoCancellation: true, noiseSuppression: true }
+        }
+      ];
+    } else {
+      // Coordinator constraints (generally more permissive)
+      return [
+        // First try: Good quality front camera
+        {
+          video: { 
+            width: { ideal: 1280 }, 
+            height: { ideal: 720 },
+            facingMode: { ideal: "user" }
+          },
+          audio: { echoCancellation: true, noiseSuppression: true }
+        },
+        // Second try: Basic quality
+        {
+          video: { 
+            width: { ideal: 640 }, 
+            height: { ideal: 480 }
+          },
+          audio: { echoCancellation: true, noiseSuppression: true }
+        },
+        // Third try: Any video
+        {
+          video: true,
+          audio: { echoCancellation: true, noiseSuppression: true }
+        },
+        // Final fallback: Audio only
+        {
+          audio: { echoCancellation: true, noiseSuppression: true }
+        }
+      ];
+    }
+  }
+
+  async function initializeLocalStream() {
+    console.log(`🎥 ${userRole}: Starting media stream initialization`);
+    
+    // Detect mobile/iOS for separate audio/video approach
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const isInAppBrowser = /\[.*App\]/.test(navigator.userAgent) || /FBAN|FBAV|Instagram/.test(navigator.userAgent);
+    
+    console.log(`📱 ${userRole}: Device detection:`, { isIOS, isMobile, isInAppBrowser });
+    
+    // For iOS/mobile, use separate audio/video calls to avoid constraints conflicts
+    if (isMobile || isIOS) {
+      try {
+        const combinedStream = await getMobileMediaSeparately();
+        setLocalStream(combinedStream);
+        localStreamRef.current = combinedStream;
+        
+        console.log(`✅ ${userRole}: Mobile audio/video successfully combined:`, {
+          videoTracks: combinedStream.getVideoTracks().length,
+          audioTracks: combinedStream.getAudioTracks().length
+        });
+        
+        return;
+      } catch (error) {
+        console.error(`❌ ${userRole}: Mobile media approach failed:`, error);
+        // Fall through to standard approach
+      }
+    }
+    
+    // Standard approach for desktop browsers
+    const constraintsFallbacks = getStandardConstraintsFallbacks();
     
     for (let i = 0; i < constraintsFallbacks.length; i++) {
       const constraints = constraintsFallbacks[i];
