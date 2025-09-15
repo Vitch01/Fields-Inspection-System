@@ -10,10 +10,19 @@ import fs from "fs";
 import twilio from "twilio";
 
 // Multer configuration for image uploads (10MB limit)
-// Configure multer storage for images
+// Configure multer storage for images with lazy directory creation
 const imageStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'uploads/')
+    const uploadDir = process.env.UPLOAD_DIR || '/tmp/uploads';
+    // Create directory lazily only when needed
+    if (!fs.existsSync(uploadDir)) {
+      try {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      } catch (error) {
+        return cb(error as Error, '');
+      }
+    }
+    cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
     // Generate unique filename with proper extension
@@ -37,10 +46,19 @@ const imageUpload = multer({
   }
 });
 
-// Configure multer storage for videos
+// Configure multer storage for videos with lazy directory creation
 const videoStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'uploads/')
+    const uploadDir = process.env.UPLOAD_DIR || '/tmp/uploads';
+    // Create directory lazily only when needed
+    if (!fs.existsSync(uploadDir)) {
+      try {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      } catch (error) {
+        return cb(error as Error, '');
+      }
+    }
+    cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
     // Handle MIME types with codec information
@@ -66,17 +84,7 @@ const videoUpload = multer({
   }
 });
 
-// Ensure uploads directory exists with error handling
-try {
-  if (!fs.existsSync('uploads')) {
-    fs.mkdirSync('uploads', { recursive: true });
-    console.log('Created uploads directory');
-  }
-} catch (error) {
-  console.error('Failed to create uploads directory:', error);
-  // Continue execution as this may not be critical for the application to start
-  // The uploads directory can be created later when needed
-}
+// Directory creation will be handled lazily in multer storage configuration
 
 interface WebSocketClient extends WebSocket {
   userId?: string;
@@ -88,12 +96,25 @@ interface WebSocketClient extends WebSocket {
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
-  // WebSocket server for signaling
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
-  const clients = new Map<string, WebSocketClient>();
+  // WebSocket server for signaling with error handling
+  let wss: WebSocketServer | null = null;
+  let clients = new Map<string, WebSocketClient>();
+  let wsEnabled = false;
+  
+  try {
+    wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+    wsEnabled = true;
+    console.log('✅ WebSocket server initialized successfully');
+  } catch (error) {
+    console.error('❌ Failed to initialize WebSocket server, continuing without WebSocket support:', error);
+    // Continue without WebSocket functionality to allow the server to start
+    wsEnabled = false;
+    wss = null;
+  }
 
   // WebSocket connection handling with mobile-friendly configuration
-  wss.on('connection', (ws: WebSocketClient, req) => {
+  if (wsEnabled && wss) {
+    wss.on('connection', (ws: WebSocketClient, req) => {
     // Initialize client properties for mobile tracking
     ws.isAlive = true;
     ws.lastPing = Date.now();
@@ -407,8 +428,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }, 5000);
     }
   });
+  } // Close WebSocket conditional block
 
   function broadcastToCall(callId: string, message: any, excludeUserId?: string) {
+    if (!wsEnabled || !wss) {
+      console.warn('WebSocket not available, cannot broadcast message');
+      return;
+    }
     console.log(`📢 Broadcasting to call ${callId} (excluding ${excludeUserId || 'none'}):`, message);
     
     let sentCount = 0;
@@ -439,8 +465,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log(`📊 Broadcast summary: ${sentCount}/${eligibleCount} messages sent successfully`);
   }
 
-  // Periodic cleanup for mobile connections and message queues
-  setInterval(() => {
+  // Periodic cleanup for mobile connections and message queues (only if WebSocket is enabled)
+  if (wsEnabled) {
+    setInterval(() => {
     const now = Date.now();
     const STALE_CONNECTION_TIMEOUT = 60000; // 1 minute
     
@@ -468,13 +495,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
     
     console.log(`Connection cleanup: ${clients.size} active connections, ${messageQueues.size} active message queues`);
-  }, 30000); // Run every 30 seconds
+    }, 30000); // Run every 30 seconds
+  }
 
   // API Routes
 
   // Health check endpoint - handles frequent HEAD /api requests
   app.get('/api', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    res.json({ 
+      status: 'ok', 
+      timestamp: new Date().toISOString(),
+      services: {
+        websocket: wsEnabled ? 'available' : 'unavailable'
+      }
+    });
   });
 
   app.head('/api', (req, res) => {
@@ -969,7 +1003,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.setHeader('Cache-Control', 'private, max-age=3600');
     
     next();
-  }, express.static('uploads'), (req, res, next) => {
+  }, express.static(process.env.UPLOAD_DIR || '/tmp/uploads'), (req, res, next) => {
     // If express.static didn't handle the request (file not found), return 404
     if (!res.headersSent) {
       res.status(404).json({ message: 'File not found' });
