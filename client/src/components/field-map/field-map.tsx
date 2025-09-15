@@ -48,6 +48,7 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [inspectors, setInspectors] = useState<Inspector[]>([]);
   const [dbInspectors, setDbInspectors] = useState<any[]>([]);
 
@@ -275,9 +276,10 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
 
       googleMapRef.current = map;
 
-      // Primary KML URL with specific layer ID for Infini Rep. Field layer
-      const primaryKmlUrl = `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1&lid=mkit35Kg0lY`;
-      const fallbackKmlUrl = `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1`;
+      // Primary KML URL with specific layer ID for Infini Rep. Field layer + cache busting
+      const timestamp = new Date().getTime();
+      const primaryKmlUrl = `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1&lid=mkit35Kg0lY&_t=${timestamp}`;
+      const fallbackKmlUrl = `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1&_t=${timestamp}`;
       
       console.log('📍 Loading field representatives from Google My Maps...');
       console.log('🎯 Primary URL:', primaryKmlUrl);
@@ -532,6 +534,54 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
     document.head.appendChild(script);
   };
 
+  // Function to refresh map data manually
+  const refreshMapData = async () => {
+    if (!googleMapRef.current || !isMapLoaded) {
+      console.warn('Map not loaded, cannot refresh');
+      return;
+    }
+    
+    setIsRefreshing(true);
+    setMapError(null);
+    
+    try {
+      console.log('🔄 Refreshing map data manually...');
+      
+      // Clear existing markers
+      clearMarkers();
+      
+      // Create fresh URLs with new timestamp for cache busting
+      const timestamp = new Date().getTime();
+      const primaryKmlUrl = `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1&lid=mkit35Kg0lY&_t=${timestamp}`;
+      const fallbackKmlUrl = `https://www.google.com/maps/d/kml?mid=${GOOGLE_MY_MAPS_ID}&forcekml=1&_t=${timestamp}`;
+      
+      console.log('🎯 Refreshing with URL:', primaryKmlUrl);
+      
+      // Try loading fresh data
+      try {
+        await loadKmlDataAsMarkers(googleMapRef.current, primaryKmlUrl);
+        console.log('✅ Successfully refreshed field representatives from primary URL');
+      } catch (error) {
+        console.warn('⚠️ Primary URL failed during refresh, trying fallback...', error);
+        try {
+          await loadKmlDataAsMarkers(googleMapRef.current, fallbackKmlUrl);
+          console.log('✅ Successfully refreshed field representatives from fallback URL');
+        } catch (fallbackError) {
+          console.error('❌ All refresh methods failed:', fallbackError);
+          setMapError('Failed to refresh map data. Please check your Google My Maps sharing settings.');
+          throw fallbackError;
+        }
+      }
+      
+      console.log('🎉 Map data refreshed successfully!');
+    } catch (error) {
+      console.error('💥 Error refreshing map data:', error);
+      setMapError('Failed to refresh map data. Please try again.');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const getStatusColor = (status: string, isCurrentCall: boolean) => {
     if (isCurrentCall) return 'text-green-800';
     switch (status) {
@@ -567,15 +617,34 @@ export function FieldMap({ isOpen, onClose, onSelectInspector, currentCallInspec
               <p className="text-sm text-gray-600 mt-1">Select an inspector to start a video call</p>
             </div>
           </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={onClose}
-            className="h-10 w-10 hover-elevate"
-            data-testid="button-close-field-map"
-          >
-            <X className="w-5 h-5" />
-          </Button>
+          <div className="flex items-center gap-2">
+            {isMapLoaded && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={refreshMapData}
+                disabled={isRefreshing}
+                className="h-10 w-10 hover-elevate"
+                data-testid="button-refresh-map-data"
+                title="Refresh map data to get latest updates from Google My Maps"
+              >
+                {isRefreshing ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <MapIcon className="w-5 h-5" />
+                )}
+              </Button>
+            )}
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={onClose}
+              className="h-10 w-10 hover-elevate"
+              data-testid="button-close-field-map"
+            >
+              <X className="w-5 h-5" />
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="p-0 h-[calc(80vh-80px)] flex">
           <div className="flex-1 relative">
