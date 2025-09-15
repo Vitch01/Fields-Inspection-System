@@ -25,6 +25,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const [isRecordingSupported, setIsRecordingSupported] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isPeerReady, setIsPeerReady] = useState(false);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [showAudioUnlockPrompt, setShowAudioUnlockPrompt] = useState(false);
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -36,6 +38,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
   const iceRestartInProgressRef = useRef<boolean>(false);
   const queuedIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const remoteDescriptionSetRef = useRef<boolean>(false);
+  const remoteAudioElementRef = useRef<HTMLAudioElement | null>(null);
+  const isManualDisconnectRef = useRef<boolean>(false);
   const { toast } = useToast();
 
   // Helper function to get supported mimeType
@@ -227,6 +231,70 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
     return combinedStream;
   }
+
+  // Audio unlock function to handle browser autoplay policies
+  const unlockAudio = useCallback(async () => {
+    try {
+      console.log('🎵 Attempting to unlock remote audio playback via dedicated audio element');
+      
+      // Use the dedicated audio element for remote audio
+      if (remoteAudioElementRef.current) {
+        try {
+          await remoteAudioElementRef.current.play();
+          console.log('✅ Dedicated audio element playback unlocked');
+          setAudioUnlocked(true);
+          setShowAudioUnlockPrompt(false);
+          
+          toast({
+            title: "Audio Enabled",
+            description: "You should now be able to hear the coordinator",
+          });
+          return;
+        } catch (playError) {
+          console.warn('⚠️ Could not play dedicated audio element:', playError);
+        }
+      }
+      
+      // Fallback: try video elements if audio element doesn't exist
+      const videoElements = Array.from(document.querySelectorAll('video[data-testid="video-remote-stream"]'));
+      console.log(`🔍 Fallback: Found ${videoElements.length} remote video elements`);
+      
+      for (const videoElement of videoElements) {
+        const video = videoElement as HTMLVideoElement;
+        if (video.srcObject === remoteStream) {
+          try {
+            video.muted = false;
+            await video.play();
+            console.log('✅ Fallback: Remote video/audio playback unlocked');
+            setAudioUnlocked(true);
+            setShowAudioUnlockPrompt(false);
+            
+            toast({
+              title: "Audio Enabled",
+              description: "You should now be able to hear the coordinator",
+            });
+            return;
+          } catch (playError) {
+            console.warn('⚠️ Could not auto-play remote video:', playError);
+          }
+        }
+      }
+      
+      // If we get here, both methods failed
+      toast({
+        title: "Audio Unlock Failed",
+        description: "Please try again or check your browser audio settings",
+        variant: "destructive",
+      });
+    } catch (error) {
+      console.error('❌ Failed to unlock audio:', error);
+      toast({
+        title: "Audio Unlock Failed", 
+        description: "Please try again or check your browser audio settings",
+        variant: "destructive",
+      });
+    }
+  }, [remoteStream, toast]);
 
   // Standard constraints for desktop browsers
   function getStandardConstraintsFallbacks() {
@@ -1463,6 +1531,32 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     setIsConnectionEstablished(false);
   }
 
+  // Mobile audio unlock detection - show prompt when remote stream arrives on mobile
+  useEffect(() => {
+    if (remoteStream && userRole === "inspector") {
+      const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      
+      if (isMobile || isIOS) {
+        // Check if audio tracks exist in remote stream
+        const audioTracks = remoteStream.getAudioTracks();
+        if (audioTracks.length > 0 && !audioUnlocked) {
+          console.log(`📱 ${userRole}: Mobile device detected with remote audio, showing unlock prompt`);
+          setShowAudioUnlockPrompt(true);
+          
+          // Also try to setup a dedicated audio element
+          if (!remoteAudioElementRef.current) {
+            const audioElement = new Audio();
+            audioElement.srcObject = remoteStream;
+            audioElement.autoplay = false; // Don't autoplay, let user unlock
+            remoteAudioElementRef.current = audioElement;
+            console.log('📱 Created dedicated audio element for mobile playback');
+          }
+        }
+      }
+    }
+  }, [remoteStream, userRole, audioUnlocked]);
+
   return {
     localStream,
     remoteStream,
@@ -1482,5 +1576,8 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
     isCapturing,
     startRecording,
     stopRecording,
+    audioUnlocked,
+    showAudioUnlockPrompt,
+    unlockAudio,
   };
 }
