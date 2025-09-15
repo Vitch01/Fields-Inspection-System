@@ -519,7 +519,77 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
 
     // Handle remote stream
     pc.ontrack = (event) => {
-      setRemoteStream(event.streams[0]);
+      console.log('🎵 Remote stream received:', event.streams[0]);
+      const stream = event.streams[0];
+      setRemoteStream(stream);
+      
+      // Critical fix: Create dedicated hidden audio element for inspectors (iOS compatibility)
+      if (userRole === "inspector") {
+        const audioTracks = stream.getAudioTracks();
+        console.log(`🔊 Remote audio tracks: ${audioTracks.length}`);
+        
+        if (audioTracks.length > 0) {
+          // Remove any existing dedicated audio element
+          const existingAudio = document.getElementById('dedicated-remote-audio');
+          if (existingAudio) {
+            existingAudio.remove();
+          }
+          
+          // Create dedicated hidden audio element that stays in DOM
+          const audioEl = document.createElement('audio');
+          audioEl.id = 'dedicated-remote-audio';
+          audioEl.autoplay = true; // Attempt autoplay
+          (audioEl as any).playsInline = true; // Required for mobile - cast for TypeScript
+          audioEl.muted = false; // Ensure not muted
+          
+          // Hidden but stays in DOM (required for iOS compatibility)
+          audioEl.style.position = 'absolute';
+          audioEl.style.opacity = '0';
+          audioEl.style.pointerEvents = 'none';
+          audioEl.style.left = '-9999px';
+          audioEl.style.top = '-9999px';
+          audioEl.style.width = '1px';
+          audioEl.style.height = '1px';
+          
+          // Create dedicated audio-only stream for the element
+          const audioOnlyStream = new MediaStream(audioTracks);
+          audioEl.srcObject = audioOnlyStream;
+          
+          // Append to DOM - CRITICAL for iOS
+          document.body.appendChild(audioEl);
+          
+          // Store reference for cleanup and unlock functionality  
+          remoteAudioElementRef.current = audioEl;
+          
+          console.log('🎵 Dedicated audio element created and appended to DOM');
+          
+          // Log each audio track details
+          audioTracks.forEach((track, index) => {
+            console.log(`🔊 Remote audio track ${index}:`, {
+              enabled: track.enabled,
+              muted: track.muted,
+              readyState: track.readyState,
+              label: track.label
+            });
+            
+            // Ensure track is not muted
+            if (track.muted) {
+              console.log(`🔊 Remote audio track ${index} was muted, attempting to unmute`);
+            } else {
+              console.log(`🔊 Remote audio track unmuted`);
+            }
+          });
+          
+          // Attempt to play immediately (may be blocked by autoplay policy)
+          audioEl.play().then(() => {
+            console.log('✅ Dedicated audio element playing successfully');
+            setAudioUnlocked(true);
+          }).catch((error) => {
+            console.log('⚠️ Autoplay blocked for dedicated audio element:', error);
+            // This is expected - user will need to click unlock audio button
+          });
+        }
+      }
     };
 
     // Handle connection state changes with better diagnostics
@@ -1518,6 +1588,23 @@ export function useWebRTC(callId: string, userRole: "coordinator" | "inspector")
         video.load(); // Force video element to release resources
       }
     });
+    
+    // Clean up dedicated remote audio element (critical for iOS)
+    if (remoteAudioElementRef.current) {
+      console.log('🧹 Cleaning up dedicated remote audio element');
+      remoteAudioElementRef.current.pause();
+      remoteAudioElementRef.current.srcObject = null;
+      remoteAudioElementRef.current.load();
+      remoteAudioElementRef.current.remove();
+      remoteAudioElementRef.current = null;
+    }
+    
+    // Also remove any orphaned dedicated audio elements
+    const dedicatedAudio = document.getElementById('dedicated-remote-audio');
+    if (dedicatedAudio) {
+      console.log('🧹 Removing orphaned dedicated audio element');
+      dedicatedAudio.remove();
+    }
     
     // Close peer connection
     if (peerConnectionRef.current) {
